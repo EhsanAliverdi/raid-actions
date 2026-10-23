@@ -2,6 +2,8 @@
   <Folder Name="/src/">
     <Project Path="src/RaidActions.ExtractorCore/RaidActions.ExtractorCore.csproj" />
     <Project Path="src/RaidActions.Core/RaidActions.Core.csproj" />
+    <Project Path="src/RaidActions.Protocol/RaidActions.Protocol.csproj" />
+    <Project Path="src/RaidActions.App/RaidActions.App.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/RaidActions.Tests/RaidActions.Tests.csproj" />

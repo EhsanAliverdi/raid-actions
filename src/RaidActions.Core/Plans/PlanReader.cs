@@ -90,8 +90,9 @@ public static class PlanReader
                 var rank = f.Int(s, "rank", p);
                 var asc = f.Int(s, "ascension", p);
                 var expected = f.OptInt(s, "expectedOwner", p);
+                var fingerprint = f.OptString(s, "fingerprint", p);
                 if (id is null || slot is null || level is null || rank is null || asc is null || owner.Missing || expected.Missing) continue;
-                pieces.Add(new PlanPiece(id.Value, slot, owner.Value, level.Value, rank.Value, asc.Value, expected.Value));
+                pieces.Add(new PlanPiece(id.Value, slot, owner.Value, level.Value, rank.Value, asc.Value, expected.Value, fingerprint));
             }
 
             if (root.TryGetProperty("ticked", out var ticked) && ticked.ValueKind == JsonValueKind.Array && ticked.GetArrayLength() > 0)

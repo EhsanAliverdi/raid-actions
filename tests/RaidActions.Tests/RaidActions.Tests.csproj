@@ -3,6 +3,7 @@
   <PropertyGroup>
     <!-- xUnit v3 test projects are executables; runs on Microsoft.Testing.Platform (see global.json). No game needed. -->
     <OutputType>Exe</OutputType>
+    <UseWPF>true</UseWPF>
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
@@ -12,10 +13,13 @@
 
   <ItemGroup>
     <Using Include="Xunit" />
+    <Using Include="System.IO" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\src\RaidActions.Core\RaidActions.Core.csproj" />
+    <ProjectReference Include="..\..\src\RaidActions.Protocol\RaidActions.Protocol.csproj" />
+    <ProjectReference Include="..\..\src\RaidActions.App\RaidActions.App.csproj" />
   </ItemGroup>
 
 </Project>

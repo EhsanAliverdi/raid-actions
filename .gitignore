@@ -25,3 +25,6 @@ global-metadata.dat
 
 # Local settings (paths on this machine)
 appsettings.local.json
+
+# WPF build temp projects (left behind by an interrupted build)
+*_wpftmp.csproj

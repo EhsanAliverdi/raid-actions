@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    RaidActions.exe: the CLI (with arguments) and the window (without). The only place that will ever send input to the game.
+    Phase 1: the fake executor only; no game input exists in the code.
+  -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <UseWPF>true</UseWPF>
+    <AssemblyName>RaidActions</AssemblyName>
+    <RootNamespace>RaidActions.App</RootNamespace>
+    <StartupObject>RaidActions.App.Program</StartupObject>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <EnableDefaultApplicationDefinition>false</EnableDefaultApplicationDefinition>
+    <Version>0.1.0</Version>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- WPF projects leave System.IO out of the implicit usings. -->
+    <Using Include="System.IO" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CommunityToolkit.Mvvm" Version="8.4.2" />
+    <PackageReference Include="WPF-UI" Version="4.3.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RaidActions.Core\RaidActions.Core.csproj" />
+    <ProjectReference Include="..\RaidActions.Protocol\RaidActions.Protocol.csproj" />
+  </ItemGroup>
+
+</Project>

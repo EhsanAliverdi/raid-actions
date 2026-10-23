@@ -1,0 +1,155 @@
+<ui:FluentWindow x:Class="RaidActions.App.Views.MainWindow"
+                 xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+                 xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                 xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+                 xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+                 xmlns:ui="http://schemas.lepo.co/wpfui/2022/xaml"
+                 xmlns:vm="clr-namespace:RaidActions.App.ViewModels"
+                 mc:Ignorable="d"
+                 d:DataContext="{d:DesignInstance vm:MainViewModel}"
+                 Title="Raid Actions" Width="1280" Height="820" MinWidth="480" MinHeight="480"
+                 Background="{StaticResource DsSurface}"
+                 ExtendsContentIntoTitleBar="True" WindowBackdropType="None" WindowStartupLocation="CenterScreen">
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+
+        <ui:TitleBar Grid.Row="0" Title="Raid Actions" />
+
+        <!-- Executor banner: always visible -->
+        <Border Grid.Row="1" Background="{StaticResource DsDebuff}" Padding="16,6">
+            <StackPanel>
+                <TextBlock Text="{Binding ExecutorBanner}" Foreground="White" FontWeight="SemiBold" TextWrapping="Wrap" />
+                <TextBlock Text="{Binding KillSwitchText}" Foreground="White" TextWrapping="Wrap" />
+            </StackPanel>
+        </Border>
+
+        <!-- Actions -->
+        <WrapPanel Grid.Row="2" Margin="16,12,16,4">
+            <ui:Button Content="Open plan…" Icon="{ui:SymbolIcon FolderOpen24}" Command="{Binding OpenPlanCommand}" Margin="{StaticResource DsGapS}" />
+            <ui:Button Content="Validate" Icon="{ui:SymbolIcon CheckmarkCircle24}" Command="{Binding ValidateCommand}" Margin="{StaticResource DsGapS}" />
+            <ui:Button Content="Dry run" Icon="{ui:SymbolIcon Eye24}" Command="{Binding DryRunCommand}" Margin="{StaticResource DsGapS}" />
+            <ui:Button Content="Run" Icon="{ui:SymbolIcon Play24}" Appearance="Primary" Command="{Binding RunCommand}" Margin="{StaticResource DsGapS}" />
+            <ui:Button Command="{Binding PauseResumeCommand}" Icon="{ui:SymbolIcon Pause24}" Margin="{StaticResource DsGapS}">
+                <ui:Button.Style>
+                    <Style TargetType="ui:Button" BasedOn="{StaticResource {x:Type ui:Button}}">
+                        <Setter Property="Content" Value="Pause" />
+                        <Style.Triggers>
+                            <DataTrigger Binding="{Binding IsPaused}" Value="True">
+                                <Setter Property="Content" Value="Resume" />
+                            </DataTrigger>
+                        </Style.Triggers>
+                    </Style>
+                </ui:Button.Style>
+            </ui:Button>
+            <ui:Button Content="Abort" Icon="{ui:SymbolIcon Stop24}" Appearance="Danger" Command="{Binding AbortCommand}" Margin="{StaticResource DsGapS}" />
+            <ui:Button Content="Sample plan" Icon="{ui:SymbolIcon Beaker24}" Appearance="Transparent" Command="{Binding WriteSampleCommand}" Margin="{StaticResource DsGapS}"
+                       ToolTip="Write a made-up account and plan and open it (fake executor)" />
+        </WrapPanel>
+
+        <!-- Plan -->
+        <Border Grid.Row="3" Style="{StaticResource DsCard}" Margin="16,4,16,12">
+            <StackPanel>
+                <TextBlock Style="{StaticResource DsHeading}" Text="{Binding PlanName, TargetNullValue='No plan'}" />
+                <TextBlock Style="{StaticResource DsCaption}" Text="{Binding PlanDetails}" />
+                <TextBlock Style="{StaticResource DsCaption}" Text="{Binding PlanPath}" />
+                <TextBlock Style="{StaticResource DsCaption}" Text="{Binding AccountSource}" />
+            </StackPanel>
+        </Border>
+
+        <!-- Wide: steps left, check and log right. Narrow: stacked (MainWindow.xaml.cs). -->
+        <Grid x:Name="Main" Grid.Row="4" Margin="16,0,16,12">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition x:Name="StepsColumn" Width="3*" />
+                <ColumnDefinition x:Name="GapColumn" Width="12" />
+                <ColumnDefinition x:Name="SideColumn" Width="2*" />
+            </Grid.ColumnDefinitions>
+            <Grid.RowDefinitions>
+                <RowDefinition x:Name="StepsRow" Height="*" />
+                <RowDefinition x:Name="SideRow" Height="0" />
+            </Grid.RowDefinitions>
+
+            <!-- Steps -->
+            <Border Style="{StaticResource DsCard}" Padding="8">
+                <DataGrid ItemsSource="{Binding Steps}" AutoGenerateColumns="False" HorizontalScrollBarVisibility="Auto" IsReadOnly="True" HeadersVisibility="Column"
+                          GridLinesVisibility="None" CanUserReorderColumns="False" SelectionMode="Single" Background="Transparent" BorderThickness="0">
+                    <DataGrid.Columns>
+                        <DataGridTextColumn Header="#" Binding="{Binding Number}" Width="36" MinWidth="36" />
+                        <DataGridTextColumn Header="State" Binding="{Binding State}" Width="80" MinWidth="80" />
+                        <DataGridTextColumn Header="Slot" Binding="{Binding Slot}" Width="80" MinWidth="80" />
+                        <DataGridTextColumn Header="From" Binding="{Binding From}" Width="140" MinWidth="110" />
+                        <DataGridTextColumn Header="To" Binding="{Binding To}" Width="140" MinWidth="110" />
+                        <DataGridTextColumn Header="Piece" Binding="{Binding Piece}" Width="*" MinWidth="160" />
+                        <DataGridTextColumn Header="Note" Binding="{Binding Note}" Width="170" />
+                    </DataGrid.Columns>
+                </DataGrid>
+            </Border>
+
+            <Grid x:Name="Side" Grid.Column="2">
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="12" />
+                    <RowDefinition Height="*" MinHeight="120" />
+                </Grid.RowDefinitions>
+                <!-- Issues: as tall as they need, up to a limit; the log gets the rest -->
+                <Border Style="{StaticResource DsCard}" MaxHeight="320">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource DsHeading}" Text="Check" />
+                        <ScrollViewer VerticalScrollBarVisibility="Auto" HorizontalScrollBarVisibility="Disabled">
+                            <ItemsControl ItemsSource="{Binding Issues}"
+                                          Width="{Binding ViewportWidth, RelativeSource={RelativeSource AncestorType=ScrollViewer}}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <DockPanel Margin="0,0,0,6">
+                                            <Border DockPanel.Dock="Left" Width="4" Margin="0,2,8,2" CornerRadius="2">
+                                                <Border.Style>
+                                                    <Style TargetType="Border">
+                                                        <Setter Property="Background" Value="{StaticResource DsWarn}" />
+                                                        <Style.Triggers>
+                                                            <DataTrigger Binding="{Binding Severity}" Value="ok">
+                                                                <Setter Property="Background" Value="{StaticResource DsGood}" />
+                                                            </DataTrigger>
+                                                            <DataTrigger Binding="{Binding Severity}" Value="error">
+                                                                <Setter Property="Background" Value="{StaticResource DsBad}" />
+                                                            </DataTrigger>
+                                                        </Style.Triggers>
+                                                    </Style>
+                                                </Border.Style>
+                                            </Border>
+                                            <TextBlock Style="{StaticResource DsBody}" Text="{Binding Text}" />
+                                        </DockPanel>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </ScrollViewer>
+                    </DockPanel>
+                </Border>
+                <!-- Log -->
+                <Border Grid.Row="2" Style="{StaticResource DsCard}" Background="{StaticResource DsSurfaceSunken}">
+                    <DockPanel>
+                        <TextBlock DockPanel.Dock="Top" Style="{StaticResource DsHeading}" Text="Log" />
+                        <ListBox x:Name="LogList" ItemsSource="{Binding Log}" Background="Transparent" BorderThickness="0"
+                                 ScrollViewer.HorizontalScrollBarVisibility="Disabled">
+                            <ListBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Style="{StaticResource DsMono}" Text="{Binding}" TextWrapping="Wrap" />
+                                </DataTemplate>
+                            </ListBox.ItemTemplate>
+                        </ListBox>
+                    </DockPanel>
+                </Border>
+            </Grid>
+        </Grid>
+
+        <!-- Status -->
+        <Border Grid.Row="5" Background="{StaticResource DsSurfaceRaised}" BorderBrush="{StaticResource DsBorder}" BorderThickness="0,1,0,0" Padding="16,6">
+            <TextBlock Style="{StaticResource DsBody}" Text="{Binding Status}" />
+        </Border>
+    </Grid>
+</ui:FluentWindow>

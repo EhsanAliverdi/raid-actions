@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- The messages between the planner (raid-extractor) and RaidActions.exe. No dependencies, so the planner can reference it. docs/PROTOCOL.md -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <RootNamespace>RaidActions.Protocol</RootNamespace>
+  </PropertyGroup>
+
+</Project>

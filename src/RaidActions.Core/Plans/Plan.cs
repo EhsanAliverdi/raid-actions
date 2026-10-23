@@ -6,7 +6,8 @@ public sealed record PlanStep(int Number, int ArtifactId, string Slot, string Pi
     int ToChampionId, string ToName, int ExpectedOwnerAfter);
 
 /// <summary>A piece the plan moves or relies on, as it was when the plan was made, and its owner once the plan is done (null = inventory).</summary>
-public sealed record PlanPiece(int ArtifactId, string Slot, int? Owner, int Level, int Rank, int Ascension, int? ExpectedOwner);
+/// <param name="Fingerprint">raid-extractor's SHA-256 over the piece's full state (<c>PlanPiece.FingerprintOf</c>), when the plan records it.</param>
+public sealed record PlanPiece(int ArtifactId, string Slot, int? Owner, int Level, int Rank, int Ascension, int? ExpectedOwner, string? Fingerprint = null);
 
 /// <summary>
 /// A plan file as raid-extractor writes it (schema version 1, output/plans/*.json). Only what the actioner needs is kept; the

@@ -25,7 +25,8 @@ public static class AccountCheck
 {
     /// <param name="fresh">A fresh read of the account (or, for an offline check, a saved export).</param>
     /// <param name="madeFrom">The export the plan was made from (raid-extractor history file named by the plan's snapshotId), or null if
-    /// it was not found: then substats cannot be confirmed unchanged and the plan is refused.</param>
+    /// it was not found: then the plan is refused (SCHEMA.md → Plan files). Pieces are compared by their fingerprint when the plan records
+    /// one, else against this export.</param>
     public static CheckReport Check(Plan plan, SavedExport fresh, SavedExport? madeFrom)
     {
         var issues = PlanValidator.Validate(plan);
@@ -43,8 +44,7 @@ public static class AccountCheck
         var champions = fresh.Champions.ToDictionary(c => c.Id);
         var original = madeFrom?.Artifacts.ToDictionary(a => a.Id);
         if (madeFrom is null)
-            issues.Add(PlanIssue.Error(IssueCode.SnapshotMissing,
-                $"The export the plan was made from ({plan.SnapshotId ?? "no snapshotId"}) was not found, so substats and glyphs cannot be confirmed unchanged."));
+            issues.Add(PlanIssue.Error(IssueCode.SnapshotMissing, $"The export the plan was made from ({plan.SnapshotId ?? "no snapshotId"}) was not found."));
         else if (madeFrom.Meta.ExportedAt != plan.ExportedAt)
             issues.Add(PlanIssue.Error(IssueCode.SnapshotMissing, $"The snapshot {plan.SnapshotId} is from {madeFrom.Meta.ExportedAt}, not {plan.ExportedAt} as the plan says."));
 
@@ -62,7 +62,13 @@ public static class AccountCheck
             if (a.Level != p.Level || a.Rank != p.Rank || a.AscendLevel != p.Ascension)
                 issues.Add(PlanIssue.Error(IssueCode.ArtifactUpgraded,
                     $"{label} changed since the plan: {p.Rank}★ +{p.Level} asc {p.Ascension} → {a.Rank}★ +{a.Level} asc {a.AscendLevel}.", n));
-            if (original is not null && original.TryGetValue(p.ArtifactId, out var o) && Fingerprint(o) != Fingerprint(a))
+            var upgraded = a.Level != p.Level || a.Rank != p.Rank || a.AscendLevel != p.Ascension; // already reported
+            if (p.Fingerprint is { } fp)
+            {
+                if (!upgraded && !string.Equals(fp, RaidExtractor.Battle.PlanPiece.FingerprintOf(a), StringComparison.OrdinalIgnoreCase))
+                    issues.Add(PlanIssue.Error(IssueCode.ArtifactRerolled, $"{label}'s set, rarity, main stat, substats or glyphs changed since the plan (fingerprint).", n));
+            }
+            else if (original is not null && original.TryGetValue(p.ArtifactId, out var o) && Fingerprint(o) != Fingerprint(a))
                 issues.Add(PlanIssue.Error(IssueCode.ArtifactRerolled, $"{label}'s set, rarity, main stat, substats or glyphs changed since the plan.", n));
             else if (original is not null && !original.ContainsKey(p.ArtifactId))
                 issues.Add(PlanIssue.Error(IssueCode.SnapshotMissing, $"{label} is not in the plan's snapshot export.", n));

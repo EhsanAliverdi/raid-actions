@@ -122,6 +122,13 @@ public static class TestData
         ["artifactId"] = id, ["slot"] = slot, ["owner"] = owner, ["level"] = level, ["rank"] = rank, ["ascension"] = asc, ["expectedOwner"] = expected,
     };
 
+    /// <summary>Adds raid-extractor's fingerprint of each piece as the plan was made (as plans saved from 2026-10-23 on carry).</summary>
+    public static void AddFingerprints(JsonObject plan)
+    {
+        var arts = Artifacts().ToDictionary(a => a.Id);
+        foreach (var p in plan.Pieces()) p!["fingerprint"] = RaidExtractor.Battle.PlanPiece.FingerprintOf(arts[(int)p["artifactId"]!]);
+    }
+
     public static LoadedPlan Load(JsonObject json)
     {
         var r = PlanReader.Read(json.ToJsonString());

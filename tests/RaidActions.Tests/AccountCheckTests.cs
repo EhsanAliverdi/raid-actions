@@ -68,6 +68,45 @@ public class AccountCheckTests
         Refused(AccountCheck.Check(TestData.Plan(), TestData.Export(), madeFrom: null), IssueCode.SnapshotMissing);
 
     [Fact]
+    public void Fingerprints_pass_when_nothing_changed() =>
+        Assert.True(Check(TestData.Export(), plan: TestData.Plan(TestData.AddFingerprints)).CanStart);
+
+    [Fact]
+    public void The_snapshot_is_required_even_with_fingerprints() =>
+        Refused(AccountCheck.Check(TestData.Plan(TestData.AddFingerprints), TestData.Export(), madeFrom: null), IssueCode.SnapshotMissing);
+
+    [Fact]
+    public void A_fingerprint_catches_a_reroll()
+    {
+        // The snapshot shows the same reroll, so only the fingerprint can catch it.
+        var rerolled = With(200, a => a with { Substats = [TestData.Stat("spd", 5, true, rolls: 2), TestData.Stat("acc", 10, true)] });
+        var r = Check(TestData.Export(rerolled), TestData.Export(rerolled, exportedAt: TestData.PlanExportedAt), TestData.Plan(TestData.AddFingerprints));
+        Refused(r, IssueCode.ArtifactRerolled, 2);
+        Assert.Contains("fingerprint", r.Issues.Single(i => i.Code == IssueCode.ArtifactRerolled).Message);
+    }
+
+    [Fact]
+    public void An_upgrade_is_reported_once_even_with_a_fingerprint()
+    {
+        var r = Check(TestData.Export(With(200, a => a with { Level = 16 })), plan: TestData.Plan(TestData.AddFingerprints));
+        Refused(r, IssueCode.ArtifactUpgraded, 2);
+        Assert.DoesNotContain(r.Issues, i => i.Code == IssueCode.ArtifactRerolled);
+    }
+
+    [Fact]
+    public void The_fingerprint_formula_matches_SCHEMA_md()
+    {
+        // Recomputed from the text in raid-extractor's SCHEMA.md → Plan files → pieces[].fingerprint, not from its code.
+        var a = TestData.Art(200, "Gloves", 2) with { Substats = [TestData.Stat("spd", 5, true, glyph: 1, rolls: 2), TestData.Stat("critRate", 0.15, false)] };
+        static string S(RaidExtractor.StatOut x) => $"{x.Stat},{(x.Absolute ? 1 : 0)},{x.Value.ToString("R", System.Globalization.CultureInfo.InvariantCulture)},{x.Glyph.ToString("R", System.Globalization.CultureInfo.InvariantCulture)},{x.Rolls}";
+        var text = string.Join("|", new[] { a.Slot, $"{a.SetKindId}", a.Rarity, $"{a.Rank}", $"{a.Level}", $"{a.AscendLevel}", a.Faction ?? "", S(a.Primary) }
+            .Concat(a.Substats.Select(S)).Append(a.AscendBonus is null ? "-" : S(a.AscendBonus)));
+        Assert.Equal("Gloves|4|Epic|5|12|0||hp,0,0.33,0,0|spd,1,5,1,2|critRate,0,0.15,0,0|-", text);
+        var expected = Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(text)));
+        Assert.Equal(expected, RaidExtractor.Battle.PlanPiece.FingerprintOf(a));
+    }
+
+    [Fact]
     public void A_snapshot_from_another_export_is_refused() =>
         Refused(Check(TestData.Export(), madeFrom: TestData.Export(exportedAt: "2026-10-22T10:00:00+11:00")), IssueCode.SnapshotMissing);
 

@@ -1,0 +1,27 @@
+# Build artifacts
+bin/
+obj/
+*.user
+.vs/
+TestResults/
+
+# Local run data: logs, snapshots, screenshots, captures, plans copied in. Never committed.
+/output/
+/logs/
+*.log
+
+# Anything taken from the game: templates cut from screenshots, icons, captures. Plarium assets stay local.
+/templates/
+/cache/
+*.png
+*.jpg
+*.jpeg
+*.bmp
+
+# Game files: never commit copies of the game's binaries or metadata
+GameAssembly.dll
+global-metadata.dat
+*.dat
+
+# Local settings (paths on this machine)
+appsettings.local.json

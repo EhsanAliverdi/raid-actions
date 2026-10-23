@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Plans, checks and the step-to-actions conversion. No game input here: input lives only in RaidActions.exe. -->
+  <PropertyGroup>
+    <RootNamespace>RaidActions</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RaidActions.ExtractorCore\RaidActions.ExtractorCore.csproj" />
+  </ItemGroup>
+
+</Project>

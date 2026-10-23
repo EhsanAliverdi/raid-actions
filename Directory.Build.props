@@ -1,0 +1,9 @@
+<Project>
+  <PropertyGroup>
+    <!-- Where raid-extractor lives. Override with -p:RaidExtractorRoot=... or the RaidExtractorRoot environment variable. -->
+    <RaidExtractorRoot Condition="'$(RaidExtractorRoot)' == ''">$(MSBuildThisFileDirectory)..\raid-extractor</RaidExtractorRoot>
+    <TargetFramework>net10.0-windows</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+  </PropertyGroup>
+</Project>

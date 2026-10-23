@@ -1,0 +1,28 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    raid-extractor's RaidExtractor.Core, compiled from its sources at $(RaidExtractorRoot) into this repo's bin/obj.
+    A plain ProjectReference would build inside the raid-extractor tree (its bin/obj), which another agent is using;
+    this way nothing in raid-extractor is written. Same code, same read-only guarantee (PROCESS_VM_READ).
+    Used ONLY to read and verify game state. All input to the game lives in RaidActions.exe.
+  -->
+  <PropertyGroup>
+    <AssemblyName>RaidExtractor.Core</AssemblyName>
+    <RootNamespace>RaidExtractor</RootNamespace>
+    <!-- Required by Core's source-generated LibraryImport stubs (as in its own project). -->
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <CoreSource>$(RaidExtractorRoot)\src\RaidExtractor.Core</CoreSource>
+    <NoWarn>$(NoWarn);CS1591;nullable</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="$(CoreSource)\**\*.cs" Exclude="$(CoreSource)\bin\**;$(CoreSource)\obj\**" Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />
+  </ItemGroup>
+
+  <Target Name="CheckRaidExtractorRoot" BeforeTargets="BeforeBuild">
+    <Error Condition="!Exists('$(CoreSource)\RaidExtractor.Core.csproj')"
+           Text="raid-extractor not found at '$(RaidExtractorRoot)'. Set RaidExtractorRoot (msbuild property or environment variable)." />
+  </Target>
+
+</Project>

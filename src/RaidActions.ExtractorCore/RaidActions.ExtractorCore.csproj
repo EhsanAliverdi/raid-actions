@@ -5,6 +5,11 @@
     A plain ProjectReference would build inside the raid-extractor tree (its bin/obj), which another agent is using;
     this way nothing in raid-extractor is written. Same code, same read-only guarantee (PROCESS_VM_READ).
     Used ONLY to read and verify game state. All input to the game lives in RaidActions.exe.
+
+    core-sources.lock (committed) holds the SHA-256 of every compiled file. The build fails when any of them changed, appeared
+    or disappeared, so a Core change never slips in unnoticed. After reviewing the change:
+      dotnet build -p:AcceptCoreChanges=true
+    rewrites the lock; commit it.
   -->
   <PropertyGroup>
     <AssemblyName>RaidExtractor.Core</AssemblyName>
@@ -12,17 +17,51 @@
     <!-- Required by Core's source-generated LibraryImport stubs (as in its own project). -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
-    <CoreSource>$(RaidExtractorRoot)\src\RaidExtractor.Core</CoreSource>
+    <CoreSource>$([System.IO.Path]::GetFullPath('$(RaidExtractorRoot)\src\RaidExtractor.Core'))</CoreSource>
+    <CoreLock>$(MSBuildThisFileDirectory)core-sources.lock</CoreLock>
+    <CoreAccepted>$(MSBuildThisFileDirectory)obj\core-accepted</CoreAccepted>
+    <_CoreDiffHint Condition="Exists('$(CoreAccepted)')">%0aSee the changes: git diff --no-index "$(CoreAccepted)\Core" "$(CoreSource)"</_CoreDiffHint>
     <NoWarn>$(NoWarn);CS1591;nullable</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
     <Compile Include="$(CoreSource)\**\*.cs" Exclude="$(CoreSource)\bin\**;$(CoreSource)\obj\**" Link="Core\%(RecursiveDir)%(Filename)%(Extension)" />
+    <!-- Rebuild when the lock changes (accepting a change). -->
+    <UpToDateCheckInput Include="$(CoreLock)" />
   </ItemGroup>
 
-  <Target Name="CheckRaidExtractorRoot" BeforeTargets="BeforeBuild">
+  <Target Name="CheckCoreSources" BeforeTargets="CoreCompile;BeforeBuild">
     <Error Condition="!Exists('$(CoreSource)\RaidExtractor.Core.csproj')"
            Text="raid-extractor not found at '$(RaidExtractorRoot)'. Set RaidExtractorRoot (msbuild property or environment variable)." />
+
+    <ItemGroup>
+      <_CoreFile Include="@(Compile)" Condition="$([System.String]::Copy('%(Compile.FullPath)').StartsWith('$(CoreSource)\'))" />
+    </ItemGroup>
+    <GetFileHash Files="@(_CoreFile)" Algorithm="SHA256" HashEncoding="hex">
+      <Output TaskParameter="Items" ItemName="_CoreHashed" />
+    </GetFileHash>
+    <ItemGroup>
+      <_CoreNow Include="$([System.String]::Copy('%(_CoreHashed.Link)').Replace('Core\','').Replace('\','/')) %(_CoreHashed.FileHash)" />
+    </ItemGroup>
+
+    <!-- Accept: rewrite the lock, loudly. -->
+    <WriteLinesToFile Condition="'$(AcceptCoreChanges)' == 'true'" File="$(CoreLock)" Lines="@(_CoreNow)" Overwrite="true" WriteOnlyWhenDifferent="true" />
+    <Warning Condition="'$(AcceptCoreChanges)' == 'true'" Text="raid-extractor Core changes ACCEPTED: core-sources.lock rewritten. Review and commit it." />
+    <!-- A local copy of what was accepted (obj, never committed), so the next change can be reviewed as a diff. -->
+    <RemoveDir Condition="'$(AcceptCoreChanges)' == 'true'" Directories="$(CoreAccepted)" />
+    <Copy Condition="'$(AcceptCoreChanges)' == 'true'" SourceFiles="@(_CoreFile)" DestinationFiles="@(_CoreFile->'$(CoreAccepted)\%(Link)')" />
+
+    <ReadLinesFromFile Condition="Exists('$(CoreLock)')" File="$(CoreLock)">
+      <Output TaskParameter="Lines" ItemName="_CoreLocked" />
+    </ReadLinesFromFile>
+    <ItemGroup>
+      <_CoreChanged Include="@(_CoreNow)" Exclude="@(_CoreLocked)" />
+      <_CoreGone Include="@(_CoreLocked)" Exclude="@(_CoreNow)" />
+    </ItemGroup>
+    <Error Condition="!Exists('$(CoreLock)')"
+           Text="core-sources.lock is missing. Review raid-extractor's Core at $(CoreSource), then build with -p:AcceptCoreChanges=true and commit the lock." />
+    <Error Condition="'@(_CoreChanged)' != '' or '@(_CoreGone)' != ''"
+           Text="RAID-EXTRACTOR CORE CHANGED since core-sources.lock was accepted.%0a  Now (changed or new): @(_CoreChanged, '%0a    ')%0a  Locked (changed or removed): @(_CoreGone, '%0a    ')$(_CoreDiffHint)%0aReview the changes in $(CoreSource), then build with -p:AcceptCoreChanges=true and commit core-sources.lock." />
   </Target>
 
 </Project>

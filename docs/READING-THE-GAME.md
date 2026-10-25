@@ -59,6 +59,16 @@ come from the same game build, or nothing is read.
 - `WindowCapture.Take`: `PrintWindow` with full content, which works while the window is covered. A blank image is refused.
   Copying from the screen is only a fallback when the game is the foreground window. A minimized window cannot be captured.
 
+## The standard window size
+
+The actioner owns one window size: **1600×900 client area** (`config/window.json`), so templates and geometry are always at
+one scale. `RaidActions window fit` asks (y/n), prints the old and new size, then sets it with `SetWindowPos` on Raid's
+window only: no activation, no z-order change, and a minimized window is restored without activation. It is centred in the
+work area. It reads the client size back; if the game takes another size, that size becomes the standard (`status:
+snapped`). Live `capture`, `recognize` and `templates recut` refuse any other size ("run window fit").
+
+Applied on 2026-10-26: Raid took exactly 1600×900 (per-monitor DPI-aware, 1920×1080 display at 100%).
+
 ## Screen recognition
 
 - Anchors (OpenCvSharp, normalized cross-correlation, multi-scale): `gear.tabs`, `gear.total-stats` (the champion's gear
@@ -76,7 +86,8 @@ come from the same game build, or nothing is read.
 ## Commands
 
 ```
-RaidActions window                 the game window: size, DPI, state
+RaidActions window                 the game window: size, DPI, state, standard size
+RaidActions window fit             set it to the standard size (asks first)
 RaidActions capture [--out f]      a capture of the client area (output/captures)
 RaidActions ui-state [--watch]     the UI from memory
 RaidActions recognize [--image f]  anchors and gear slots, with an annotated image

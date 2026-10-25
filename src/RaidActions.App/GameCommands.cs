@@ -18,16 +18,25 @@ public static class GameCommands
 
     public static string Templates(string output) => Path.Combine(output, "templates");
 
-    public static async Task<int> RunAsync(string command, string[] args, string output, TextWriter o)
+    public static string WindowConfig => Path.Combine(AppPaths.Config(), "window.json");
+
+    public static async Task<int> RunAsync(string command, string[] args, string output, TextWriter o, TextReader? input = null)
     {
         string? Opt(string name) => Array.IndexOf(args, name) is var i and >= 0 && i + 1 < args.Length ? args[i + 1] : null;
         switch (command)
         {
+            case "window" when args.Length > 1 && args[1] == "fit":
+                return Fit(o, input ?? TextReader.Null);
             case "window":
             {
                 var (w, problem) = GameWindow.Find();
                 o.WriteLine(w?.ToString() ?? problem);
                 if (w?.NotUsable is { } why) o.WriteLine("Not usable: " + why);
+                if (w is not null)
+                {
+                    var standard = WindowStandard.Load(WindowConfig);
+                    o.WriteLine(standard.Mismatch(w) ?? $"Standard size {standard}: matches.");
+                }
                 return w is null ? Cli.Failed : Cli.Ok;
             }
             case "capture":
@@ -51,6 +60,9 @@ public static class GameCommands
                 using (game)
                 {
                     var watch = args.Contains("--watch");
+                    // --for <minutes>: stop watching by itself (no wrapper process needed).
+                    var until = double.TryParse(Opt("--for"), System.Globalization.CultureInfo.InvariantCulture, out var minutes)
+                        ? DateTime.Now.AddMinutes(minutes) : DateTime.MaxValue;
                     string? last = null;
                     do
                     {
@@ -59,7 +71,7 @@ public static class GameCommands
                         if (text != last) o.WriteLine($"{DateTime.Now:HH:mm:ss}\n{text}");
                         last = text;
                         if (watch) await Task.Delay(500);
-                    } while (watch);
+                    } while (watch && DateTime.Now < until);
                 }
                 return Cli.Ok;
             }
@@ -127,6 +139,51 @@ public static class GameCommands
         return Cli.Usage;
     }
 
+    /// <summary>
+    /// window fit: sets the game window to the standard client size (asks first). If the game takes another size, that size becomes
+    /// the standard. Only SetWindowPos/ShowWindow on Raid's window; no input to the game.
+    /// </summary>
+    private static int Fit(TextWriter o, TextReader input)
+    {
+        var (w, problem) = GameWindow.Find();
+        if (w is null)
+        {
+            o.WriteLine(problem);
+            return Cli.Failed;
+        }
+        var standard = WindowStandard.Load(WindowConfig);
+        var plan = WindowFit.Plan(w, standard.RequestedWidth, standard.RequestedHeight);
+        o.WriteLine($"Now:  client {w.Client.Width}x{w.Client.Height}, window {w.Window}{(w.Minimized ? " (minimized)" : "")}");
+        o.WriteLine($"New:  client {plan.ClientWidth}x{plan.ClientHeight}, window {plan.Window}, centred in the work area {plan.WorkArea}{(plan.Restore ? ", restored without activating it" : "")}");
+        if (plan.Window.Width > plan.WorkArea.Width || plan.Window.Height > plan.WorkArea.Height)
+            o.WriteLine("Note: the window is larger than the work area; it is placed at the work area's top left.");
+        o.Write("Resize the Raid window? (y/n) ");
+        var answer = input.ReadLine()?.Trim();
+        o.WriteLine(answer ?? "");
+        if (!string.Equals(answer, "y", StringComparison.OrdinalIgnoreCase))
+        {
+            o.WriteLine("Not resized.");
+            return Cli.NotConfirmed;
+        }
+        var (after, why) = WindowFit.Apply(w, plan);
+        if (after is null)
+        {
+            o.WriteLine(why);
+            return Cli.Failed;
+        }
+        o.WriteLine($"After: client {after.Client.Width}x{after.Client.Height}, window {after.Window}");
+        var saved = standard.Save(after.Client.Width, after.Client.Height);
+        if (saved.Status == "applied")
+        {
+            o.WriteLine($"Confirmed: the client area is {saved.Width}x{saved.Height}. Standard size: {saved}.");
+            return Cli.Ok;
+        }
+        var aspect = after.Client.Height == 0 ? 0 : after.Client.Width / (double)after.Client.Height;
+        o.WriteLine($"The game took {after.Client.Width}x{after.Client.Height} (aspect {aspect:0.000}) instead of {standard.RequestedWidth}x{standard.RequestedHeight}.");
+        o.WriteLine($"That is now the standard size ({WindowConfig}): {saved}.");
+        return Cli.Ok;
+    }
+
     private static Capture? TakeCapture(TextWriter o)
     {
         var (w, problem) = GameWindow.Find();
@@ -136,6 +193,11 @@ public static class GameCommands
             return null;
         }
         o.WriteLine(w);
+        if (WindowStandard.Load(WindowConfig).Mismatch(w) is { } mismatch)
+        {
+            o.WriteLine("Refused: " + mismatch);
+            return null;
+        }
         var (cap, why) = WindowCapture.Take(w);
         if (cap is null) o.WriteLine("Capture failed: " + why);
         return cap;

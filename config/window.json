@@ -1,0 +1,12 @@
+{
+  "$comment": "The game window size the actioner owns: client area in physical pixels. 'window fit' sets it; capture and recognition refuse any other size. 'status': requested (not yet applied), applied (the game took it), snapped (the game chose this size instead of the request).",
+  "standardClient": {
+    "width": 1600,
+    "height": 900
+  },
+  "requested": {
+    "width": 1600,
+    "height": 900
+  },
+  "status": "applied"
+}

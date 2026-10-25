@@ -24,9 +24,10 @@ public static class Cli
           RaidActions sample [<folder>]        write a made-up account and plan to try the app
 
         Read-only, against the running game (no input, never brings it to the front):
-          RaidActions window                   find the game window: size, DPI, state
+          RaidActions window                   find the game window: size, DPI, state, standard size
+          RaidActions window fit               set the game window to the standard size (asks first)
           RaidActions capture [--out f.png]    save a capture of the game's client area
-          RaidActions ui-state [--watch]       the game's UI from memory: open views, battle, selected champion and artifact
+          RaidActions ui-state [--watch [--for <minutes>]]  the game's UI from memory: views, battle, selected champion and artifact
           RaidActions recognize [--image f]    recognize the screen (live, or an image) and save an annotated copy
           RaidActions templates seed|recut     cut the anchor templates (from reference screenshots | from the live window)
 
@@ -88,7 +89,7 @@ public static class Cli
         {
             var outIndex = Array.IndexOf(args, "--output");
             var outDir = AppPaths.Resolve(null, outIndex >= 0 && outIndex + 1 < args.Length ? args[outIndex + 1] : null).Output;
-            return await GameCommands.RunAsync(args[0].ToLowerInvariant(), args, outDir, output);
+            return await GameCommands.RunAsync(args[0].ToLowerInvariant(), args, outDir, output, input);
         }
 
         Options? o;

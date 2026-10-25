@@ -104,7 +104,24 @@ public static class PlanReader
 
             if (issues.HasErrors() || planId is null || name is null || created is null || gameVersion is null || exportedAt is null)
                 return new(null, issues);
-            return new(new LoadedPlan(path, sha, new Plan(version, planId, name, created, gameVersion, exportedAt, snapshotId, steps, pieces, locksName)), issues);
+            // warnings[]: optional (absent in older plans); each entry needs its champion, severity and text.
+            List<PlanWarning>? warnings = null;
+            if (root.TryGetProperty("warnings", out var ws) && ws.ValueKind == JsonValueKind.Array)
+            {
+                warnings = [];
+                foreach (var (w, p) in f.Array(root, "warnings", "warnings"))
+                {
+                    var cid = f.Int(w, "championId", p);
+                    var champion = f.String(w, "champion", p);
+                    var severity = f.String(w, "severity", p);
+                    var text = f.String(w, "text", p);
+                    if (cid is null || champion is null || severity is null || text is null) continue;
+                    if (severity is not ("red" or "amber")) issues.Add(PlanIssue.Error(IssueCode.BadValue, $"{p}.severity is \"{severity}\"; expected red or amber."));
+                    warnings.Add(new PlanWarning(cid.Value, champion, severity, text));
+                }
+            }
+            if (issues.HasErrors()) return new(null, issues);
+            return new(new LoadedPlan(path, sha, new Plan(version, planId, name, created, gameVersion, exportedAt, snapshotId, steps, pieces, locksName, warnings)), issues);
         }
     }
 

@@ -98,6 +98,32 @@ public class PlanReaderTests
     }
 
     [Fact]
+    public void The_planners_warnings_are_read_and_shown_red_first()
+    {
+        var j = TestData.PlanJson();
+        j["warnings"] = new JsonArray(
+            new JsonObject { ["championId"] = 2, ["champion"] = "Brute", ["severity"] = "amber", ["text"] = "Brute: SPD 180 → 176. Used in Arena.", ["stats"] = new JsonArray() },
+            new JsonObject { ["championId"] = 3, ["champion"] = "Cora", ["severity"] = "red", ["text"] = "Cora: SPD 225 → 208. Used in Dragon's Lair. This may break them." });
+        var r = Read(j);
+        Assert.True(r.Ok, string.Join(Environment.NewLine, r.Issues));
+        Assert.Equal(["red", "amber"], r.Plan!.Plan.WarningsRedFirst.Select(w => w.Severity));
+        var check = RaidActions.Verification.AccountCheck.Check(r.Plan.Plan, TestData.Export(), TestData.MadeFrom());
+        var lines = RaidActions.Execution.Confirmation.Lines(r.Plan, check, RaidActions.Execution.RunMode.DryRun, "fake");
+        var i = lines.FindIndex(l => l.StartsWith("The planner warns", StringComparison.Ordinal));
+        Assert.True(i > 0);
+        Assert.StartsWith("  RED   Cora", lines[i + 1]);
+        Assert.StartsWith("  AMBER Brute", lines[i + 2]);
+    }
+
+    [Fact]
+    public void A_warning_with_an_unknown_severity_is_refused()
+    {
+        var j = TestData.PlanJson();
+        j["warnings"] = new JsonArray(new JsonObject { ["championId"] = 2, ["champion"] = "Brute", ["severity"] = "purple", ["text"] = "?" });
+        Assert.Contains(Read(j).Issues, i => i.Code == IssueCode.BadValue && i.Message.Contains("severity"));
+    }
+
+    [Fact]
     public void Missing_file_is_reported()
     {
         var r = PlanReader.ReadFile(Path.Combine(Path.GetTempPath(), Guid.NewGuid() + ".json"));

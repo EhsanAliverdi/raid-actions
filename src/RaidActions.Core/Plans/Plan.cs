@@ -13,9 +13,16 @@ public sealed record PlanPiece(int ArtifactId, string Slot, int? Owner, int Leve
 /// A plan file as raid-extractor writes it (schema version 1, output/plans/*.json). Only what the actioner needs is kept; the
 /// planner's predictions, teams, locks and origin are informational and read only for display (<see cref="LocksName"/>).
 /// </summary>
+/// <summary>The planner's warning about another saved team a swap may break (SCHEMA.md → warnings[]): shown, red first, before a run.</summary>
+public sealed record PlanWarning(int ChampionId, string Champion, string Severity, string Text);
+
 public sealed record Plan(int SchemaVersion, string PlanId, string Name, string Created, string GameVersion, string ExportedAt,
-    string? SnapshotId, IReadOnlyList<PlanStep> Steps, IReadOnlyList<PlanPiece> Pieces, string? LocksName)
+    string? SnapshotId, IReadOnlyList<PlanStep> Steps, IReadOnlyList<PlanPiece> Pieces, string? LocksName,
+    IReadOnlyList<PlanWarning>? Warnings = null)
 {
+    /// <summary>The planner's warnings, red before amber.</summary>
+    public IEnumerable<PlanWarning> WarningsRedFirst => (Warnings ?? []).OrderBy(w => w.Severity == "red" ? 0 : 1);
+
     /// <summary>The newest plan schema this app executes.</summary>
     public const int SupportedVersion = 1;
 

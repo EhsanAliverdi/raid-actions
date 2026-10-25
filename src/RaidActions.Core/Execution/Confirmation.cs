@@ -37,6 +37,14 @@ public static class Confirmation
         foreach (var g in donors)
             lines.Add($"  {g.Key.FromName} (#{g.Key.FromChampionId}): " + string.Join(", ", g.Select(s => $"{s.Step.Slot} #{s.Step.ArtifactId}")));
 
+        var planWarnings = plan.WarningsRedFirst.ToList();
+        if (planWarnings.Count > 0)
+        {
+            lines.Add("");
+            lines.Add("The planner warns (other saved teams these swaps may break; check before running):");
+            lines.AddRange(planWarnings.Select(w => $"  {w.Severity.ToUpperInvariant(),-5} {w.Text}"));
+        }
+
         var warnings = check.Issues.Where(i => i.Severity == Severity.Warning).ToList();
         if (warnings.Count > 0)
         {

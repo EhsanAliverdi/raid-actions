@@ -39,6 +39,22 @@ public sealed class LiveGame : IDisposable
 
     public OffsetConfig Offsets => _offsets;
 
+    /// <summary>Every open view with its managed View object (RaidViewMaster._views).</summary>
+    public List<(string Name, ulong View)> Views()
+    {
+        var g = Objects;
+        var app = g.Root("AppViewModel", "Client.ViewModel.AppViewModel");
+        var master = g.Ref(g.Ref(app, "Client.ViewModel.AppViewModel", "_overlayManager"), "Client.ViewModel.OverlayManagerBase", "_viewMaster");
+        var result = new List<(string, ulong)>();
+        foreach (var meta in g.RefList(g.Ref(master, "Client.RaidApp.RaidViewMaster", "_views"), 256))
+        {
+            var key = g.Int(meta, "Client.RaidApp.ViewMeta", "Key");
+            var view = g.Ref(meta, "Client.RaidApp.ViewMeta", "View");
+            if (view != 0) result.Add((g.EnumName(UiStateReader.ViewKeyEnum, key) ?? $"#{key}", view));
+        }
+        return result;
+    }
+
     /// <summary>Unity UI from memory, with the native layouts in <paramref name="nativeLayoutPath"/> (config/ui-native.json).</summary>
     public UnityUi Ui(string nativeLayoutPath)
     {

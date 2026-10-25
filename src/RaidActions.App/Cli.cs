@@ -43,6 +43,7 @@ public static class Cli
           --confirm <code>           the plan's confirmation code (first 8 characters of its id) instead of typing it
           --pace <min>-<max>         milliseconds between inputs (default 150-450)
           --live                     validate: read the account from the running game instead of account.json
+                                     dry-run: observe the running game, sending no input (you open the screens it asks for)
 
         Abort a run: Ctrl+Alt+Esc (anywhere) or Ctrl+C.
         Exit codes: 0 done, 1 refused, 2 failed, 3 aborted, 4 usage error, 5 not confirmed.
@@ -81,7 +82,8 @@ public static class Cli
                     break;
             }
         }
-        if (live && command != "validate") throw new ArgumentException("--live is only for validate in this phase (runs use the fake executor).");
+        if (live && command is not ("validate" or "dry-run"))
+            throw new ArgumentException("--live is only for validate and dry-run: no real run sends input before the go-ahead.");
         return new Options(command, plan, ext, account, output, confirm, min, max, live);
     }
 
@@ -133,7 +135,7 @@ public static class Cli
         }
 
         paths = AppPaths.ForPlan(o.Plan, o.ExtractorOutput, o.Output);
-        if (o.Live) return await ValidateLiveAsync(o, paths, output);
+        if (o.Live) return o.Command == "dry-run" ? await DryRunLiveAsync(o, paths, input, interactive, output, abortHook) : await ValidateLiveAsync(o, paths, output);
         var accountPath = Path.GetFullPath(o.Account ?? Path.Combine(paths.ExtractorOutput, "account.json"));
         if (!File.Exists(accountPath))
         {
@@ -226,6 +228,90 @@ public static class Cli
             foreach (var line in Confirmation.Lines(load.Plan!, check, null, "none")) output.WriteLine(line);
             output.WriteLine(check.CanStart ? "The plan matches the live account." : check.Issues.HasErrors() ? "Refused: the plan does not match the live account." : "Nothing to do.");
             return check.Issues.HasErrors() ? Refused : Ok;
+        }
+    }
+
+    /// <summary>
+    /// dry-run --live: every step against the running game with NO input. The observing driver waits for the screen each action
+    /// needs (saying in one plain line what to open), resolves the target from memory and saves an overlay of the would-be click.
+    /// </summary>
+    private static async Task<int> DryRunLiveAsync(Options o, SessionPaths paths, TextReader input, bool interactive, TextWriter output, Action<Action>? abortHook)
+    {
+        var (game, problem) = RaidActions.Game.Memory.LiveGame.Open(GameCommands.LivePaths(paths.Output));
+        if (game is null)
+        {
+            output.WriteLine(problem);
+            return Failed;
+        }
+        using (game)
+        {
+            RaidActions.Game.Memory.UnityUi ui;
+            try { ui = game.Ui(UiCommands.NativeLayoutPath); }
+            catch (RaidActions.Game.Memory.UiReadException e)
+            {
+                output.WriteLine(e.Message);
+                return Failed;
+            }
+            var load = PlanReader.ReadFile(Path.GetFullPath(o.Plan!));
+            foreach (var i in load.Issues) output.WriteLine("  " + i);
+            if (!load.Ok)
+            {
+                output.WriteLine("Refused: the plan file is not valid.");
+                return Refused;
+            }
+            var folder = Path.Combine(paths.Output, "dryrun", $"{DateTime.Now:yyyyMMdd-HHmmss}-{Confirmation.Code(load.Plan!.Plan)}");
+            Directory.CreateDirectory(folder);
+            var prompts = Path.Combine(folder, "prompts.txt");
+            void Say(string line)
+            {
+                output.WriteLine($"{DateTime.Now:HH:mm:ss} OPEN: {line}");
+                File.AppendAllText(prompts, $"{DateTime.Now:HH:mm:ss} {line}{Environment.NewLine}");
+            }
+            var standard = RaidActions.Game.Window.WindowStandard.Load(GameCommands.WindowConfig);
+            var driver = new RaidActions.Game.Dry.ObservingDriver(game, ui, load.Plan.Plan, folder, standard.Mismatch, Say);
+            var session = new PlanSession(paths, driver, game.Account, NoPacer.Instance);
+            session.Load(Path.GetFullPath(o.Plan!));
+            output.WriteLine($"LIVE DRY RUN, observing only: no input is sent to the game. Overlays and prompts: {folder}");
+            var check = await session.CheckAsync();
+            foreach (var i in check.Issues) output.WriteLine("  " + i);
+            foreach (var line in Confirmation.Lines(load.Plan, check, RunMode.DryRun, driver.Name)) output.WriteLine(line);
+            if (!check.CanStart)
+            {
+                output.WriteLine(check.Issues.HasErrors() ? "Refused: the plan does not match the live account." : "Nothing to do.");
+                return check.Issues.HasErrors() ? Refused : Ok;
+            }
+            var typed = o.Confirm;
+            if (typed is null && interactive)
+            {
+                output.Write($"Type {Confirmation.Code(load.Plan.Plan)} to start the dry run: ");
+                typed = input.ReadLine();
+            }
+            if (!Confirmation.Matches(load.Plan.Plan, typed))
+            {
+                output.WriteLine($"Not confirmed: pass --confirm {Confirmation.Code(load.Plan.Plan)}.");
+                return NotConfirmed;
+            }
+            abortHook?.Invoke(session.Abort);
+            var progress = new SyncProgress<RunEvent>(e =>
+            {
+                if (e.State != "started") output.WriteLine($"  {e.Time:HH:mm:ss} step {e.Step,-2} {e.Kind,-16} {e.State,-7} {e.Detail ?? e.Text}");
+            });
+            RunResult result;
+            try { result = await session.RunAsync(RunMode.DryRun, load.Plan.Plan.PlanId, load.Plan.Sha256, progress); }
+            catch (PlanRefusedException e)
+            {
+                output.WriteLine(e.Message);
+                return Refused;
+            }
+            var table = new System.Text.StringBuilder();
+            table.AppendLine($"{"step",-5} {"action",-14} {"target",-44} {"rectangle",-26} overlay");
+            foreach (var w in driver.WouldClick)
+                table.AppendLine($"{w.Step,-5} {w.Kind,-14} {w.Target,-44} {w.Rect,-26} {Path.GetFileName(w.Overlay)}");
+            File.WriteAllText(Path.Combine(folder, "would-click.txt"), table.ToString());
+            output.WriteLine(result.Message);
+            output.Write(table);
+            output.WriteLine($"Log: {result.LogPath}");
+            return result.Outcome switch { RunOutcome.Completed => Ok, RunOutcome.Aborted => Aborted, _ => Failed };
         }
     }
 

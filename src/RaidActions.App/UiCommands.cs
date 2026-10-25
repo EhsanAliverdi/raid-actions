@@ -125,20 +125,7 @@ public static class UiCommands
     private static string Short(string cls) => cls[(cls.LastIndexOf('.') + 1)..];
 
     /// <summary>Every open view with its managed View object.</summary>
-    public static List<(string Name, ulong View)> AllViews(LiveGame game)
-    {
-        var g = game.Objects;
-        var app = g.Root("AppViewModel", "Client.ViewModel.AppViewModel");
-        var master = g.Ref(g.Ref(app, "Client.ViewModel.AppViewModel", "_overlayManager"), "Client.ViewModel.OverlayManagerBase", "_viewMaster");
-        var result = new List<(string, ulong)>();
-        foreach (var meta in g.RefList(g.Ref(master, "Client.RaidApp.RaidViewMaster", "_views"), 256))
-        {
-            var key = g.Int(meta, "Client.RaidApp.ViewMeta", "Key");
-            var view = g.Ref(meta, "Client.RaidApp.ViewMeta", "View");
-            if (view != 0) result.Add((g.EnumName(UiStateReader.ViewKeyEnum, key) ?? $"#{key}", view));
-        }
-        return result;
-    }
+    public static List<(string Name, ulong View)> AllViews(LiveGame game) => game.Views();
 
     /// <summary>The visible active views, without the notification layers.</summary>
     public static List<(string Name, ulong View)> TopViews(LiveGame game, UiState s)

@@ -64,8 +64,14 @@ public static class UiCommands
                     if (key is not null && key != last)
                     {
                         last = key;
-                        o.WriteLine($"{DateTime.Now:HH:mm:ss} {GameCommands.Describe(s!).Split('\n')[0].Trim()}");
-                        foreach (var (name, view) in TopViews(game, s!)) Snapshot(game, ui, name, view, output, o, capture: true);
+                        var lines = GameCommands.Describe(s!).Split('\n').Where(l => !l.TrimStart().StartsWith("views:", StringComparison.Ordinal)).Select(l => l.Trim());
+                        o.WriteLine($"{DateTime.Now:HH:mm:ss} {string.Join(" | ", lines)}");
+                        foreach (var (name, view) in TopViews(game, s!))
+                        {
+                            var tree = Snapshot(game, ui, name, view, output, o, capture: true);
+                            if (tree is not null && name == UiState.ChampionScreenView && s!.ChampionScreen is { } cs)
+                                o.WriteLine("    " + TabCheck(UiTargets.Find(tree, game.Objects), cs.DetailsTab));
+                        }
                     }
                     await Task.Delay(700);
                 }
@@ -92,9 +98,12 @@ public static class UiCommands
                 case "ui-rects":
                     foreach (var (name, view) in views)
                     {
-                        var tree = ui.Read(view, name, w.Client.Width, w.Client.Height);
+                        var tree = ui.Read(view, name, w.NotUsable is null ? w.Client.Width : 0, w.NotUsable is null ? w.Client.Height : 0);
                         o.WriteLine($"== {name} ({tree.Nodes.Count} elements){(tree.ScreenProblem is { } sp ? "  " + sp : $"  canvas scale {tree.CanvasScale:0.###}")}");
-                        foreach (var n in Clickable(tree)) o.WriteLine("  " + Line(n));
+                        if (args.Contains("--all"))
+                            foreach (var n in Clickable(tree)) o.WriteLine("  " + Line(n));
+                        else
+                            o.Write(Table(UiTargets.Find(tree, game.Objects)));
                     }
                     return Cli.Ok;
                 case "overlay":
@@ -138,16 +147,29 @@ public static class UiCommands
         return AllViews(game).Where(v => visible.Contains(v.Name)).ToList();
     }
 
-    private static void Snapshot(LiveGame game, UnityUi ui, string name, ulong view, string output, TextWriter o, bool capture, bool anySize = false)
+    /// <summary>
+    /// The hand-worked IntProperty._value offset, checked against the UI itself: the tab whose Toggle is on (m_IsOn, from ConfigGen)
+    /// against HeroDetailsContext._activeTabIndex (read through the manual offset). Tabs are numbered 1..4, the index from 0.
+    /// </summary>
+    public static string TabCheck(IReadOnlyList<UiTarget> targets, int? activeTabIndex)
+    {
+        var on = targets.Where(t => t.Kind == "gear-tab" && t.Note == "on").Select(t => t.Id!.Value).ToList();
+        if (on.Count != 1 || activeTabIndex is null) return $"tab check: toggles on [{string.Join(",", on)}], _activeTabIndex {activeTabIndex?.ToString() ?? "-"}: inconclusive";
+        return on[0] == activeTabIndex + 1
+            ? $"tab check: AGREES (tab {on[0]} on, _activeTabIndex {activeTabIndex})"
+            : $"tab check: DISAGREES (tab {on[0]} on, _activeTabIndex {activeTabIndex})";
+    }
+
+    private static UiTree? Snapshot(LiveGame game, UnityUi ui, string name, ulong view, string output, TextWriter o, bool capture, bool anySize = false)
     {
         var (w, _) = GameWindow.Find();
-        if (w is null) return;
+        if (w is null) return null;
         UiTree tree;
         try { tree = ui.Read(view, name, w.NotUsable is null ? w.Client.Width : 0, w.NotUsable is null ? w.Client.Height : 0); }
         catch (Exception e) when (e is UiReadException or RaidExtractor.ReadCheckException)
         {
             o.WriteLine($"  {name}: {e.Message}");
-            return;
+            return null;
         }
         var stamp = DateTime.Now.ToString("yyyyMMdd-HHmmss");
         var dir = Path.Combine(output, "ui-trees");
@@ -160,31 +182,34 @@ public static class UiCommands
         var broken = tree.Nodes.Count(n => n.Name.StartsWith("<unreadable", StringComparison.Ordinal));
         o.WriteLine($"  {name}: {tree.Nodes.Count} elements, {active} active, {Clickable(tree).Count()} clickable{(broken > 0 ? $", {broken} unreadable" : "")}{screen} → {file}");
         o.WriteLine("    contexts: " + string.Join(", ", contexts.Select(x => $"{x.Key} x{x.Count()}")));
-        if (!capture) return;
+        File.WriteAllText(Path.ChangeExtension(file, ".targets.txt"), Table(UiTargets.Find(tree, game.Objects)));
+        if (!capture) return tree;
         if (!anySize && WindowStandard.Load(GameCommands.WindowConfig).Mismatch(w) is { } mismatch)
         {
             o.WriteLine("  overlay refused: " + mismatch);
-            return;
+            return tree;
         }
         var (cap, why) = WindowCapture.Take(w);
         if (cap is null)
         {
             o.WriteLine("  overlay: no capture: " + why);
-            return;
+            return tree;
         }
         using (cap)
         {
-            using var img = Overlay(cap.Image, tree);
+            using var img = Overlay(cap.Image, tree, UiTargets.Find(tree, game.Objects));
             var odir = Path.Combine(output, "overlays");
             Directory.CreateDirectory(odir);
             var png = Path.Combine(odir, $"{stamp}-{name}.png");
             img.SaveImage(png);
+            cap.Image.SaveImage(Path.ChangeExtension(png, ".capture.png"));
             o.WriteLine($"    overlay → {png}");
         }
+        return tree;
     }
 
     /// <summary>The memory rectangles on a capture: clickable (green, red when not interactable), context-bound (cyan).</summary>
-    public static Mat Overlay(Mat capture, UiTree tree)
+    public static Mat Overlay(Mat capture, UiTree tree, IReadOnlyList<UiTarget>? targets = null)
     {
         var img = capture.Clone();
         foreach (var n in tree.Nodes.Where(n => n.ActiveInHierarchy && n.Screen is not null))
@@ -198,9 +223,27 @@ public static class UiCommands
             }
             else if (n.Context is not null) img.Rectangle(box, Scalar.Cyan, 1);
         }
-        img.PutText($"{tree.View}: memory rectangles (green clickable, red not interactable, cyan bound context)", new Point(8, img.Height - 10),
-            HersheyFonts.HersheySimplex, 0.5, Scalar.White, 1);
+        foreach (var t in targets ?? [])
+        {
+            if (t.Rect is not { } r || !t.Active) continue;
+            var box = new Rect((int)Math.Round(r.X), (int)Math.Round(r.Y), (int)Math.Round(r.Width), (int)Math.Round(r.Height));
+            var color = t.NotClickable is null ? Scalar.Yellow : Scalar.Magenta;
+            img.Rectangle(box, color, 3);
+            img.PutText(t.Id is { } id ? $"{t.Kind} {id}" : t.Name, new Point(box.X + 2, box.Bottom - 6), HersheyFonts.HersheySimplex, 0.45, color, 1);
+        }
+        img.PutText($"{tree.View}: memory rectangles (green clickable, red not interactable, cyan bound context; targets yellow, magenta = may not be clicked)",
+            new Point(8, img.Height - 10), HersheyFonts.HersheySimplex, 0.5, Scalar.White, 1);
         return img;
+    }
+
+    /// <summary>The target table: target, id, rectangle, active, interactable, fully visible, may be clicked.</summary>
+    public static string Table(IReadOnlyList<UiTarget> targets)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"  {"target",-28} {"id",-6} {"rectangle",-24} {"active",-6} {"interactable",-12} {"visible",-8} click");
+        foreach (var t in targets)
+            sb.AppendLine($"  {t.Name,-28} {t.Id?.ToString() ?? "-",-6} {t.Rect?.ToString() ?? "-",-24} {(t.Active ? "yes" : "no"),-6} {(t.Interactable is { } i ? (i ? "yes" : "NO") : "-"),-12} {(t.FullyVisible ? "yes" : "no"),-8} {t.NotClickable ?? "ok"}{(t.Note is { } n ? $"  ({n})" : "")}");
+        return sb.ToString();
     }
 
     public static string Text(UiTree tree)
@@ -213,6 +256,9 @@ public static class UiCommands
             if (!n.ActiveInHierarchy) sb.Append(n.ActiveSelf ? "  [inactive parent]" : "  [inactive]");
             if (n.Screen is { } r) sb.Append("  ").Append(r);
             if (n.Interactable is { } i) sb.Append(i ? "  interactable" : "  NOT interactable");
+            if (n.IsOn is { } on) sb.Append(on ? "  on" : "  off");
+            if (n.Screen is not null && !n.FullyVisible) sb.Append("  [clipped]");
+            if (n.BindingPath is { Length: > 0 } bp) sb.Append($"  path '{bp}'");
             if (n.Context is { } c) sb.Append("  ctx ").Append(c.Class).Append($" @0x{c.Address:X}");
             var scripts = n.Components.Where(x => x.ManagedClass is not null).Select(x => Short(x.ManagedClass!)).ToList();
             if (scripts.Count > 0) sb.Append("  [").Append(string.Join(", ", scripts)).Append(']');

@@ -22,11 +22,35 @@ public sealed class LiveGame : IDisposable
     private readonly LiveGamePaths _paths;
     private readonly object _lock = new();
 
-    private LiveGame(GameSession session, OffsetConfig offsets, LiveGamePaths paths)
+    private LiveGame(GameSession session, OffsetConfig offsets, LiveGamePaths paths, ProcessMemory raw)
     {
         _session = session;
         _offsets = offsets;
         _paths = paths;
+        Raw = raw;
+        Objects = new CoreObjects(session, offsets);
+    }
+
+    /// <summary>Raw read-only memory (Core's ProcessMemory: PROCESS_VM_READ only) for Unity's native objects.</summary>
+    public ProcessMemory Raw { get; }
+
+    /// <summary>The game's managed objects by the names in the offsets.</summary>
+    public IGameObjects Objects { get; }
+
+    public OffsetConfig Offsets => _offsets;
+
+    /// <summary>Unity UI from memory, with the native layouts in <paramref name="nativeLayoutPath"/> (config/ui-native.json).</summary>
+    public UnityUi Ui(string nativeLayoutPath)
+    {
+        var layout = NativeLayout.Load(nativeLayoutPath);
+        if (layout.GameVersion != _offsets.GameVersion)
+            throw new UiReadException($"{nativeLayoutPath} is for game {layout.GameVersion}, the game is {_offsets.GameVersion}: re-check the native layouts (RaidActions probe).");
+        return new UnityUi(new RawMemory(Raw), layout, Objects);
+    }
+
+    private sealed class RawMemory(ProcessMemory m) : INativeMemory
+    {
+        public bool TryRead(ulong address, Span<byte> buffer) => m.TryRead(address, buffer);
     }
 
     public string GameVersion => _offsets.GameVersion;
@@ -40,7 +64,9 @@ public sealed class LiveGame : IDisposable
         File.WriteAllText(file, merged.ToJsonString());
         var offsets = OffsetConfig.Load(file);
         var open = GameSession.TryOpen(offsets);
-        return open.Session is null ? (null, open.Message) : (new LiveGame(open.Session, offsets, paths), null);
+        if (open.Session is null) return (null, open.Message);
+        var pid = System.Diagnostics.Process.GetProcessesByName("Raid").Single().Id;
+        return (new LiveGame(open.Session, offsets, paths, new ProcessMemory(pid)), null);
     }
 
     /// <summary>Core's offsets with this repo's UI roots, types, enums and reviewed manual fields added. Refused when the builds differ.</summary>
@@ -135,7 +161,11 @@ public sealed class LiveGame : IDisposable
         }, ct);
     }
 
-    public void Dispose() => _session.Dispose();
+    public void Dispose()
+    {
+        Raw.Dispose();
+        _session.Dispose();
+    }
 }
 
 /// <summary><see cref="IGameObjects"/> on RaidExtractor.Core's reader (every read bounds- and pointer-checked by Core).</summary>
@@ -144,7 +174,24 @@ internal sealed class CoreObjects(GameSession session, OffsetConfig offsets) : I
     private Il2CppReader R => session.Reader;
 
     public ulong Root(string name, string expectedType) => session.ResolveRoot(name, expectedType);
-    public string ClassName(ulong obj) => R.ClassOf(obj, "object").FullName;
+    private readonly Dictionary<ulong, IReadOnlyList<string>> _chains = [];
+
+    public string ClassName(ulong obj) => ClassChain(obj)[0];
+
+    public IReadOnlyList<string> ClassChain(ulong obj)
+    {
+        var klass = R.ReadPointer(obj + (ulong)offsets.Il2Cpp("object", "klass"), "object.klass");
+        if (_chains.TryGetValue(klass, out var known)) return known;
+        var names = new List<string>();
+        for (var k = R.ReadClass(klass); ; k = R.ReadClass(k.Parent))
+        {
+            names.Add(k.FullName);
+            if (k.Parent == 0 || names.Count > 32) break;
+        }
+        return _chains[klass] = names;
+    }
+
+    public bool Bool(ulong obj, string type, string member) => R.ReadBoolField(obj, offsets.Field(type, member));
     public ulong Ref(ulong obj, string type, string member) => R.ReadPointerOrNull(obj + (ulong)offsets.Field(type, member).Offset, $"{type}.{member}");
     public int Int(ulong obj, string type, string member) => R.ReadInt32(obj + (ulong)offsets.Field(type, member).Offset, $"{type}.{member}");
     public int? NullableInt(ulong obj, string type, string member) => R.ReadNullableInt32(obj + (ulong)offsets.Field(type, member).Offset, $"{type}.{member}");

@@ -14,6 +14,11 @@ public interface IGameObjects
 
     int Int(ulong obj, string type, string member);
 
+    bool Bool(ulong obj, string type, string member);
+
+    /// <summary>The object's class and its base classes, most derived first (full names).</summary>
+    IReadOnlyList<string> ClassChain(ulong obj);
+
     int? NullableInt(ulong obj, string type, string member);
 
     /// <summary>The non-null elements of a List&lt;T&gt; of references.</summary>

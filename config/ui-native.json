@@ -1,0 +1,43 @@
+{
+  "$comment": [
+    "Unity's native (C++) object layouts that raid-actions reads (read-only) to place UI elements on screen. Not in the IL2CPP dump:",
+    "worked out by hand on the running game with 'RaidActions probe' (2026-10-26, Unity 6000.3.18f1, Raid 11.85.5).",
+    "Re-check after a game or Unity update (probe views / probe dump); the reader refuses when the build differs.",
+    "Each entry says how it was established. 'verified' = confirmed against something independent; 'unverified' = consistent so far."
+  ],
+  "build": { "gameVersion": "11.85.5", "unityVersion": "6000.3.18f1" },
+  "component": {
+    "gameObject": { "offset": "0x20", "status": "verified", "how": "VillageHUD's native MonoBehaviour+0x20 = the GameObject whose component list holds that MonoBehaviour" },
+    "managedSlot": { "offset": "0x18", "status": "verified", "how": "native+0x18 points at a slot holding the managed object (VillageHUD: slot -> the same managed DialogView)" }
+  },
+  "gameObject": {
+    "components": { "offset": "0x20", "status": "verified", "how": "dynamic_array data: 16-byte pairs {int typeIndex; Component*}; VillageHUD's view is entry 5" },
+    "componentCount": { "offset": "0x30", "status": "verified", "how": "dynamic_array size (11), capacity 22 at +0x38, memory label 58 at +0x28" },
+    "layer": { "offset": "0x40", "status": "unverified", "how": "5 (Unity's UI layer) on UI objects" },
+    "activeSelf": { "offset": "0x46", "status": "verified", "how": "VillageHUD 1 -> 0 when the Arena opened; its children kept 1" },
+    "activeInHierarchy": { "offset": "0x47", "status": "verified", "how": "VillageHUD's children 0 while their parent was inactive, 1 before" },
+    "name": { "offset": "0x50", "status": "verified", "how": "char* to the GameObject name ('[DV] VillageHUD', 'Workspace', ...)" }
+  },
+  "transform": {
+    "hierarchy": { "offset": "0x28", "status": "verified", "how": "TransformHierarchy*; hierarchy.transforms[index] is this transform" },
+    "index": { "offset": "0x30", "status": "verified", "how": "int index into the hierarchy (VillageHUD 8821)" },
+    "rectTransformTypeIndex": { "value": "0x7A", "status": "unverified", "how": "component[0] type index on UI GameObjects; plain Transforms differ" }
+  },
+  "rectTransform": {
+    "rect": { "offset": "0xB8", "status": "verified", "how": "cached rect {x, y, width, height} in local units: full-screen HUD = (-960, -540, 1920, 1080) at 1920x1080 reference" },
+    "anchorMin": { "offset": "0xC8", "status": "unverified", "how": "serialized order anchorMin, anchorMax, anchoredPosition, sizeDelta, pivot: (0,0) (1,1) (0,0) (0,0) (0.5,0.5) on a stretched HUD" },
+    "anchorMax": { "offset": "0xD0", "status": "unverified", "how": "see anchorMin" },
+    "anchoredPosition": { "offset": "0xD8", "status": "unverified", "how": "see anchorMin" },
+    "sizeDelta": { "offset": "0xE0", "status": "unverified", "how": "see anchorMin" },
+    "pivot": { "offset": "0xE8", "status": "unverified", "how": "see anchorMin" }
+  },
+  "hierarchy": {
+    "capacity": { "offset": "0x10", "status": "verified", "how": "u32 14608; every array is this long (array gaps = capacity x element size)" },
+    "count": { "offset": "0x14", "status": "unverified", "how": "u32 9236 transforms in use" },
+    "localTransforms": { "offset": "0x18", "stride": 48, "status": "verified", "how": "TransformX {float4 position; float4 rotation (x,y,z,w); float4 scale}: canvas root (800, 450) scale 0.8333 at 1600x900" },
+    "parentIndices": { "offset": "0x20", "status": "verified", "how": "int: VillageHUD 8821 -> 3 -> 2 -> 0 -> -1; its first child 8822 -> 8821" },
+    "deepChildCount": { "offset": "0x28", "status": "verified", "how": "int, counts the node itself: leaves 1 (VillageHUD's Animation = 3: itself and two children)" },
+    "transforms": { "offset": "0x30", "status": "verified", "how": "Transform*: transforms[8821] = VillageHUD's RectTransform" },
+    "nextIndices": { "offset": "0x70", "status": "unverified", "how": "int: next transform in depth-first order (8821 -> 8822 -> 8823); subtrees are walked along it (they are not always contiguous: ArenaHUD's range had 84 empty slots)" }
+  }
+}

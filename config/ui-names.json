@@ -29,6 +29,9 @@
     "Client.MVVM.Base.View.BaseView": [ "Context" ],
     "Client.ViewModel.Contextes.HeroesInfoDialog.HeroesInfoOverlayContext": [ "_heroId", "_heroDetailsContext", "_selectedHeroContext", "_viewState", "_inventoryContext", "_heroes" ],
     "Client.ViewModel.Contextes.HeroesInfoDialog.HeroDetails.HeroDetailsContext": [ "_heroId", "_inventoryArtifactId", "_activeTabIndex" ],
-    "Client.ViewModel.Contextes.HeroesInfoDialog.SelectedHero.SelectedHeroContext": [ "_heroId" ]
+    "Client.ViewModel.Contextes.HeroesInfoDialog.SelectedHero.SelectedHeroContext": [ "_heroId" ],
+    "UnityEngine.Object": [ "m_CachedPtr" ],
+    "UnityEngine.UI.Selectable": [ "m_Interactable" ],
+    "UnityEngine.UI.CanvasScaler": [ "m_ScaleFactor", "m_ReferenceResolution", "m_UiScaleMode" ]
   }
 }

@@ -336,6 +336,59 @@
           "status": "direct"
         }
       }
+    },
+    "UnityEngine.Object": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "m_CachedPtr": {
+          "offset": "0x10",
+          "type": "IntPtr",
+          "field": "m_CachedPtr",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "UnityEngine.UI.Selectable": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "m_Interactable": {
+          "offset": "0xD8",
+          "type": "bool",
+          "field": "m_Interactable",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "UnityEngine.UI.CanvasScaler": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "m_ScaleFactor": {
+          "offset": "0x28",
+          "type": "float",
+          "field": "m_ScaleFactor",
+          "source": "field",
+          "status": "direct"
+        },
+        "m_ReferenceResolution": {
+          "offset": "0x2C",
+          "type": "Vector2",
+          "field": "m_ReferenceResolution",
+          "source": "field",
+          "status": "direct"
+        },
+        "m_UiScaleMode": {
+          "offset": "0x20",
+          "type": "ScaleMode",
+          "field": "m_UiScaleMode",
+          "source": "field",
+          "status": "direct"
+        }
+      }
     }
   },
   "enums": {

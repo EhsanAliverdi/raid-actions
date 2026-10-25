@@ -35,6 +35,8 @@ public class UiStateReaderTests
         public string ClassName(ulong obj) => _objects[obj].Class;
         public ulong Ref(ulong obj, string type, string member) => _objects[obj].Fields.TryGetValue(member, out var v) && v is ulong p ? p : 0;
         public int Int(ulong obj, string type, string member) => (int)_objects[obj].Fields[member]!;
+        public bool Bool(ulong obj, string type, string member) => (bool)_objects[obj].Fields[member]!;
+        public IReadOnlyList<string> ClassChain(ulong obj) => [_objects[obj].Class];
         public int? NullableInt(ulong obj, string type, string member) => (int?)_objects[obj].Fields[member];
         public IReadOnlyList<ulong> RefList(ulong list, int max) => ((List<ulong>)_objects[list].Fields["items"]!).Take(max).ToList();
         public string? EnumName(string enumType, int value) => _enums[enumType].TryGetValue(value, out var n) ? n : null;

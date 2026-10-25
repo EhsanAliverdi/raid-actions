@@ -74,7 +74,7 @@ public sealed class PlanSession(SessionPaths paths, IGameDriver driver, IAccount
     /// Runs the loaded plan. <paramref name="planId"/> and <paramref name="sha256"/> are what the user confirmed; they must match
     /// the loaded plan. Throws <see cref="PlanRefusedException"/> when the fresh check fails.
     /// </summary>
-    public async Task<RunResult> RunAsync(RunMode mode, string planId, string sha256, IProgress<RunEvent>? progress = null)
+    public async Task<RunResult> RunAsync(RunMode mode, string planId, string sha256, IProgress<RunEvent>? progress = null, IReadOnlySet<int>? onlySteps = null)
     {
         LoadedPlan plan;
         lock (_lock)
@@ -95,7 +95,9 @@ public sealed class PlanSession(SessionPaths paths, IGameDriver driver, IAccount
             if (!check.CanStart)
                 throw new PlanRefusedException("Refused: " + string.Join(" ", check.Issues.Where(i => i.Severity == Severity.Error).Select(i => i.ToString())
                     .DefaultIfEmpty(check.Issues.FirstOrDefault(i => i.Code == IssueCode.NothingToDo)?.Message ?? "nothing to do.")), check);
-            var script = ActionPlanner.Build(plan.Plan, check, mode);
+            if (onlySteps is not null && onlySteps.Any(n => plan.Plan.Steps.All(s => s.Number != n)))
+                throw new PlanRefusedException($"Steps {string.Join(", ", onlySteps)}: not all are in the plan.");
+            var script = ActionPlanner.Build(plan.Plan, check, mode, onlySteps);
             using var log = new RunLog(paths.Folders.Logs, plan.Plan.PlanId, DateTimeOffset.Now);
             return await new Runner(driver, account, pacer, paths.Folders).RunAsync(plan, read, script, log, _pause, progress, _abort.Token);
         }

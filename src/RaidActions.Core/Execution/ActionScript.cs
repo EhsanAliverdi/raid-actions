@@ -48,7 +48,8 @@ public sealed record ActionScript(RunMode Mode, IReadOnlyList<UiAction> Actions,
 /// </summary>
 public static class ActionPlanner
 {
-    public static ActionScript Build(Plan plan, CheckReport check, RunMode mode)
+    /// <param name="only">Run only these steps (the rest stay pending); then the end check covers only them.</param>
+    public static ActionScript Build(Plan plan, CheckReport check, RunMode mode, IReadOnlySet<int>? only = null)
     {
         if (!check.CanStart)
             throw new InvalidOperationException("The plan did not pass the account check: "
@@ -62,7 +63,7 @@ public static class ActionPlanner
         };
         var done = check.Steps.Where(s => s.State == StepState.Done).Select(s => s.Step.Number).ToList();
         var skipped = done.ToList();
-        foreach (var sc in check.Pending)
+        foreach (var sc in check.Pending.Where(s => only is null || only.Contains(s.Step.Number)))
         {
             var s = sc.Step;
             var n = s.Number;
@@ -84,7 +85,8 @@ public static class ActionPlanner
             done.Add(n);
             actions.Add(new(ActionKind.VerifyStep, n, $"Confirm #{s.ArtifactId} is on {s.ToName}", s.ToChampionId, s.Slot, s.ArtifactId, s.FromChampionId, done.Order().ToList()));
         }
-        if (mode == RunMode.Real) actions.Add(new(ActionKind.VerifyEnd, 0, "Confirm every piece is where the plan ends"));
+        if (mode == RunMode.Real && (only is null || check.Pending.All(s => only.Contains(s.Step.Number))))
+            actions.Add(new(ActionKind.VerifyEnd, 0, "Confirm every piece is where the plan ends"));
         return new(mode, actions, skipped);
     }
 }

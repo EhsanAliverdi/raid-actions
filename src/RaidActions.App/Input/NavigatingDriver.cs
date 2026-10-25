@@ -12,8 +12,13 @@ namespace RaidActions.App.Input;
 /// pressing it. Every click is on the allow-list, resolved fresh from memory with an id check right before it, sent only to Raid's
 /// window, and followed by a read that must show the expected change; anything unexpected stops the run. No click during a battle.
 /// </summary>
-public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, string folder, WindowPolicy policy, Action<string> log) : IGameDriver
+/// <param name="equipSteps">Steps whose Equip may be clicked (a real run, after the go-ahead): each step's Equip once, then locked
+/// again. Empty: Equip is never clicked (dry run).</param>
+public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, string folder, WindowPolicy policy, Action<string> log,
+    IReadOnlySet<int>? equipSteps = null) : IGameDriver
 {
+    private readonly HashSet<int> _equipUnlocked = equipSteps is null ? [] : [.. equipSteps];
+
     /// <summary>The only kinds this driver may click. Equip, Remove, Sell, PowerUp, Auto-Equip and everything else are refused.</summary>
     public static readonly IReadOnlySet<string> AllowedClicks = new HashSet<string>
     {
@@ -25,8 +30,11 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
     private readonly Random _random = new();
     private int _shot;
 
-    public string Name => "navigate (dry run: Equip never pressed)";
+    public string Name => _equipUnlocked.Count == 0 ? "navigate (dry run: Equip never pressed)" : $"navigate (Equip unlocked once for step {string.Join(", ", _equipUnlocked)})";
     public bool SendsInput => true;
+
+    /// <summary>Steps whose Equip is still unlocked (each is locked again the moment its one click is sent).</summary>
+    public IReadOnlyCollection<int> EquipStillUnlocked => _equipUnlocked;
 
     /// <summary>Every click sent, and every click only shown (Equip): step, what, rectangle, sent or not, overlay.</summary>
     public List<(int Step, string What, ClientRect Rect, bool Sent, string Overlay)> Clicks { get; } = [];
@@ -102,9 +110,57 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
                 await Click(a, "popup-close-selected", null, null, (s2, _) => s2.ChampionScreen?.InventoryArtifactId is null, "the piece's popup closes", ct);
                 return DriverResult.Success($"would click Equip at {equip.Rect} (NOT pressed) → {png}; popup closed");
             }
+            case ActionKind.Equip:
+                return await Equip(a, step!, ct);
             default:
-                return DriverResult.Failure($"{a.Kind} is never done by the navigating dry run.");
+                return DriverResult.Failure($"{a.Kind} is never done by the navigating driver.");
         }
+    }
+
+    /// <summary>
+    /// The one Equip click a go-ahead unlocks for this step: memory must show the step's champion with the step's piece selected,
+    /// the button must be the selected piece's panel's Equip, and the step's Equip must not have been used. It is locked again before
+    /// the click is sent. Then live account reads until the piece is on the champion (or stop).
+    /// </summary>
+    private async Task<DriverResult> Equip(UiAction a, PlanStep step, CancellationToken ct)
+    {
+        if (!_equipUnlocked.Contains(a.Step)) return DriverResult.Failure($"Refused: Equip is not unlocked for step {a.Step}.");
+        await NoBattle(ct);
+        var (s, targets) = await Read(ct);
+        if (Screen.Covering(s) is { } cover) throw new StopException($"Unexpected popup {cover} over the champion screen.");
+        if (s.ChampionScreen?.Champion != step.ToChampionId || s.ChampionScreen.InventoryArtifactId != step.ArtifactId)
+            throw new StopException($"Before Equip: memory shows champion #{s.ChampionScreen?.Champion} and artifact #{s.ChampionScreen?.InventoryArtifactId}; expected #{step.ToChampionId} and #{step.ArtifactId}.");
+        var (equip, problem) = UiTargets.Resolve(targets, "popup-equip");
+        if (equip is null) throw new StopException("The popup's Equip button: " + problem);
+        if (!equip.Path.Contains("/SelectedItemWindow/", StringComparison.Ordinal))
+            throw new StopException($"Refused: the Equip button is not on the selected piece's panel ({equip.Path}).");
+        var (w, why) = GameWindow.Find();
+        if (w is null) throw new StopException(why!);
+        if (policy.Problem(w) is { } bad) throw new StopException(bad);
+
+        var r = equip.Rect!.Value;
+        var x = r.X + r.Width * (0.35f + 0.3f * (float)_random.NextDouble());
+        var y = r.Y + r.Height * (0.35f + 0.3f * (float)_random.NextDouble());
+        var png = Shot(a, $"step {a.Step}: CLICK Equip (#{step.ArtifactId} onto {step.ToName}) at {r}", r);
+        await Task.Delay(_random.Next(300, 700), ct);
+        ct.ThrowIfCancellationRequested();
+        _equipUnlocked.Remove(a.Step); // locked again before the click is sent, whatever happens next
+        if (MouseInput.Click(w, x, y, _random) is { } notSent) throw new StopException($"Equip not clicked: {notSent}");
+        Clicks.Add((a.Step, $"popup: Equip #{step.ArtifactId}", r, true, png ?? "-"));
+        log($"step {a.Step}: clicked Equip for #{step.ArtifactId} at ({x:0},{y:0}); Equip locked again");
+
+        // The click's effect, from the account itself.
+        var until = DateTime.Now + TimeSpan.FromSeconds(25);
+        while (DateTime.Now < until)
+        {
+            await Task.Delay(1500, ct);
+            var (after, _) = game.ReadUi();
+            if (after is not null && Screen.Covering(after) is { } popup) throw new StopException($"After Equip: unexpected popup {popup}.");
+            var fresh = await game.Account.ReadAsync(ct);
+            var owner = fresh.Artifacts.FirstOrDefault(x => x.Id == step.ArtifactId)?.OwnerHeroId;
+            if (owner == step.ToChampionId) return DriverResult.Success($"Equip clicked; the account shows #{step.ArtifactId} on {step.ToName} (#{step.ToChampionId}) → {png}");
+        }
+        throw new StopException($"After Equip: the account does not show #{step.ArtifactId} on {step.ToName} within 25 s.");
     }
 
     /// <summary>

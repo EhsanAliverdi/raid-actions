@@ -46,13 +46,14 @@ public static class Cli
           --live                     validate: read the account from the running game instead of account.json
                                      dry-run: observe the running game, sending no input (you open the screens it asks for)
           --navigate                 dry-run --live: navigate by itself with allowed clicks only; Equip is never pressed
+                                     run --live --navigate --steps <n>: the same, and Equip clicked once for each named step
 
         Abort a run: Ctrl+Alt+Esc (anywhere) or Ctrl+C.
         Exit codes: 0 done, 1 refused, 2 failed, 3 aborted, 4 usage error, 5 not confirmed.
         """;
 
     public sealed record Options(string Command, string? Plan, string? ExtractorOutput, string? Account, string? Output, string? Confirm,
-        TimeSpan PaceMin, TimeSpan PaceMax, bool Live = false, bool Navigate = false);
+        TimeSpan PaceMin, TimeSpan PaceMax, bool Live = false, bool Navigate = false, IReadOnlySet<int>? Steps = null);
 
     public static Options? Parse(string[] args, TextWriter err)
     {
@@ -60,6 +61,7 @@ public static class Cli
         string? plan = null, ext = null, account = null, output = null, confirm = null;
         var live = false;
         var navigate = false;
+        HashSet<int>? steps = null;
         TimeSpan min = TimeSpan.FromMilliseconds(150), max = TimeSpan.FromMilliseconds(450);
         var command = args[0].ToLowerInvariant();
         for (var i = 1; i < args.Length; i++)
@@ -73,6 +75,9 @@ public static class Cli
                 case "--confirm": confirm = Next(); break;
                 case "--live": live = true; break;
                 case "--navigate": navigate = true; break;
+                case "--steps":
+                    steps = Next().Split(',').Select(x => int.TryParse(x.Trim(), out var n) && n > 0 ? n : throw new ArgumentException("--steps needs step numbers, e.g. 1 or 1,2.")).ToHashSet();
+                    break;
                 case "--pace":
                     var parts = Next().Split('-');
                     if (parts.Length != 2 || !int.TryParse(parts[0], out var a) || !int.TryParse(parts[1], out var b) || a < 0 || b < a)
@@ -86,10 +91,11 @@ public static class Cli
                     break;
             }
         }
-        if (live && command is not ("validate" or "dry-run"))
-            throw new ArgumentException("--live is only for validate and dry-run: no real run sends input before the go-ahead.");
-        if (navigate && !(live && command == "dry-run")) throw new ArgumentException("--navigate is only for dry-run --live.");
-        return new Options(command, plan, ext, account, output, confirm, min, max, live, navigate);
+        if (live && command == "run" && (!navigate || steps is null))
+            throw new ArgumentException("run --live needs --navigate and --steps <n>: a real run names the steps whose Equip it may click.");
+        if (navigate && !(live && command is "dry-run" or "run")) throw new ArgumentException("--navigate is only for dry-run --live and run --live.");
+        if (steps is not null && !live) throw new ArgumentException("--steps is only for live runs.");
+        return new Options(command, plan, ext, account, output, confirm, min, max, live, navigate, steps);
     }
 
     /// <param name="interactive">Whether <paramref name="input"/> is a person at a console (to type the confirmation).</param>
@@ -140,7 +146,7 @@ public static class Cli
         }
 
         paths = AppPaths.ForPlan(o.Plan, o.ExtractorOutput, o.Output);
-        if (o.Live) return o.Command == "dry-run" ? await DryRunLiveAsync(o, paths, input, interactive, output, abortHook) : await ValidateLiveAsync(o, paths, output);
+        if (o.Live) return o.Command is "dry-run" or "run" ? await DryRunLiveAsync(o, paths, input, interactive, output, abortHook) : await ValidateLiveAsync(o, paths, output);
         var accountPath = Path.GetFullPath(o.Account ?? Path.Combine(paths.ExtractorOutput, "account.json"));
         if (!File.Exists(accountPath))
         {
@@ -208,6 +214,55 @@ public static class Cli
         return result.Outcome switch { RunOutcome.Completed => Ok, RunOutcome.Aborted => Aborted, _ => Failed };
     }
 
+    /// <summary>
+    /// After a real run: the whole account before (the snapshot's full read) and after (a fresh read) must differ only in the owners
+    /// the run's steps change; then the undo of those steps is written and checked against the account, not run.
+    /// </summary>
+    private static async Task AfterRealRunAsync(RaidActions.Game.Memory.LiveGame game, Plan plan, RaidActions.Verification.CheckReport check,
+        IReadOnlySet<int> steps, string snapshotPath, string folder, TextWriter output)
+    {
+        var beforeRead = RaidExtractor.History.Load(snapshotPath.Replace(".json", ".account.json.gz"));
+        var after = await game.Account.ReadAsync(default);
+        var expected = new Dictionary<int, int?>();
+        foreach (var sc in check.Steps.Where(s => steps.Contains(s.Step.Number) && s.State == RaidActions.Verification.StepState.Pending))
+        {
+            expected[sc.Step.ArtifactId] = sc.Step.ToChampionId;
+            if (sc.Displaced is { } d) expected[d] = null;
+        }
+        var b = beforeRead.Artifacts.ToDictionary(a => a.Id);
+        var a2 = after.Artifacts.ToDictionary(a => a.Id);
+        var changes = new List<string>();
+        foreach (var id in b.Keys.Union(a2.Keys).Order())
+        {
+            if (!b.TryGetValue(id, out var x)) { changes.Add($"#{id} is new"); continue; }
+            if (!a2.TryGetValue(id, out var y)) { changes.Add($"#{id} is gone"); continue; }
+            var ownerExpected = expected.TryGetValue(id, out var e) ? e : x.OwnerHeroId;
+            if (y.OwnerHeroId != ownerExpected) changes.Add($"#{id} owner {Who(x.OwnerHeroId)} → {Who(y.OwnerHeroId)} (expected {Who(ownerExpected)})");
+            if (RaidExtractor.Battle.PlanPiece.FingerprintOf(x) != RaidExtractor.Battle.PlanPiece.FingerprintOf(y)) changes.Add($"#{id} changed (level, stats or glyphs)");
+        }
+        foreach (var (id, owner) in expected)
+            output.WriteLine($"  #{id}: {Who(b.GetValueOrDefault(id)?.OwnerHeroId)} → {Who(a2.GetValueOrDefault(id)?.OwnerHeroId)} (expected {Who(owner)})");
+        output.WriteLine(changes.Count == 0
+            ? $"Nothing else changed: {a2.Count} artifacts compared before ({beforeRead.Meta.ExportedAt}) and after ({after.Meta.ExportedAt})."
+            : "UNEXPECTED CHANGES:" + Environment.NewLine + string.Join(Environment.NewLine, changes.Select(c => "  " + c)));
+
+        var undo = UndoPlanner.Write(plan, check, steps.ToList(), after, Path.Combine(folder, "undo"), DateTimeOffset.Now);
+        if (undo.PlanPath is null)
+        {
+            output.WriteLine("Undo: " + undo.Problem);
+            return;
+        }
+        var read = PlanReader.ReadFile(undo.PlanPath);
+        var madeFrom = RaidExtractor.History.Load(Path.Combine(folder, "undo", "history", read.Plan!.Plan.SnapshotId!));
+        var undoCheck = RaidActions.Verification.AccountCheck.Check(read.Plan.Plan, after, madeFrom);
+        output.WriteLine($"Undo written (not run): {undo.PlanPath}");
+        foreach (var u in undo.Steps) output.WriteLine($"  undo step {u.Number}: {u.Piece}: the inventory → {u.ToName} (#{u.ToChampionId})");
+        output.WriteLine(undoCheck.CanStart ? "  The undo matches the account now: it can run." : "  The undo does not pass the check: " + string.Join(" ", undoCheck.Issues));
+        output.WriteLine($"  To run it:  RaidActions run \"{undo.PlanPath}\" --live --navigate --steps {string.Join(",", undo.Steps.Select(s => s.Number))} --confirm {Confirmation.Code(read.Plan.Plan)}");
+
+        static string Who(int? id) => id is null ? "the inventory" : $"#{id}";
+    }
+
     /// <summary>validate --live: the plan against a fresh read of the running game (read-only; no executor).</summary>
     private static async Task<int> ValidateLiveAsync(Options o, SessionPaths paths, TextWriter output)
     {
@@ -273,8 +328,10 @@ public static class Cli
                 File.AppendAllText(prompts, $"{DateTime.Now:HH:mm:ss} {line}{Environment.NewLine}");
             }
             var policy = RaidActions.Game.Window.WindowPolicy.Load(GameCommands.WindowConfig);
+            var mode = o.Command == "run" ? RunMode.Real : RunMode.DryRun;
             IGameDriver driver = o.Navigate
-                ? new Input.NavigatingDriver(game, ui, load.Plan.Plan, folder, policy, line => output.WriteLine($"{DateTime.Now:HH:mm:ss} {line}"))
+                ? new Input.NavigatingDriver(game, ui, load.Plan.Plan, folder, policy, line => output.WriteLine($"{DateTime.Now:HH:mm:ss} {line}"),
+                    mode == RunMode.Real ? o.Steps : null)
                 : new RaidActions.Game.Dry.ObservingDriver(game, ui, load.Plan.Plan, folder, policy.Problem, Say);
             var session = new PlanSession(paths, driver, game.Account, NoPacer.Instance);
             session.Load(Path.GetFullPath(o.Plan!));
@@ -283,7 +340,8 @@ public static class Cli
                 : $"LIVE DRY RUN, observing only: no input is sent to the game. Overlays and prompts: {folder}");
             var check = await session.CheckAsync();
             foreach (var i in check.Issues) output.WriteLine("  " + i);
-            foreach (var line in Confirmation.Lines(load.Plan, check, RunMode.DryRun, driver.Name)) output.WriteLine(line);
+            foreach (var line in Confirmation.Lines(load.Plan, check, mode, driver.Name)) output.WriteLine(line);
+            if (o.Steps is not null) output.WriteLine($"Only step(s) {string.Join(", ", o.Steps.Order())} run now; the others stay pending.");
             if (!check.CanStart)
             {
                 output.WriteLine(check.Issues.HasErrors() ? "Refused: the plan does not match the live account." : "Nothing to do.");
@@ -306,7 +364,8 @@ public static class Cli
                 if (e.State != "started") output.WriteLine($"  {e.Time:HH:mm:ss} step {e.Step,-2} {e.Kind,-16} {e.State,-7} {e.Detail ?? e.Text}");
             });
             RunResult result;
-            try { result = await session.RunAsync(RunMode.DryRun, load.Plan.Plan.PlanId, load.Plan.Sha256, progress); }
+            var before = session.LastCheck;
+            try { result = await session.RunAsync(mode, load.Plan.Plan.PlanId, load.Plan.Sha256, progress, o.Steps); }
             catch (PlanRefusedException e)
             {
                 output.WriteLine(e.Message);
@@ -334,6 +393,12 @@ public static class Cli
             output.WriteLine(result.Message);
             output.Write(table);
             output.WriteLine($"Log: {result.LogPath}");
+            if (mode == RunMode.Real && driver is Input.NavigatingDriver real)
+            {
+                output.WriteLine(real.EquipStillUnlocked.Count == 0 ? "Equip is locked again." : $"WARNING: Equip still unlocked for step(s) {string.Join(", ", real.EquipStillUnlocked)} (not used).");
+                if (result.Outcome == RunOutcome.Completed && result.SnapshotPath is { } snap)
+                    await AfterRealRunAsync(game, load.Plan.Plan, session.LastCheck ?? before!, o.Steps!, snap, folder, output);
+            }
             return result.Outcome switch { RunOutcome.Completed => Ok, RunOutcome.Aborted => Aborted, _ => Failed };
         }
     }

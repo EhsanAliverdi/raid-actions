@@ -148,20 +148,7 @@ public sealed class ObservingDriver(LiveGame game, UnityUi ui, Plan plan, string
         return (false, null, null);
     }
 
-    /// <summary>The targets of the visible views (the champion screen and any dialog over it), for the current client size.</summary>
-    private List<UiTarget> Targets(UiState s)
-    {
-        var (w, _) = GameWindow.Find();
-        if (w is null || w.NotUsable is not null) return [];
-        var visible = s.Active.Where(v => v.Visible).Select(v => v.Name).ToHashSet();
-        var result = new List<UiTarget>();
-        foreach (var (name, view) in game.Views().Where(v => visible.Contains(v.Name) && !v.Name.EndsWith("NotificationsView", StringComparison.Ordinal)))
-        {
-            try { result.AddRange(UiTargets.Find(ui.Read(view, name, w.Client.Width, w.Client.Height), game.Objects)); }
-            catch (Exception e) when (e is UiReadException or RaidExtractor.ReadCheckException) { }
-        }
-        return result;
-    }
+    private List<UiTarget> Targets(UiState s) => Screen.Targets(game, ui, s);
 
     private string? Overlay(UiAction a, UiTarget t, string label)
     {

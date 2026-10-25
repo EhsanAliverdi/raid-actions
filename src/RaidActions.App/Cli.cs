@@ -44,19 +44,21 @@ public static class Cli
           --pace <min>-<max>         milliseconds between inputs (default 150-450)
           --live                     validate: read the account from the running game instead of account.json
                                      dry-run: observe the running game, sending no input (you open the screens it asks for)
+          --navigate                 dry-run --live: navigate by itself with allowed clicks only; Equip is never pressed
 
         Abort a run: Ctrl+Alt+Esc (anywhere) or Ctrl+C.
         Exit codes: 0 done, 1 refused, 2 failed, 3 aborted, 4 usage error, 5 not confirmed.
         """;
 
     public sealed record Options(string Command, string? Plan, string? ExtractorOutput, string? Account, string? Output, string? Confirm,
-        TimeSpan PaceMin, TimeSpan PaceMax, bool Live = false);
+        TimeSpan PaceMin, TimeSpan PaceMax, bool Live = false, bool Navigate = false);
 
     public static Options? Parse(string[] args, TextWriter err)
     {
         if (args.Length == 0) return null;
         string? plan = null, ext = null, account = null, output = null, confirm = null;
         var live = false;
+        var navigate = false;
         TimeSpan min = TimeSpan.FromMilliseconds(150), max = TimeSpan.FromMilliseconds(450);
         var command = args[0].ToLowerInvariant();
         for (var i = 1; i < args.Length; i++)
@@ -69,6 +71,7 @@ public static class Cli
                 case "--output": output = Next(); break;
                 case "--confirm": confirm = Next(); break;
                 case "--live": live = true; break;
+                case "--navigate": navigate = true; break;
                 case "--pace":
                     var parts = Next().Split('-');
                     if (parts.Length != 2 || !int.TryParse(parts[0], out var a) || !int.TryParse(parts[1], out var b) || a < 0 || b < a)
@@ -84,7 +87,8 @@ public static class Cli
         }
         if (live && command is not ("validate" or "dry-run"))
             throw new ArgumentException("--live is only for validate and dry-run: no real run sends input before the go-ahead.");
-        return new Options(command, plan, ext, account, output, confirm, min, max, live);
+        if (navigate && !(live && command == "dry-run")) throw new ArgumentException("--navigate is only for dry-run --live.");
+        return new Options(command, plan, ext, account, output, confirm, min, max, live, navigate);
     }
 
     /// <param name="interactive">Whether <paramref name="input"/> is a person at a console (to type the confirmation).</param>
@@ -268,10 +272,14 @@ public static class Cli
                 File.AppendAllText(prompts, $"{DateTime.Now:HH:mm:ss} {line}{Environment.NewLine}");
             }
             var standard = RaidActions.Game.Window.WindowStandard.Load(GameCommands.WindowConfig);
-            var driver = new RaidActions.Game.Dry.ObservingDriver(game, ui, load.Plan.Plan, folder, standard.Mismatch, Say);
+            IGameDriver driver = o.Navigate
+                ? new Input.NavigatingDriver(game, ui, load.Plan.Plan, folder, standard, line => output.WriteLine($"{DateTime.Now:HH:mm:ss} {line}"))
+                : new RaidActions.Game.Dry.ObservingDriver(game, ui, load.Plan.Plan, folder, standard.Mismatch, Say);
             var session = new PlanSession(paths, driver, game.Account, NoPacer.Instance);
             session.Load(Path.GetFullPath(o.Plan!));
-            output.WriteLine($"LIVE DRY RUN, observing only: no input is sent to the game. Overlays and prompts: {folder}");
+            output.WriteLine(o.Navigate
+                ? $"LIVE DRY RUN, navigating: allowed clicks only ({string.Join(", ", Input.NavigatingDriver.AllowedClicks)}); Equip is never pressed. Overlays: {folder}"
+                : $"LIVE DRY RUN, observing only: no input is sent to the game. Overlays and prompts: {folder}");
             var check = await session.CheckAsync();
             foreach (var i in check.Issues) output.WriteLine("  " + i);
             foreach (var line in Confirmation.Lines(load.Plan, check, RunMode.DryRun, driver.Name)) output.WriteLine(line);
@@ -304,9 +312,18 @@ public static class Cli
                 return Refused;
             }
             var table = new System.Text.StringBuilder();
-            table.AppendLine($"{"step",-5} {"action",-14} {"target",-44} {"rectangle",-26} overlay");
-            foreach (var w in driver.WouldClick)
-                table.AppendLine($"{w.Step,-5} {w.Kind,-14} {w.Target,-44} {w.Rect,-26} {Path.GetFileName(w.Overlay)}");
+            if (driver is Input.NavigatingDriver nav)
+            {
+                table.AppendLine($"{"step",-5} {"click",-36} {"sent",-5} {"rectangle",-26} overlay");
+                foreach (var c in nav.Clicks)
+                    table.AppendLine($"{c.Step,-5} {c.What,-36} {(c.Sent ? "yes" : "NO"),-5} {c.Rect,-26} {Path.GetFileName(c.Overlay)}");
+            }
+            else if (driver is RaidActions.Game.Dry.ObservingDriver obs)
+            {
+                table.AppendLine($"{"step",-5} {"action",-14} {"target",-44} {"rectangle",-26} overlay");
+                foreach (var w in obs.WouldClick)
+                    table.AppendLine($"{w.Step,-5} {w.Kind,-14} {w.Target,-44} {w.Rect,-26} {Path.GetFileName(w.Overlay)}");
+            }
             File.WriteAllText(Path.Combine(folder, "would-click.txt"), table.ToString());
             output.WriteLine(result.Message);
             output.Write(table);

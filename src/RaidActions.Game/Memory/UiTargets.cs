@@ -13,9 +13,12 @@ namespace RaidActions.Game.Memory;
 public sealed record UiTarget(string Kind, string Name, int? Id, string View, ClientRect? Rect, bool Active, bool? Interactable,
     bool FullyVisible, bool Forbidden, string Path, string? Note, string? Slot = null)
 {
-    /// <summary>Why this target may not be clicked now, or null when it may.</summary>
+    public bool IsScrollArea => Kind.StartsWith("scroll-", StringComparison.Ordinal);
+
+    /// <summary>Why this target may not be clicked now, or null when it may (a scroll area: when it is shown).</summary>
     public string? NotClickable =>
-        Forbidden ? "forbidden (never clicked)"
+        IsScrollArea ? (Active && Rect is not null ? null : "scroll area not shown")
+        : Forbidden ? "forbidden (never clicked)"
         : !Active ? "not active"
         : Rect is null ? "no rectangle"
         : Interactable != true ? "not interactable"
@@ -122,13 +125,31 @@ public static partial class UiTargets
                 continue;
             }
 
+            // Scroll areas: the champion list's viewport and the picker's groups viewport (scrolled with the mouse wheel).
+            if (n.Name == "Viewport" && n.Path.EndsWith("/HeroesCompact_h/Viewport", StringComparison.Ordinal))
+            {
+                targets.Add(Make("scroll-champions", "champion list (scroll)", null, n, n, null));
+                continue;
+            }
+            if (n.Name == "GroupsViewport" && n.Path.Contains("/InventoryWindow/", StringComparison.Ordinal))
+            {
+                targets.Add(Make("scroll-picker", "picker (scroll)", null, n, n, null));
+                continue;
+            }
+
             if (n.Interactable is null) continue;
             var named = n.Name switch
             {
-                // The artifact popup (compare panels): Equip on the selected piece, Remove on the worn one, the close button.
+                // Opening the champion screen from the village, and leaving it.
+                "HeroesButton" when n.BindingPath == "HeroesInfo" => ("open-champions", "village: Champions"),
+                "CloseButton" when n.Path.EndsWith("/HeroesHeader/CloseButton", StringComparison.Ordinal) => ("screen-close", "champion screen: close"),
+                // The picker and the artifact popup's two panels (the selected piece, the piece worn now), each with its own close.
+                "HideButton" when n.Path.EndsWith("/InventoryWindow/HideButton", StringComparison.Ordinal) => ("picker-close", "picker: close"),
+                "HideButton" when n.Path.Contains("/SelectedItemWindow/", StringComparison.Ordinal) => ("popup-close-selected", "popup (selected piece): close"),
+                "HideButton" when n.Path.Contains("/EquipedItemWindow/", StringComparison.Ordinal) => ("popup-close-worn", "popup (worn piece): close"),
+                // The artifact popup's actions: never clicked by navigation (Equip only in a real run, after the go-ahead).
                 "EquipButton_h" => ("popup-equip", "popup: Equip"),
                 "RemoveButton_h" => ("popup-remove", "popup: Remove"),
-                "HideButton" when t.View == UiState.ChampionScreenView => ("popup-close", "popup: close"),
                 // The manage-gear dialog (RemoveArtifactOverlay).
                 "Unequip_h" when t.View == "RemoveArtifactOverlay" => ("manage-remove", "manage gear: Remove"),
                 "BTN_Close1" when t.View == "RemoveArtifactOverlay" => ("manage-close", "manage gear: close"),
@@ -143,6 +164,7 @@ public static partial class UiTargets
             };
             if (named.Item1 is { } kind) targets.Add(Make(kind, named.Item2!, null, n, n, null, forbidden: kind == "forbidden"));
         }
+        // Scroll areas are not clickable elements: they are kept with their rectangles for the wheel.
         // One element found twice (an inventory item carries its context on two nested elements, both leading to the same button)
         // is one target. Different elements claiming one id stay separate, and Resolve refuses them.
         return targets.DistinctBy(t => (t.Kind, t.Id, t.Slot, t.Path, t.Rect)).ToList();

@@ -165,10 +165,10 @@ public class UiTargetsTests
             N("O/Popup/Selected/PowerUpButton", R(10, 406, 93, 31), interactable: true),
             N("O/Popup/Selected/EquipButton_h", R(110, 406, 93, 31), interactable: true),
             N("O/Popup/Worn/RemoveButton_h", R(110, 184, 93, 31), interactable: true),
-            N("O/Popup/HideButton", R(174, 222, 36, 36), interactable: true),
+            N("O/Popup/SelectedItemWindow/Artifact_h/HideButton", R(174, 222, 36, 36), interactable: true),
         ], 1600, 900, null, 0.8333f);
         var t = UiTargets.Find(tree, new Ctx());
-        Assert.Equal(["forbidden", "forbidden", "forbidden", "popup-equip", "popup-remove", "popup-close"], t.Select(x => x.Kind));
+        Assert.Equal(["forbidden", "forbidden", "forbidden", "popup-equip", "popup-remove", "popup-close-selected"], t.Select(x => x.Kind));
         Assert.All(t.Take(3), x => Assert.Equal("forbidden (never clicked)", x.NotClickable));
         Assert.Null(UiTargets.Resolve(t, "popup-equip").Problem);
         Assert.Contains("not on screen", UiTargets.Resolve(t, "manage-remove").Problem);
@@ -209,5 +209,61 @@ public class TabCheckTests
         Assert.StartsWith("tab check: AGREES", App.UiCommands.TabCheck([Tab(1, false), Tab(2, true)], 1));
         Assert.StartsWith("tab check: DISAGREES", App.UiCommands.TabCheck([Tab(1, true), Tab(2, false)], 1));
         Assert.Contains("inconclusive", App.UiCommands.TabCheck([Tab(1, false), Tab(2, false)], 0));
+    }
+}
+
+public class NavigationTargetsTests
+{
+    private static int _i;
+
+    private static UiNode N(string path, float x, float y, bool? interactable = true, string? binding = null) =>
+        new(++_i, 0, path.Count(c => c == '/'), path[(path.LastIndexOf('/') + 1)..], path, true, true, new ClientRect(x, y, 70, 70), [], null, interactable,
+            binding, new ClientRect(x, y, 70, 70));
+
+    [Fact]
+    public void Close_buttons_scroll_areas_and_the_champions_button_are_told_apart()
+    {
+        var champion = new UiTree("HeroesInfoOverlay",
+        [
+            N("[OV] HeroesInfoOverlay/Workspace/Content/HeroesHeader/CloseButton", 1450, 0),
+            N("[OV] HeroesInfoOverlay/Workspace/Content/HeroBlockLoader/HeroesBlock(Clone)/HeroesCompact_h/Viewport", 13, 138, interactable: null),
+            N("[OV] HeroesInfoOverlay/Workspace/Inv/InventoryWindow/HideButton", 1097, 0),
+            N("[OV] HeroesInfoOverlay/Workspace/Inv/InventoryWindow/Content/Artifacts_h/Tab1.Content/GroupsViewport", 432, 300, interactable: null),
+            N("[OV] HeroesInfoOverlay/Workspace/Inv/ArtifactWindowsHolder/EquipedItemWindowHolder/EquipedItemWindow/HideButton", 350, 0),
+            N("[OV] HeroesInfoOverlay/Workspace/Inv/ArtifactWindowsHolder/SelectedItemWindowHolder/SelectedItemWindow/Artifact_h/HideButton", 350, 453),
+        ], 1600, 900, null, 0.8333f);
+        var t = RaidActions.Game.Memory.UiTargets.Find(champion, new NoObjects());
+        Assert.Equal(["screen-close", "scroll-champions", "picker-close", "scroll-picker", "popup-close-worn", "popup-close-selected"], t.Select(x => x.Kind));
+        Assert.All(t, x => Assert.Null(x.NotClickable));
+        Assert.Equal(453f, RaidActions.Game.Memory.UiTargets.Resolve(t, "popup-close-selected").Target!.Rect!.Value.Y);
+
+        var village = new UiTree("VillageHUD", [N("[DV] VillageHUD/Workspace/Bottom/HeroesButton", 727, 375, binding: "HeroesInfo")], 1600, 900, null, 0.8333f);
+        Assert.Equal("open-champions", Assert.Single(RaidActions.Game.Memory.UiTargets.Find(village, new NoObjects())).Kind);
+    }
+
+    [Fact]
+    public void Navigation_may_never_click_equip_remove_sell_upgrade_or_auto_equip()
+    {
+        var allowed = App.Input.NavigatingDriver.AllowedClicks;
+        foreach (var never in new[] { "popup-equip", "popup-remove", "manage-remove", "manage-sell", "forbidden", "scroll-champions", "scroll-picker" })
+            Assert.DoesNotContain(never, allowed);
+        Assert.Contains("champion-tile", allowed);
+        Assert.Contains("inventory-item", allowed);
+        foreach (var name in new[] { "Sell_h", "SellMode", "QuickEquipButton", "PowerUpButton" })
+            Assert.Contains(name, RaidActions.Game.Memory.UiTargets.NeverClick);
+    }
+
+    private sealed class NoObjects : IGameObjects
+    {
+        public ulong Root(string name, string expectedType) => 0;
+        public string ClassName(ulong obj) => "";
+        public IReadOnlyList<string> ClassChain(ulong obj) => [];
+        public ulong Ref(ulong obj, string type, string member) => 0;
+        public int Int(ulong obj, string type, string member) => 0;
+        public bool Bool(ulong obj, string type, string member) => false;
+        public string? String(ulong obj, string type, string member) => null;
+        public int? NullableInt(ulong obj, string type, string member) => null;
+        public IReadOnlyList<ulong> RefList(ulong list, int max) => [];
+        public string? EnumName(string enumType, int value) => null;
     }
 }

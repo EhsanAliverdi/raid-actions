@@ -26,7 +26,7 @@ public static class GameCommands
         switch (command)
         {
             case "window" when args.Length > 1 && args[1] == "fit":
-                return Fit(o, input ?? TextReader.Null);
+                return Fit(o, input ?? TextReader.Null, Opt("--size"));
             case "window":
             {
                 var (w, problem) = GameWindow.Find();
@@ -145,7 +145,8 @@ public static class GameCommands
     /// window fit: sets the game window to the standard client size (asks first). If the game takes another size, that size becomes
     /// the standard. Only SetWindowPos/ShowWindow on Raid's window; no input to the game.
     /// </summary>
-    private static int Fit(TextWriter o, TextReader input)
+    /// <param name="size">"WxH": a temporary size for checks at another size; the standard is not changed.</param>
+    private static int Fit(TextWriter o, TextReader input, string? size)
     {
         var (w, problem) = GameWindow.Find();
         if (w is null)
@@ -154,7 +155,18 @@ public static class GameCommands
             return Cli.Failed;
         }
         var standard = WindowStandard.Load(WindowConfig);
-        var plan = WindowFit.Plan(w, standard.RequestedWidth, standard.RequestedHeight);
+        var (rw, rh) = (standard.RequestedWidth, standard.RequestedHeight);
+        if (size is not null)
+        {
+            var parts = size.Split('x');
+            if (parts.Length != 2 || !int.TryParse(parts[0], out rw) || !int.TryParse(parts[1], out rh) || rw < 640 || rh < 360)
+            {
+                o.WriteLine("--size needs WxH, at least 640x360 (e.g. 1280x720).");
+                return Cli.Usage;
+            }
+            o.WriteLine($"Temporary size {rw}x{rh}: the standard ({standard}) is not changed; captures refuse until  window fit  restores it.");
+        }
+        var plan = WindowFit.Plan(w, rw, rh);
         o.WriteLine($"Now:  client {w.Client.Width}x{w.Client.Height}, window {w.Window}{(w.Minimized ? " (minimized)" : "")}");
         o.WriteLine($"New:  client {plan.ClientWidth}x{plan.ClientHeight}, window {plan.Window}, centred in the work area {plan.WorkArea}{(plan.Restore ? ", restored without activating it" : "")}");
         if (plan.Window.Width > plan.WorkArea.Width || plan.Window.Height > plan.WorkArea.Height)
@@ -174,6 +186,11 @@ public static class GameCommands
             return Cli.Failed;
         }
         o.WriteLine($"After: client {after.Client.Width}x{after.Client.Height}, window {after.Window}");
+        if (size is not null)
+        {
+            o.WriteLine(after.Client.Width == rw && after.Client.Height == rh ? "Confirmed." : $"The game took {after.Client.Width}x{after.Client.Height} instead.");
+            return Cli.Ok;
+        }
         var saved = standard.Save(after.Client.Width, after.Client.Height);
         if (saved.Status == "applied")
         {

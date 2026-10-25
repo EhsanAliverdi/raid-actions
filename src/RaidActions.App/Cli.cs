@@ -25,7 +25,7 @@ public static class Cli
 
         Read-only, against the running game (no input, never brings it to the front):
           RaidActions window                   find the game window: size, DPI, state, standard size
-          RaidActions window fit               set the game window to the standard size (asks first)
+          RaidActions window fit [--size WxH]  set the game window to the standard size, or a temporary one (asks first)
           RaidActions capture [--out f.png]    save a capture of the game's client area
           RaidActions ui-state [--watch [--for <minutes>]]  the game's UI from memory: views, battle, selected champion and artifact
           RaidActions recognize [--image f]    recognize the screen (live, or an image) and save an annotated copy

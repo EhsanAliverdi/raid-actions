@@ -18,6 +18,13 @@ Checked against raid-extractor's working copy (plan v1, partly uncommitted). rai
 
 ## Open
 
+### 8. A CLI command that makes or re-makes a plan
+
+Plans can only be made in the desktop app (Clan Boss → Make swap plan; Swap plan → Re-plan). Please add a CLI command, e.g.
+`RaidExtractor plan suggestions=1,3 [difficulty=…] [affinity=…]` and `RaidExtractor replan <plan.json>`, writing the plan with
+`SaveNew` as the app does. Note: plans saved before `origin` existed (such as `suggestions-1-3-together-20261023-132400.json`)
+cannot be re-planned; `Replan` refuses them by design.
+
 ### 7. "Apply automatically" (phase 6)
 
 The planner's button and its use of the protocol ([PROTOCOL.md](PROTOCOL.md)) will be described here in phase 6.

@@ -111,6 +111,22 @@ public class UiTargetsTests
     }
 
     [Fact]
+    public void An_item_whose_context_sits_on_two_nested_elements_is_one_target()
+    {
+        var g = new Ctx();
+        var ctx = g.Item(2639, selected: true);
+        var tree = new UiTree("HeroesInfoOverlay",
+        [
+            N("O/Inv/Items/0", R(537, 641, 83, 83), ctx: ctx),
+            N("O/Inv/Items/0/Item", R(537, 641, 83, 83), ctx: ctx),
+            N("O/Inv/Items/0/Item/BASE_ArtifactAvatar", R(537, 641, 83, 83), interactable: true),
+        ], 1600, 900, null, 0.8333f);
+        var t = UiTargets.Find(tree, g);
+        Assert.Single(t);
+        Assert.Null(UiTargets.Resolve(t, "inventory-item", 2639).Problem);
+    }
+
+    [Fact]
     public void Gear_slots_use_the_game_names_and_keep_the_slot_id()
     {
         var tree = new UiTree("HeroesInfoOverlay",

@@ -143,7 +143,9 @@ public static partial class UiTargets
             };
             if (named.Item1 is { } kind) targets.Add(Make(kind, named.Item2!, null, n, n, null, forbidden: kind == "forbidden"));
         }
-        return targets;
+        // One element found twice (an inventory item carries its context on two nested elements, both leading to the same button)
+        // is one target. Different elements claiming one id stay separate, and Resolve refuses them.
+        return targets.DistinctBy(t => (t.Kind, t.Id, t.Slot, t.Path, t.Rect)).ToList();
     }
 
     /// <summary>

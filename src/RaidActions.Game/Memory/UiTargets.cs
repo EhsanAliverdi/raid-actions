@@ -84,7 +84,7 @@ public static partial class UiTargets
             if (n.Context?.Class == HeroSlotContext)
             {
                 var heroId = IntValue(g, g.Ref(n.Context.Address, HeroSlotContext, "_heroId"));
-                if (heroId is null or 0) continue; // an empty slot of the virtual list
+                if (heroId is null or <= 0) continue; // an empty or placeholder slot of the virtual list (0 or -1)
                 var selected = BoolValue(g, g.Ref(n.Context.Address, HeroSlotContext, "_isSelected"));
                 targets.Add(Make("champion-tile", $"champion #{heroId}", heroId, n, ClickableIn(i), selected == true ? "selected" : null));
                 continue;

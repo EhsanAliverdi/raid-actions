@@ -93,6 +93,10 @@ open view (ViewMeta.View, a managed RaidView)
   (`ArtifactKindId.Cloak` = the amulet), which plan files use. A target may be clicked only when active, interactable, on screen
   and **fully inside its scroll viewport**. `UiTargets.Resolve` refuses when no element or **more than one** element claims the
   id (pooled list items keep stale ids). Descendants are found by tree position, never by path text: sibling tiles share names.
+- **Checked live on 2026-10-26** (Kael's champion screen): the memory rectangles landed on every tile, gear slot and tab at
+  **1600×900** and at **1280×720**. Every rectangle at 1280×720 is the 1600×900 one times 0.8 (canvas scale 0.833 → 0.667).
+  Tile ids matched the champions shown (Kael = 1, selected), and the bottom rows were refused as outside the list's viewport.
+  Placeholder tiles (id 0 or −1) are not targets.
 - **Never clicked**: `Sell_h` (manage gear: Sell, which sells the piece), `SellMode` (the picker's sell mode),
   `QuickEquipButton` (Auto-Equip), `PowerUpButton` (Upgrade).
 - **Overlay check**: `RaidActions overlay` captures the window and draws the memory rectangles on it (green clickable, red

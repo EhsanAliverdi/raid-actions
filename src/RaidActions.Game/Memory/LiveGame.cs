@@ -192,6 +192,12 @@ internal sealed class CoreObjects(GameSession session, OffsetConfig offsets) : I
     }
 
     public bool Bool(ulong obj, string type, string member) => R.ReadBoolField(obj, offsets.Field(type, member));
+
+    public string? String(ulong obj, string type, string member)
+    {
+        var p = R.ReadPointerOrNull(obj + (ulong)offsets.Field(type, member).Offset, $"{type}.{member}");
+        return p == 0 ? null : R.ReadString(p, 512, $"{type}.{member}");
+    }
     public ulong Ref(ulong obj, string type, string member) => R.ReadPointerOrNull(obj + (ulong)offsets.Field(type, member).Offset, $"{type}.{member}");
     public int Int(ulong obj, string type, string member) => R.ReadInt32(obj + (ulong)offsets.Field(type, member).Offset, $"{type}.{member}");
     public int? NullableInt(ulong obj, string type, string member) => R.ReadNullableInt32(obj + (ulong)offsets.Field(type, member).Offset, $"{type}.{member}");

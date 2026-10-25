@@ -16,6 +16,9 @@ public interface IGameObjects
 
     bool Bool(ulong obj, string type, string member);
 
+    /// <summary>A string field; null when the field is null.</summary>
+    string? String(ulong obj, string type, string member);
+
     /// <summary>The object's class and its base classes, most derived first (full names).</summary>
     IReadOnlyList<string> ClassChain(ulong obj);
 

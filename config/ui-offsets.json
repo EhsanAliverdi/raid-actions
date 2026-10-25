@@ -350,6 +350,46 @@
         }
       }
     },
+    "Client.MVVM.Base.View.Bindings.BindingMasterPath": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "MasterPath": {
+          "offset": "0x20",
+          "type": "string",
+          "field": "MasterPath",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.HeroesInfoDialog.HeroSlot.HeroSlotContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_heroId": {
+          "offset": "0x88",
+          "type": "IntProperty",
+          "field": "_heroId",
+          "source": "field",
+          "status": "direct"
+        },
+        "_isSelected": {
+          "offset": "0x60",
+          "type": "BoolProperty",
+          "field": "_isSelected",
+          "source": "field",
+          "status": "direct"
+        },
+        "_slotType": {
+          "offset": "0x90",
+          "type": "IntProperty",
+          "field": "_slotType",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "UnityEngine.UI.Selectable": {
       "kind": "class",
       "offsetsRelativeTo": "object",
@@ -358,6 +398,19 @@
           "offset": "0xD8",
           "type": "bool",
           "field": "m_Interactable",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "UnityEngine.UI.Toggle": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "m_IsOn": {
+          "offset": "0x120",
+          "type": "bool",
+          "field": "m_IsOn",
           "source": "field",
           "status": "direct"
         }

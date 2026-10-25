@@ -7,6 +7,12 @@
       "type": "int",
       "source": "dump/redux/il2cpp.h: IntProperty -> Property_1_System_Int32___Fields { Property__Fields (OnChange 0x10, _oneTimeListeners 0x18); bool _changing 0x20; int32_t _value 0x24 }",
       "status": "unverified"
+    },
+    "Client.MVVM.Base.ViewModel.Properties.BoolProperty._value": {
+      "offset": "0x21",
+      "type": "bool",
+      "source": "dump/redux/il2cpp.h: BoolProperty -> Property_1_System_Boolean___Fields { Property__Fields (0x10, 0x18); bool _changing 0x20; bool _value 0x21 }",
+      "status": "unverified"
     }
   }
 }

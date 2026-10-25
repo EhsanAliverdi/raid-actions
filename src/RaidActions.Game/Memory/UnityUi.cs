@@ -22,10 +22,17 @@ public sealed record UiContext(ulong Address, string Class);
 /// <param name="Screen">The element's rectangle in client pixels; null when it is not a RectTransform or the canvas is not
 /// screen-space overlay (see <see cref="UiTree.ScreenProblem"/>).</param>
 /// <param name="Interactable">Selectable.m_Interactable when the element has a Selectable (Button, Toggle, ...); null otherwise.</param>
+/// <param name="BindingPath">BindingMasterPath.MasterPath on the element (the view-model path its bindings use), if any.</param>
+/// <param name="Visible">The part of <paramref name="Screen"/> not cut off by an ancestor Mask / RectMask2D (scroll viewports).</param>
+/// <param name="IsOn">Toggle.m_IsOn when the element has a Toggle.</param>
 public sealed record UiNode(int Index, int Parent, int Depth, string Name, string Path, bool ActiveSelf, bool ActiveInHierarchy,
-    ClientRect? Screen, IReadOnlyList<UiComponent> Components, UiContext? Context, bool? Interactable)
+    ClientRect? Screen, IReadOnlyList<UiComponent> Components, UiContext? Context, bool? Interactable,
+    string? BindingPath = null, ClientRect? Visible = null, bool? IsOn = null)
 {
     public bool Has(string managedClass) => Components.Any(c => c.ManagedClass == managedClass);
+
+    /// <summary>Entirely inside every mask above it (a click target must be).</summary>
+    public bool FullyVisible => Screen is { } s && Visible is { } v && v.Width >= s.Width - 0.5f && v.Height >= s.Height - 0.5f;
 }
 
 /// <param name="ScreenProblem">Why there are no screen rectangles (canvas not screen-space overlay), or null.</param>
@@ -41,6 +48,8 @@ public sealed class UnityUi(INativeMemory mem, NativeLayout L, IGameObjects g)
 {
     private const string BaseView = "Client.MVVM.Base.View.BaseView";
     private const string Selectable = "UnityEngine.UI.Selectable";
+    private const string Toggle = "UnityEngine.UI.Toggle";
+    private const string MasterPath = "Client.MVVM.Base.View.Bindings.BindingMasterPath";
     private const int MaxNodes = 20000, MaxComponents = 64;
 
     /// <summary>The subtree of a managed Unity component (e.g. a RaidView), for a client area of the given size.</summary>
@@ -60,7 +69,7 @@ public sealed class UnityUi(INativeMemory mem, NativeLayout L, IGameObjects g)
         if (U64(arrays.Transforms + (ulong)root * 8) != transform) throw new UiReadException($"{viewName}: hierarchy.transforms[{root}] is not this transform.");
 
         var count = I32(arrays.Deep + (ulong)root * 4);
-        if (count < 1 || count > MaxNodes || root + count > capacity) throw new UiReadException($"{viewName}: implausible subtree size {count}.");
+        if (count < 1 || count > MaxNodes) throw new UiReadException($"{viewName}: implausible subtree size {count}.");
 
         // World matrices: the ancestors (root of the hierarchy down to the view), then the subtree in depth-first order.
         var world = new Dictionary<int, Matrix4x4>();
@@ -85,6 +94,7 @@ public sealed class UnityUi(INativeMemory mem, NativeLayout L, IGameObjects g)
         }
         var nodes = new List<UiNode>(count);
         var depth = new Dictionary<int, int>();
+        var clips = new Dictionary<int, ClientRect?>();
         var paths = new Dictionary<int, string>();
         string? problem = null;
         float scale = 0;
@@ -110,6 +120,7 @@ public sealed class UnityUi(INativeMemory mem, NativeLayout L, IGameObjects g)
             {
                 // Recorded, not fatal for the tree: a target on such an element refuses (no rectangle, not active).
                 paths[i] = $"{paths.GetValueOrDefault(parent, "?")}/<unreadable #{i}>";
+                clips[i] = new ClientRect(0, 0, 0, 0); // nothing below an unreadable element is visible
                 nodes.Add(new UiNode(i, parent, depth[i], $"<unreadable #{i}: {e.Message}>", paths[i], false, false, null, [], null, null));
                 continue;
             }
@@ -122,18 +133,36 @@ public sealed class UnityUi(INativeMemory mem, NativeLayout L, IGameObjects g)
                 screen = ToClient(world[i], r[0], r[1], r[2], r[3], clientHeight);
             }
             UiContext? context = null;
-            bool? interactable = null;
+            bool? interactable = null, isOn = null;
+            string? bindingPath = null;
+            var masks = false;
             foreach (var c in components.Where(c => c.Managed != 0))
             {
                 var chainNames = g.ClassChain(c.Managed);
                 if (context is null && chainNames.Contains(BaseView) && g.Ref(c.Managed, BaseView, "Context") is var ctx and not 0)
                     context = new UiContext(ctx, g.ClassName(ctx));
                 if (interactable is null && chainNames.Contains(Selectable)) interactable = g.Bool(c.Managed, Selectable, "m_Interactable");
+                if (isOn is null && chainNames.Contains(Toggle)) isOn = g.Bool(c.Managed, Toggle, "m_IsOn");
+                if (bindingPath is null && chainNames.Contains(MasterPath)) bindingPath = g.String(c.Managed, MasterPath, "MasterPath");
+                masks |= chainNames.Contains("UnityEngine.UI.Mask") || chainNames.Contains("UnityEngine.UI.RectMask2D");
             }
+            var parentClip = clips.GetValueOrDefault(parent);
+            ClientRect? visible = screen is { } sc ? Intersect(sc, parentClip) : null;
+            clips[i] = masks && screen is { } own ? Intersect(own, parentClip) : parentClip;
             nodes.Add(new UiNode(i, parent, depth[i], name, paths[i], Byte(go + (ulong)L.GoActiveSelf) == 1, Byte(go + (ulong)L.GoActiveInHierarchy) == 1,
-                screen, components, context, interactable));
+                screen, components, context, interactable, bindingPath, visible, isOn));
         }
         return new UiTree(viewName, nodes, clientWidth, clientHeight, problem, scale);
+    }
+
+    private static ClientRect Intersect(ClientRect a, ClientRect? clip)
+    {
+        if (clip is not { } c) return a;
+        var x1 = Math.Max(a.X, c.X);
+        var y1 = Math.Max(a.Y, c.Y);
+        var x2 = Math.Min(a.Right, c.Right);
+        var y2 = Math.Min(a.Bottom, c.Bottom);
+        return new ClientRect(x1, y1, Math.Max(0, x2 - x1), Math.Max(0, y2 - y1));
     }
 
     private sealed record Arrays(ulong Locals, ulong Parents, ulong Deep, ulong Transforms);

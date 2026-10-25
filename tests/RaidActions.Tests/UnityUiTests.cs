@@ -68,6 +68,7 @@ public class UnityUiTests
         public ulong Ref(ulong obj, string type, string member) => Objects.TryGetValue(obj, out var o) && o.Fields.TryGetValue(member, out var v) ? (ulong)v : 0;
         public int Int(ulong obj, string type, string member) => (int)Objects[obj].Fields[member];
         public bool Bool(ulong obj, string type, string member) => (bool)Objects[obj].Fields[member];
+        public string? String(ulong obj, string type, string member) => Objects[obj].Fields.TryGetValue(member, out var v) ? (string?)v : null;
         public int? NullableInt(ulong obj, string type, string member) => (int?)Objects[obj].Fields[member];
         public IReadOnlyList<ulong> RefList(ulong list, int max) => throw new NotSupportedException();
         public string? EnumName(string enumType, int value) => null;
@@ -154,7 +155,7 @@ public class UnityUiTests
             new() { ["Context"] = m.Add(["Client.ViewModel.TestDialogContext"], []) });
         Script(button.Go, ["UnityEngine.UI.Button", "UnityEngine.UI.Selectable", "UnityEngine.MonoBehaviour"], new() { ["m_Interactable"] = true });
         Script(item.Go, ["Client.View.ItemView", "Client.MVVM.Base.View.BaseView"], new() { ["Context"] = m.Add(["Client.ViewModel.HeroItemContext"], new() { ["_heroId"] = 42 }) });
-        Script(item.Go, ["UnityEngine.UI.Toggle", "UnityEngine.UI.Selectable"], new() { ["m_Interactable"] = false });
+        Script(item.Go, ["UnityEngine.UI.Toggle", "UnityEngine.UI.Selectable"], new() { ["m_Interactable"] = false, ["m_IsOn"] = true });
         return (new UnityUi(heap, L, m), viewManaged, m);
     }
 
@@ -210,6 +211,7 @@ public class UnityUiTests
         Assert.True(button.Has("UnityEngine.UI.Button"));
         var tile = tree.Nodes.Single(n => n.Name == "HeroTile");
         Assert.False(tile.Interactable);
+        Assert.True(tile.IsOn);
         Assert.Equal("Client.ViewModel.HeroItemContext", tile.Context!.Class);
         Assert.Equal(42, m.Int(tile.Context.Address, "", "_heroId"));
         Assert.Equal("Client.ViewModel.TestDialogContext", tree.Nodes[0].Context!.Class);

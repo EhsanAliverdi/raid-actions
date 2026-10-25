@@ -395,7 +395,9 @@ public static class Cli
             output.WriteLine($"Log: {result.LogPath}");
             if (mode == RunMode.Real && driver is Input.NavigatingDriver real)
             {
-                output.WriteLine(real.EquipStillUnlocked.Count == 0 ? "Equip is locked again." : $"WARNING: Equip still unlocked for step(s) {string.Join(", ", real.EquipStillUnlocked)} (not used).");
+                output.WriteLine(real.EquipStillUnlocked.Count == 0
+                    ? "Equip was used once and is locked again."
+                    : $"Equip was not clicked for step(s) {string.Join(", ", real.EquipStillUnlocked)}; the unlock ended with this run.");
                 if (result.Outcome == RunOutcome.Completed && result.SnapshotPath is { } snap)
                     await AfterRealRunAsync(game, load.Plan.Plan, session.LastCheck ?? before!, o.Steps!, snap, folder, output);
             }

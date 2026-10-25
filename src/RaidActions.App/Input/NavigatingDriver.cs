@@ -58,12 +58,13 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
                 return DriverResult.Success("the game is brought to the front only when a click needs it");
             case ActionKind.OpenChampion:
             {
-                var (s, _) = await Read(ct);
-                // Popups over the village (offers and the like): closed with their own close button, at most three, each confirmed gone.
-                for (var i = 0; i < 3 && !s.ChampionScreenOpen && s.Top?.Name is { } top && top.EndsWith("Overlay", StringComparison.Ordinal); i++)
+                // Popups over the village (offers and the like) come in a queue: close each with its own close button, let the screen
+                // settle, read again; at most four. Then the top view must have stayed the village for a moment before Champions is clicked.
+                var s = await Settled(ct);
+                for (var i = 0; i < 4 && !s.ChampionScreenOpen && s.Top?.Name is { } top && top.EndsWith("Overlay", StringComparison.Ordinal); i++)
                 {
                     await Click(a, "dialog-close", null, null, (s2, _) => s2.Top?.Name != top, $"the {top} popup closes", ct);
-                    (s, _) = await Read(ct);
+                    s = await Settled(ct);
                 }
                 if (!s.ChampionScreenOpen)
                 {
@@ -245,6 +246,23 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
             await Task.Delay(450, ct);
         }
         throw new StopException($"{kind} {id} not found after scrolling the list.");
+    }
+
+    /// <summary>Reads until the top view has stayed the same for 1.5 s (popups that queue up have appeared), at most 10 s.</summary>
+    private async Task<UiState> Settled(CancellationToken ct)
+    {
+        var (s, _) = await Read(ct);
+        var since = DateTime.Now;
+        var until = DateTime.Now + TimeSpan.FromSeconds(10);
+        while (DateTime.Now < until)
+        {
+            await Task.Delay(500, ct);
+            var (s2, _) = await Read(ct);
+            if (s2.Top?.Name != s.Top?.Name || s2.ChampionScreenOpen != s.ChampionScreenOpen) since = DateTime.Now;
+            s = s2;
+            if (DateTime.Now - since >= TimeSpan.FromSeconds(1.5)) break;
+        }
+        return s;
     }
 
     /// <summary>Waits (no input) while a battle or its result screen is open.</summary>

@@ -18,12 +18,15 @@ public static class Program
     private static int RunCli(string[] args)
     {
         Action? abort = null;
-        using var kill = new KillSwitch();
-        kill.Pressed += () =>
-        {
-            Console.Error.WriteLine($"{KillSwitch.Keys}: aborting.");
-            abort?.Invoke();
-        };
+        // Only commands that can run take the system-wide hotkey: a read-only command (e.g. ui-state --watch) must never hold it
+        // and keep a run's kill switch from registering.
+        using var kill = args[0].ToLowerInvariant() is "run" or "dry-run" ? new KillSwitch() : null;
+        if (kill is not null)
+            kill.Pressed += () =>
+            {
+                Console.Error.WriteLine($"{KillSwitch.Keys}: aborting.");
+                abort?.Invoke();
+            };
         Console.CancelKeyPress += (_, e) =>
         {
             if (abort is null) return; // nothing running: let Ctrl+C end the program
@@ -32,7 +35,7 @@ public static class Program
             abort();
         };
         Console.OutputEncoding = System.Text.Encoding.UTF8;
-        if (!kill.Registered) Console.Error.WriteLine(kill.Problem);
+        if (kill is { Registered: false }) Console.Error.WriteLine(kill.Problem);
         return Cli.RunAsync(args, Console.Out, Console.In, interactive: !Console.IsInputRedirected, a => abort = a).GetAwaiter().GetResult();
     }
 

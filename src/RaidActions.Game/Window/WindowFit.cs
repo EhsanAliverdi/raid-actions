@@ -1,44 +1,74 @@
+using System.Runtime.InteropServices;
+using System.Text.Json;
 using System.Text.Json.Nodes;
 
 namespace RaidActions.Game.Window;
 
-/// <summary>The game window size the actioner owns (config/window.json): the client area, in physical pixels.</summary>
-public sealed record WindowStandard(int Width, int Height, int RequestedWidth, int RequestedHeight, string Status, string Path)
+/// <summary>
+/// The game window sizes the actioner accepts (config/window.json). Any size works: click targets come from memory rectangles,
+/// which scale with the window. Refused only when minimized or smaller than the minimum client area; the minimum keeps the
+/// smallest click target (a champion tile or picker item) at least <see cref="TargetPx"/> pixels and is never below the floor.
+/// </summary>
+public sealed record WindowPolicy(int MinWidth, int MinHeight, int FloorWidth, int FloorHeight, int TargetPx, string How, string Path)
 {
-    public static WindowStandard Load(string path)
+    private static readonly JsonSerializerOptions Json = new() { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping };
+
+    public static WindowPolicy Load(string path)
     {
         var o = JsonNode.Parse(File.ReadAllText(path))!.AsObject();
-        var s = o["standardClient"]!;
-        var r = o["requested"] ?? s;
-        return new WindowStandard((int)s["width"]!, (int)s["height"]!, (int)r["width"]!, (int)r["height"]!, (string)o["status"]!, path);
+        var min = o["minimumClient"]!;
+        var floor = o["floorClient"]!;
+        return new WindowPolicy((int)min["width"]!, (int)min["height"]!, (int)floor["width"]!, (int)floor["height"]!, (int)o["targetPx"]!,
+            (string?)o["how"] ?? "", path);
     }
 
-    /// <summary>Records the size the game took as the standard ("applied" when it is the requested one, else "snapped").</summary>
-    public WindowStandard Save(int width, int height)
+    /// <summary>Writes a new minimum (and how it was worked out) to the config file.</summary>
+    public WindowPolicy SaveMinimum(int width, int height, string how)
     {
-        var status = width == RequestedWidth && height == RequestedHeight ? "applied" : "snapped";
         var o = JsonNode.Parse(File.ReadAllText(Path))!.AsObject();
-        o["standardClient"] = new JsonObject { ["width"] = width, ["height"] = height };
-        o["requested"] = new JsonObject { ["width"] = RequestedWidth, ["height"] = RequestedHeight };
-        o["status"] = status;
-        File.WriteAllText(Path, o.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true, Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping }) + "\n");
-        return this with { Width = width, Height = height, Status = status };
+        o["minimumClient"] = new JsonObject { ["width"] = width, ["height"] = height };
+        o["how"] = how;
+        File.WriteAllText(Path, o.ToJsonString(Json) + "\n");
+        return this with { MinWidth = width, MinHeight = height, How = how };
     }
 
-    /// <summary>Null when the window's client area is the standard size, else why not (and what to run).</summary>
-    public string? Mismatch(GameWindowInfo w) =>
-        w.Client.Width == Width && w.Client.Height == Height ? null
-        : $"The game window's client area is {w.Client.Width}x{w.Client.Height}, not the standard {Width}x{Height}: run  RaidActions window fit";
+    /// <summary>Why a click may not use this window now (minimized, hidden, smaller than the minimum), or null.</summary>
+    public string? Problem(GameWindowInfo w) =>
+        w.Minimized ? "The game window is minimized."
+        : !w.Visible ? "The game window is hidden."
+        : w.Cloaked ? "The game window is cloaked (another virtual desktop?)."
+        : w.Client.Width < MinWidth || w.Client.Height < MinHeight
+            ? $"The game window's client area is {w.Client.Width}x{w.Client.Height}, below the minimum {MinWidth}x{MinHeight}."
+            : null;
 
-    public override string ToString() => $"{Width}x{Height} ({Status}{(Status == "snapped" ? $", requested {RequestedWidth}x{RequestedHeight}" : "")})";
+    /// <summary>Why a capture of this window is not usable (minimized, hidden, tiny), or null: captures work at any size.</summary>
+    public static string? CaptureProblem(GameWindowInfo w) => w.NotUsable;
+
+    /// <summary>
+    /// The smallest client area at which the smallest click target is <paramref name="targetPx"/> pixels, at the window's aspect
+    /// ratio (the game's UI scales with the client area), never below the floor. <paramref name="smallestSide"/> is the smallest
+    /// side of the measured targets at <paramref name="width"/>x<paramref name="height"/>.
+    /// </summary>
+    public static (int Width, int Height) ComputeMinimum(int width, int height, float smallestSide, int targetPx, int floorWidth, int floorHeight)
+    {
+        if (smallestSide <= 0 || width <= 0 || height <= 0) return (floorWidth, floorHeight);
+        // One factor, the largest of: the target size, the floor's width, the floor's height; applied once (one rounding).
+        var f = Math.Max(targetPx / (double)smallestSide, Math.Max(floorWidth / (double)width, floorHeight / (double)height));
+        return ((int)Math.Ceiling(width * f - 1e-6), (int)Math.Ceiling(height * f - 1e-6));
+    }
+
+    public override string ToString() => $"minimum {MinWidth}x{MinHeight} (floor {FloorWidth}x{FloorHeight}, smallest target ≥ {TargetPx} px)";
 }
 
 /// <summary>The planned move: the outer window rect that gives the wanted client area, centred on the monitor's work area.</summary>
 public sealed record FitPlan(PixelRect Window, int ClientWidth, int ClientHeight, PixelRect WorkArea, bool Restore);
 
+/// <summary>Where a window was, to put it back after a run: its normal rectangle and whether it was minimized.</summary>
+public sealed record WindowPlacement(PixelRect Normal, bool Minimized, bool Maximized);
+
 /// <summary>
-/// Sets the game window to the standard client size: SetWindowPos (no activation, no z-order change) on Raid's window only, after
-/// restoring it without activation when minimized. No input is sent to the game.
+/// Sizes the game window: SetWindowPos (no activation, no z-order change) on Raid's window only, after restoring it without
+/// activation when minimized; and puts it back afterwards. No input is sent to the game.
 /// </summary>
 public static class WindowFit
 {
@@ -49,7 +79,7 @@ public static class WindowFit
         var exStyle = (uint)Native.GetWindowLongPtr(w.Handle, Native.GwlExStyle).ToInt64();
         var frame = new Native.RECT { Left = 0, Top = 0, Right = width, Bottom = height };
         Native.AdjustWindowRectExForDpi(ref frame, style, false, exStyle, w.Dpi == 0 ? 96 : w.Dpi);
-        var info = new Native.MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Native.MONITORINFO>() };
+        var info = new Native.MONITORINFO { cbSize = Marshal.SizeOf<Native.MONITORINFO>() };
         Native.GetMonitorInfo(Native.MonitorFromWindow(w.Handle, Native.MonitorDefaultToNearest), ref info);
         var work = new PixelRect(info.rcWork.Left, info.rcWork.Top, info.rcWork.Right - info.rcWork.Left, info.rcWork.Bottom - info.rcWork.Top);
         return Center(work, frame.Right - frame.Left, frame.Bottom - frame.Top, width, height, w.Minimized);
@@ -69,9 +99,27 @@ public static class WindowFit
         if (plan.Restore) Native.ShowWindow(w.Handle, Native.SwShowNoActivate);
         var ok = Native.PhysicalPixels(() => Native.SetWindowPos(w.Handle, IntPtr.Zero, plan.Window.X, plan.Window.Y, plan.Window.Width, plan.Window.Height,
             Native.SwpNoZOrder | Native.SwpNoActivate | Native.SwpNoOwnerZOrder));
-        if (!ok) return (null, $"SetWindowPos failed (error {System.Runtime.InteropServices.Marshal.GetLastPInvokeError()}).");
-        // Give the game time to re-layout (it may snap the size), then read it back.
-        Thread.Sleep(1500);
+        if (!ok) return (null, $"SetWindowPos failed (error {Marshal.GetLastPInvokeError()}).");
+        Thread.Sleep(1500); // the game re-lays out (it may snap the size)
         return (GameWindow.Describe(w.Handle, w.ProcessId), null);
     }
+
+    /// <summary>The window's placement now (its normal rectangle even while minimized).</summary>
+    public static WindowPlacement Save(GameWindowInfo w) => Native.PhysicalPixels(() =>
+    {
+        var p = new Native.WINDOWPLACEMENT { length = Marshal.SizeOf<Native.WINDOWPLACEMENT>() };
+        Native.GetWindowPlacement(w.Handle, ref p);
+        var r = p.rcNormalPosition;
+        return new WindowPlacement(new PixelRect(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top), p.showCmd == Native.SwShowMinimized, p.showCmd == Native.SwShowMaximized);
+    });
+
+    /// <summary>Puts the window back where <paramref name="before"/> says, without activating it (minimized again if it was).</summary>
+    public static string? Restore(GameWindowInfo w, WindowPlacement before) => Native.PhysicalPixels(() =>
+    {
+        var p = new Native.WINDOWPLACEMENT { length = Marshal.SizeOf<Native.WINDOWPLACEMENT>() };
+        Native.GetWindowPlacement(w.Handle, ref p);
+        p.rcNormalPosition = new Native.RECT { Left = before.Normal.X, Top = before.Normal.Y, Right = before.Normal.Right, Bottom = before.Normal.Bottom };
+        p.showCmd = before.Minimized ? Native.SwShowMinNoActive : before.Maximized ? Native.SwShowMaximized : Native.SwShowNoActivate;
+        return Native.SetWindowPlacement(w.Handle, ref p) ? null : $"SetWindowPlacement failed (error {Marshal.GetLastPInvokeError()}).";
+    });
 }

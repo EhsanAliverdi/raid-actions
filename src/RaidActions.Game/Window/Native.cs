@@ -60,6 +60,20 @@ internal static class Native
         public uint dwFlags;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    public struct WINDOWPLACEMENT
+    {
+        public int length;
+        public int flags;
+        public int showCmd;
+        public POINT ptMinPosition, ptMaxPosition;
+        public RECT rcNormalPosition;
+    }
+
+    public const int SwShowMinimized = 2, SwShowMaximized = 3, SwShowMinNoActive = 7;
+    [DllImport("user32.dll", SetLastError = true)] public static extern bool GetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT p);
+    [DllImport("user32.dll", SetLastError = true)] public static extern bool SetWindowPlacement(IntPtr hWnd, ref WINDOWPLACEMENT p);
+
     public const int GwlStyle = -16, GwlExStyle = -20;
     public const int SwShowNoActivate = 4;
     public const uint SwpNoZOrder = 0x0004, SwpNoActivate = 0x0010, SwpNoOwnerZOrder = 0x0200;

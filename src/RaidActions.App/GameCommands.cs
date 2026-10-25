@@ -26,16 +26,17 @@ public static class GameCommands
         switch (command)
         {
             case "window" when args.Length > 1 && args[1] == "fit":
-                return Fit(o, input ?? TextReader.Null, Opt("--size"));
+                return Fit(o, Opt("--size"));
+            case "window" when args.Length > 1 && args[1] == "minimum":
+                return Minimum(output, o);
             case "window":
             {
                 var (w, problem) = GameWindow.Find();
                 o.WriteLine(w?.ToString() ?? problem);
-                if (w?.NotUsable is { } why) o.WriteLine("Not usable: " + why);
                 if (w is not null)
                 {
-                    var standard = WindowStandard.Load(WindowConfig);
-                    o.WriteLine(standard.Mismatch(w) ?? $"Standard size {standard}: matches.");
+                    var policy = WindowPolicy.Load(WindowConfig);
+                    o.WriteLine(policy.Problem(w) is { } bad ? $"Not usable for clicks: {bad} ({policy})" : $"Usable at this size ({policy}).");
                 }
                 return w is null ? Cli.Failed : Cli.Ok;
             }
@@ -142,11 +143,10 @@ public static class GameCommands
     }
 
     /// <summary>
-    /// window fit: sets the game window to the standard client size (asks first). If the game takes another size, that size becomes
-    /// the standard. Only SetWindowPos/ShowWindow on Raid's window; no input to the game.
+    /// window fit [--size WxH]: restores and sizes the game window to the minimum client area (or the given size), centred in the
+    /// work area, without activating it. Only SetWindowPos/ShowWindow on Raid's window; no input to the game.
     /// </summary>
-    /// <param name="size">"WxH": a temporary size for checks at another size; the standard is not changed.</param>
-    private static int Fit(TextWriter o, TextReader input, string? size)
+    private static int Fit(TextWriter o, string? size)
     {
         var (w, problem) = GameWindow.Find();
         if (w is null)
@@ -154,31 +154,19 @@ public static class GameCommands
             o.WriteLine(problem);
             return Cli.Failed;
         }
-        var standard = WindowStandard.Load(WindowConfig);
-        var (rw, rh) = (standard.RequestedWidth, standard.RequestedHeight);
+        var policy = WindowPolicy.Load(WindowConfig);
+        var (rw, rh) = (policy.MinWidth, policy.MinHeight);
         if (size is not null)
         {
             var parts = size.Split('x');
             if (parts.Length != 2 || !int.TryParse(parts[0], out rw) || !int.TryParse(parts[1], out rh) || rw < 640 || rh < 360)
             {
-                o.WriteLine("--size needs WxH, at least 640x360 (e.g. 1280x720).");
+                o.WriteLine("--size needs WxH, at least 640x360 (e.g. 1600x900).");
                 return Cli.Usage;
             }
-            o.WriteLine($"Temporary size {rw}x{rh}: the standard ({standard}) is not changed; captures refuse until  window fit  restores it.");
         }
         var plan = WindowFit.Plan(w, rw, rh);
-        o.WriteLine($"Now:  client {w.Client.Width}x{w.Client.Height}, window {w.Window}{(w.Minimized ? " (minimized)" : "")}");
-        o.WriteLine($"New:  client {plan.ClientWidth}x{plan.ClientHeight}, window {plan.Window}, centred in the work area {plan.WorkArea}{(plan.Restore ? ", restored without activating it" : "")}");
-        if (plan.Window.Width > plan.WorkArea.Width || plan.Window.Height > plan.WorkArea.Height)
-            o.WriteLine("Note: the window is larger than the work area; it is placed at the work area's top left.");
-        o.Write("Resize the Raid window? (y/n) ");
-        var answer = input.ReadLine()?.Trim();
-        o.WriteLine(answer ?? "");
-        if (!string.Equals(answer, "y", StringComparison.OrdinalIgnoreCase))
-        {
-            o.WriteLine("Not resized.");
-            return Cli.NotConfirmed;
-        }
+        o.WriteLine($"Now:   client {w.Client.Width}x{w.Client.Height}, window {w.Window}{(w.Minimized ? " (minimized)" : "")}");
         var (after, why) = WindowFit.Apply(w, plan);
         if (after is null)
         {
@@ -186,21 +174,87 @@ public static class GameCommands
             return Cli.Failed;
         }
         o.WriteLine($"After: client {after.Client.Width}x{after.Client.Height}, window {after.Window}");
-        if (size is not null)
-        {
-            o.WriteLine(after.Client.Width == rw && after.Client.Height == rh ? "Confirmed." : $"The game took {after.Client.Width}x{after.Client.Height} instead.");
-            return Cli.Ok;
-        }
-        var saved = standard.Save(after.Client.Width, after.Client.Height);
-        if (saved.Status == "applied")
-        {
-            o.WriteLine($"Confirmed: the client area is {saved.Width}x{saved.Height}. Standard size: {saved}.");
-            return Cli.Ok;
-        }
-        var aspect = after.Client.Height == 0 ? 0 : after.Client.Width / (double)after.Client.Height;
-        o.WriteLine($"The game took {after.Client.Width}x{after.Client.Height} (aspect {aspect:0.000}) instead of {standard.RequestedWidth}x{standard.RequestedHeight}.");
-        o.WriteLine($"That is now the standard size ({WindowConfig}): {saved}.");
+        if (after.Client.Width != rw || after.Client.Height != rh) o.WriteLine($"The game took {after.Client.Width}x{after.Client.Height} instead of {rw}x{rh}.");
+        o.WriteLine(policy.Problem(after) is { } bad ? "Still not usable: " + bad : "Usable.");
         return Cli.Ok;
+    }
+
+    /// <summary>
+    /// window minimum: measures the smallest click target (champion tiles, picker items) on the open champion screen from memory and
+    /// stores the smallest client area that keeps it at least targetPx pixels, at the window's aspect ratio, never below the floor.
+    /// </summary>
+    private static int Minimum(string output, TextWriter o)
+    {
+        var (game, problem) = LiveGame.Open(LivePaths(output));
+        if (game is null)
+        {
+            o.WriteLine(problem);
+            return Cli.Failed;
+        }
+        using (game)
+        {
+            var (w, why) = GameWindow.Find();
+            if (w is null)
+            {
+                o.WriteLine(why);
+                return Cli.Failed;
+            }
+            // Measure at a size where targets are big enough to measure precisely: below the floor, fit to the floor first and put the
+            // window back afterwards.
+            var floorPolicy = WindowPolicy.Load(WindowConfig);
+            WindowPlacement? before = null;
+            if (w.Minimized || w.Client.Width < floorPolicy.FloorWidth || w.Client.Height < floorPolicy.FloorHeight)
+            {
+                before = WindowFit.Save(w);
+                var (fitted, fitProblem) = WindowFit.Apply(w, WindowFit.Plan(w, floorPolicy.FloorWidth, floorPolicy.FloorHeight));
+                if (fitted is null)
+                {
+                    o.WriteLine("window fit: " + fitProblem);
+                    return Cli.Failed;
+                }
+                o.WriteLine($"Measuring at {fitted.Client.Width}x{fitted.Client.Height} (was {(w.Minimized ? "minimized" : $"{w.Client.Width}x{w.Client.Height}")}).");
+                w = fitted;
+            }
+            try { return Measure(game, w, o); }
+            finally
+            {
+                if (before is not null)
+                {
+                    var (now, _) = GameWindow.Find();
+                    o.WriteLine(now is null ? "window not restored" : WindowFit.Restore(now, before) ?? $"Window put back: {before.Normal.Width}x{before.Normal.Height} at ({before.Normal.X},{before.Normal.Y}){(before.Minimized ? ", minimized" : "")}.");
+                }
+            }
+        }
+    }
+
+    private static int Measure(LiveGame game, GameWindowInfo w, TextWriter o)
+    {
+        {
+            var (s, readProblem) = game.ReadUi();
+            if (s is null || !s.ChampionScreenOpen)
+            {
+                o.WriteLine(s is null ? "UI state unavailable: " + readProblem : "Open the champion screen first (the measurement uses its tiles and picker items).");
+                return Cli.Failed;
+            }
+            var targets = RaidActions.Game.Dry.Screen.Targets(game, game.Ui(UiCommands.NativeLayoutPath), s)
+                .Where(t => t.Kind is "champion-tile" or "inventory-item" && t.Active && t.Rect is { Width: > 0, Height: > 0 }).ToList();
+            if (targets.Count == 0)
+            {
+                o.WriteLine("No champion tile or picker item on screen.");
+                return Cli.Failed;
+            }
+            var kinds = targets.GroupBy(t => t.Kind).Select(g => $"{g.Key} {g.Min(t => Math.Min(t.Rect!.Value.Width, t.Rect.Value.Height)):0} px").ToList();
+            var smallest = targets.Min(t => Math.Min(t.Rect!.Value.Width, t.Rect.Value.Height));
+            var policy = WindowPolicy.Load(WindowConfig);
+            var (mw, mh) = WindowPolicy.ComputeMinimum(w.Client.Width, w.Client.Height, smallest, policy.TargetPx, policy.FloorWidth, policy.FloorHeight);
+            var raw = WindowPolicy.ComputeMinimum(w.Client.Width, w.Client.Height, smallest, policy.TargetPx, 0, 0);
+            var how = $"{DateTime.Now:yyyy-MM-dd HH:mm}: at {w.Client.Width}x{w.Client.Height} the smallest target was {smallest:0} px ({string.Join(", ", kinds)}); " +
+                $"{policy.TargetPx} px needs {raw.Width}x{raw.Height}; with the floor {policy.FloorWidth}x{policy.FloorHeight}: {mw}x{mh}";
+            policy.SaveMinimum(mw, mh, how);
+            o.WriteLine(how);
+            o.WriteLine($"Minimum stored in {WindowConfig}: {mw}x{mh}.");
+            return Cli.Ok;
+        }
     }
 
     /// <summary>probe views | probe dump &lt;hex&gt; [len] | probe class &lt;hex&gt;: read-only memory diagnostics for native layouts.</summary>
@@ -254,9 +308,10 @@ public static class GameCommands
             return null;
         }
         o.WriteLine(w);
-        if (WindowStandard.Load(WindowConfig).Mismatch(w) is { } mismatch)
+        // Captures work at any usable size (templates and memory rectangles scale); only a minimized or hidden window is refused.
+        if (WindowPolicy.CaptureProblem(w) is { } unusable)
         {
-            o.WriteLine("Refused: " + mismatch);
+            o.WriteLine("Refused: " + unusable);
             return null;
         }
         var (cap, why) = WindowCapture.Take(w);

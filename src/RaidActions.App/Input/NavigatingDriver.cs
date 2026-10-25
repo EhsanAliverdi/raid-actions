@@ -12,7 +12,7 @@ namespace RaidActions.App.Input;
 /// pressing it. Every click is on the allow-list, resolved fresh from memory with an id check right before it, sent only to Raid's
 /// window, and followed by a read that must show the expected change; anything unexpected stops the run. No click during a battle.
 /// </summary>
-public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, string folder, WindowStandard standard, Action<string> log) : IGameDriver
+public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, string folder, WindowPolicy policy, Action<string> log) : IGameDriver
 {
     /// <summary>The only kinds this driver may click. Equip, Remove, Sell, PowerUp, Auto-Equip and everything else are refused.</summary>
     public static readonly IReadOnlySet<string> AllowedClicks = new HashSet<string>
@@ -123,7 +123,12 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
         if (t.Forbidden || !AllowedClicks.Contains(t.Kind)) throw new StopException($"Refused: {t.Name} may not be clicked.");
         var (w, why) = GameWindow.Find();
         if (w is null) throw new StopException(why!);
-        if ((w.NotUsable ?? standard.Mismatch(w)) is { } bad) throw new StopException(bad);
+        if (policy.Problem(w) is { } bad)
+        {
+            FitWindow();
+            (w, why) = GameWindow.Find();
+            if (w is null || policy.Problem(w) is { } still) throw new StopException(why ?? policy.Problem(w!)!);
+        }
 
         var r = t.Rect!.Value;
         var x = r.X + r.Width * (0.35f + 0.3f * (float)_random.NextDouble());
@@ -197,17 +202,35 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
         }
     }
 
-    /// <summary>The standard window size (window fit), when the window is minimized or another size.</summary>
+    private WindowPlacement? _before;
+
+    /// <summary>
+    /// When the window is minimized or below the minimum: restores it to the minimum size (the smallest that keeps click targets
+    /// big enough), remembering where it was. Any other size is used as it is.
+    /// </summary>
     private void FitWindow()
     {
         var (w, why) = GameWindow.Find();
         if (w is null) throw new StopException(why!);
-        if (w.NotUsable is null && standard.Mismatch(w) is null) return;
-        var plan = WindowFit.Plan(w, standard.Width, standard.Height);
-        var (after, problem) = WindowFit.Apply(w, plan);
+        if (policy.Problem(w) is null) return;
+        _before ??= WindowFit.Save(w);
+        var fit = WindowFit.Plan(w, policy.MinWidth, policy.MinHeight);
+        var (after, problem) = WindowFit.Apply(w, fit);
         if (after is null) throw new StopException("window fit: " + problem);
-        if (standard.Mismatch(after) is { } still) throw new StopException("window fit: " + still);
-        log($"window fit: {w.Client.Width}x{w.Client.Height} → {after.Client.Width}x{after.Client.Height}");
+        if (policy.Problem(after) is { } still) throw new StopException("window fit: " + still);
+        log($"window fit: {(w.Minimized ? "minimized" : $"{w.Client.Width}x{w.Client.Height}")} → {after.Client.Width}x{after.Client.Height} (the minimum)");
+    }
+
+    /// <summary>After the run: the window back to the size, position and state it had before this driver resized it.</summary>
+    public string? RestoreWindow()
+    {
+        if (_before is null) return null;
+        var (w, why) = GameWindow.Find();
+        if (w is null) return "window not restored: " + why;
+        var problem = WindowFit.Restore(w, _before);
+        return problem is null
+            ? $"window restored to {_before.Normal.Width}x{_before.Normal.Height} at ({_before.Normal.X},{_before.Normal.Y}){(_before.Minimized ? ", minimized" : "")}"
+            : "window not restored: " + problem;
     }
 
     private async Task<(UiState State, List<UiTarget> Targets)> Read(CancellationToken ct)
@@ -223,7 +246,7 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
     }
 
     private string? Shot(UiAction a, string caption, ClientRect r) =>
-        Screen.Overlay(folder, $"{++_shot:00}-step{a.Step}-{a.Kind}.png", caption, r, standard.Mismatch);
+        Screen.Overlay(folder, $"{++_shot:00}-step{a.Step}-{a.Kind}.png", caption, r, WindowPolicy.CaptureProblem);
 
     public string? SaveScreenshot(string folder, string name)
     {

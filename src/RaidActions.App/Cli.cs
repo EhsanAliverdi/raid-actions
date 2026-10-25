@@ -24,8 +24,9 @@ public static class Cli
           RaidActions sample [<folder>]        write a made-up account and plan to try the app
 
         Read-only, against the running game (no input, never brings it to the front):
-          RaidActions window                   find the game window: size, DPI, state, standard size
-          RaidActions window fit [--size WxH]  set the game window to the standard size, or a temporary one (asks first)
+          RaidActions window                   find the game window: size, DPI, state, usable for clicks
+          RaidActions window fit [--size WxH]  restore / size the game window to the minimum (or the given size)
+          RaidActions window minimum           measure the minimum window size from the champion screen's targets
           RaidActions capture [--out f.png]    save a capture of the game's client area
           RaidActions ui-state [--watch [--for <minutes>]]  the game's UI from memory: views, battle, selected champion and artifact
           RaidActions recognize [--image f]    recognize the screen (live, or an image) and save an annotated copy
@@ -271,10 +272,10 @@ public static class Cli
                 output.WriteLine($"{DateTime.Now:HH:mm:ss} OPEN: {line}");
                 File.AppendAllText(prompts, $"{DateTime.Now:HH:mm:ss} {line}{Environment.NewLine}");
             }
-            var standard = RaidActions.Game.Window.WindowStandard.Load(GameCommands.WindowConfig);
+            var policy = RaidActions.Game.Window.WindowPolicy.Load(GameCommands.WindowConfig);
             IGameDriver driver = o.Navigate
-                ? new Input.NavigatingDriver(game, ui, load.Plan.Plan, folder, standard, line => output.WriteLine($"{DateTime.Now:HH:mm:ss} {line}"))
-                : new RaidActions.Game.Dry.ObservingDriver(game, ui, load.Plan.Plan, folder, standard.Mismatch, Say);
+                ? new Input.NavigatingDriver(game, ui, load.Plan.Plan, folder, policy, line => output.WriteLine($"{DateTime.Now:HH:mm:ss} {line}"))
+                : new RaidActions.Game.Dry.ObservingDriver(game, ui, load.Plan.Plan, folder, policy.Problem, Say);
             var session = new PlanSession(paths, driver, game.Account, NoPacer.Instance);
             session.Load(Path.GetFullPath(o.Plan!));
             output.WriteLine(o.Navigate
@@ -310,6 +311,11 @@ public static class Cli
             {
                 output.WriteLine(e.Message);
                 return Refused;
+            }
+            finally
+            {
+                // The window goes back to the size, position and state it had before the run.
+                if (driver is Input.NavigatingDriver navigating && navigating.RestoreWindow() is { } restored) output.WriteLine(restored);
             }
             var table = new System.Text.StringBuilder();
             if (driver is Input.NavigatingDriver nav)

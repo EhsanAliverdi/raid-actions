@@ -107,7 +107,7 @@ public static class UiCommands
                     }
                     return Cli.Ok;
                 case "overlay":
-                    foreach (var (name, view) in views) Snapshot(game, ui, name, view, output, o, capture: true, anySize: args.Contains("--any-size"));
+                    foreach (var (name, view) in views) Snapshot(game, ui, name, view, output, o, capture: true);
                     return Cli.Ok;
             }
         }
@@ -147,7 +147,7 @@ public static class UiCommands
             : $"tab check: DISAGREES (tab {on[0]} on, _activeTabIndex {activeTabIndex})";
     }
 
-    private static UiTree? Snapshot(LiveGame game, UnityUi ui, string name, ulong view, string output, TextWriter o, bool capture, bool anySize = false)
+    private static UiTree? Snapshot(LiveGame game, UnityUi ui, string name, ulong view, string output, TextWriter o, bool capture)
     {
         var (w, _) = GameWindow.Find();
         if (w is null) return null;
@@ -171,9 +171,9 @@ public static class UiCommands
         o.WriteLine("    contexts: " + string.Join(", ", contexts.Select(x => $"{x.Key} x{x.Count()}")));
         File.WriteAllText(Path.ChangeExtension(file, ".targets.txt"), Table(UiTargets.Find(tree, game.Objects)));
         if (!capture) return tree;
-        if (!anySize && WindowStandard.Load(GameCommands.WindowConfig).Mismatch(w) is { } mismatch)
+        if (WindowPolicy.CaptureProblem(w) is { } noCapture)
         {
-            o.WriteLine("  overlay refused: " + mismatch);
+            o.WriteLine("  overlay refused: " + noCapture);
             return tree;
         }
         var (cap, why) = WindowCapture.Take(w);

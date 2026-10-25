@@ -107,7 +107,7 @@ open view (ViewMeta.View, a managed RaidView)
 ```
 RaidActions ui-tree [View] [--watch --for <min>]   element trees with rectangles (output/ui-trees), snapshot on every change
 RaidActions ui-rects [View]                        clickable elements: rectangle, interactable, context
-RaidActions overlay [View] [--any-size]            memory rectangles on a capture (output/overlays)
+RaidActions overlay [View]                        memory rectangles on a capture (output/overlays)
 RaidActions probe views | dump <hex> [len] | class <hex>
 ```
 
@@ -123,17 +123,29 @@ RaidActions probe views | dump <hex> [len] | class <hex>
 - `WindowCapture.Take`: `PrintWindow` with full content, which works while the window is covered. A blank image is refused.
   Copying from the screen is only a fallback when the game is the foreground window. A minimized window cannot be captured.
 
-## The standard window size
+## Window size
 
-The actioner owns one window size: **1600×900 client area** (`config/window.json`), so templates and geometry are always at
-one scale. `RaidActions window fit` asks (y/n), prints the old and new size, then sets it with `SetWindowPos` on Raid's
-window only: no activation, no z-order change, and a minimized window is restored without activation. It is centred in the
-work area. It reads the client size back; if the game takes another size, that size becomes the standard (`status:
-snapped`). Live `capture`, `recognize` and `templates recut` refuse any other size ("run window fit").
+**Any size works.** Click targets come from memory rectangles, which scale with the window (checked live at 1600×900 and
+1280×720: every rectangle ×0.8). A click is refused only when the game window is **minimized** (or hidden) or **smaller than the
+minimum client area** in `config/window.json`. In that case the run restores or enlarges the window **itself** (no y/n) to the
+minimum, the smallest size that works, and **puts it back** after the run: same size, position and state, minimized again if it
+was (`GetWindowPlacement` / `SetWindowPlacement`, without activating it).
 
-Applied on 2026-10-26: Raid took exactly 1600×900 (per-monitor DPI-aware, 1920×1080 display at 100%).
+The minimum keeps the smallest click target (a champion tile or a picker item) at least **40 px** at the window's aspect ratio,
+and is never below the floor of **1280×720**. `RaidActions window minimum` measures it from the champion screen's targets in
+memory. Below the floor it fits the window to the floor to measure precisely, then puts the window back. Measured on
+2026-10-26: the smallest target was 61 px at 1280×720 (picker items; champion tiles 59 px), so 40 px needs only about
+870×490 and **the floor decides: 1280×720**.
+
+`RaidActions window fit [--size WxH]` restores and sizes the window to the minimum, or to the given size, centred in the work
+area. Captures, recognition and overlays work at any usable size.
 
 ## Screen recognition
+
+Templates scale to the current window. Re-cut templates search a band around the capture's height divided by the height they
+were cut at; seed templates search all scales. The template cross-check is optional: a template that does not match is only
+noted and **never blocks a step on its own**. Only a template that matched *somewhere else* than the memory rectangle refuses.
+
 
 - Anchors (OpenCvSharp, normalized cross-correlation, multi-scale): `gear.tabs`, `gear.total-stats` (the champion's gear
   panel), `champion-list.sort` (the "By Rank" sort box: it matches only with that sort), `picker.auto-equip` (the artifact
@@ -150,8 +162,9 @@ Applied on 2026-10-26: Raid took exactly 1600×900 (per-monitor DPI-aware, 1920�
 ## Commands
 
 ```
-RaidActions window                 the game window: size, DPI, state, standard size
-RaidActions window fit             set it to the standard size (asks first)
+RaidActions window                 the game window: size, DPI, state, usable for clicks
+RaidActions window fit [--size WxH] restore / size it to the minimum (or the given size)
+RaidActions window minimum         measure the minimum size from the champion screen
 RaidActions capture [--out f]      a capture of the client area (output/captures)
 RaidActions ui-state [--watch]     the UI from memory
 RaidActions recognize [--image f]  anchors and gear slots, with an annotated image

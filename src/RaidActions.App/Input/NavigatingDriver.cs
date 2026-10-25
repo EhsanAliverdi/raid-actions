@@ -151,7 +151,7 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
     {
         var down = true;
         string? lastSeen = null;
-        for (var i = 0; i < 40; i++)
+        for (var i = 0; i < 80; i++)
         {
             var (s, targets) = await Read(ct);
             if (Screen.Covering(s) is { } cover) throw new StopException($"Unexpected popup {cover} over the champion screen.");
@@ -163,6 +163,9 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
             // Direction: towards the target when the list holds it (above or below the viewport); else down, then up at the end.
             var known = targets.FirstOrDefault(x => x.Kind == kind && x.Id == id && x.Active && x.Rect is not null);
             if (known is not null) down = known.Rect!.Value.Y > ar.Y;
+            // Big turns while the target is more than a viewport away, small ones near it (or when its place is unknown).
+            var away = known is null ? 0 : Math.Abs(known.Rect!.Value.Center.Y - ar.Center.Y) / Math.Max(1, ar.Height);
+            var notches = away > 2 ? 6 : away > 1 ? 3 : 2;
             var seen = string.Join(",", targets.Where(x => x.Kind == kind && x.FullyVisible).Select(x => x.Id));
             if (known is null && seen == lastSeen) down = !down; // nothing moved: an end of the list
             lastSeen = seen;
@@ -170,7 +173,7 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
             if (w is null) throw new StopException(why!);
             await NoBattle(ct);
             var (cx, cy) = ar.Center;
-            if (MouseInput.Wheel(w, cx, cy, down ? -2 : 2) is { } notSent) throw new StopException($"Not scrolled: {notSent}");
+            if (MouseInput.Wheel(w, cx, cy, down ? -notches : notches) is { } notSent) throw new StopException($"Not scrolled: {notSent}");
             log($"step {a.Step}: scrolled {area.Name} {(down ? "down" : "up")}");
             await Task.Delay(450, ct);
         }

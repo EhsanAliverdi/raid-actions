@@ -13,7 +13,18 @@ public static class MouseInput
     /// <summary>Brings the game to the front if it is not; the reason it could not, or null.</summary>
     public static string? EnsureForeground(GameWindowInfo w)
     {
-        if (GetForegroundWindow() == w.Handle) return null;
+        // A second try after a short pause: another window can take the front for a moment (a notification). Still not in front: refuse.
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            if (TryForeground(w)) return null;
+            Thread.Sleep(500);
+        }
+        return "Could not bring the game window to the front.";
+    }
+
+    private static bool TryForeground(GameWindowInfo w)
+    {
+        if (GetForegroundWindow() == w.Handle) return true;
         var fg = GetForegroundWindow();
         var fgThread = GetWindowThreadProcessId(fg, out _);
         var me = GetCurrentThreadId();
@@ -28,7 +39,7 @@ public static class MouseInput
             if (attached) AttachThreadInput(me, fgThread, false);
         }
         Thread.Sleep(250);
-        return GetForegroundWindow() == w.Handle ? null : "Could not bring the game window to the front.";
+        return GetForegroundWindow() == w.Handle;
     }
 
     /// <summary>A left click at client point (x, y). Returns null when sent, else why not (nothing sent).</summary>

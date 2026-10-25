@@ -27,6 +27,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\RaidActions.Core\RaidActions.Core.csproj" />
+    <ProjectReference Include="..\RaidActions.Game\RaidActions.Game.csproj" />
     <ProjectReference Include="..\RaidActions.Protocol\RaidActions.Protocol.csproj" />
   </ItemGroup>
 

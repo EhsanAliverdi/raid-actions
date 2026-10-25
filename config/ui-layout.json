@@ -1,0 +1,24 @@
+{
+  "$comment": [
+    "Screen geometry relative to anchors (numbers only, no game images). A rect is [x, y, width, height] in the anchor template's",
+    "own pixels as seeded (anchorWidth wide); at match time it is scaled by matchedWidth / anchorWidth and offset by the match.",
+    "Measured on raid-extractor's output/ui-reference/02-gear-panel-dorothy.png (slot boxes found as 44-45 px squares).",
+    "Status 'unverified' until checked on a live capture of the running game."
+  ],
+  "gearSlots": {
+    "anchor": "gear.tabs",
+    "anchorWidth": 170,
+    "status": "unverified",
+    "slots": {
+      "Weapon": [ 14, 48, 44, 44 ],
+      "Helmet": [ 64, 48, 44, 44 ],
+      "Shield": [ 114, 47, 44, 44 ],
+      "Gloves": [ 14, 98, 44, 44 ],
+      "Chest": [ 64, 97, 44, 44 ],
+      "Boots": [ 114, 98, 44, 44 ],
+      "Ring": [ 12, 158, 44, 44 ],
+      "Cloak": [ 62, 158, 44, 44 ],
+      "Banner": [ 112, 158, 44, 44 ]
+    }
+  }
+}

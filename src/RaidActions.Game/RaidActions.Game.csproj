@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Reading the game, never input: the Raid window (find, DPI, capture), screen recognition (OpenCvSharp), and the game's
+    memory through RaidExtractor.Core (account and UI state; PROCESS_VM_READ only). Input lives only in RaidActions.exe.
+  -->
+  <PropertyGroup>
+    <RootNamespace>RaidActions.Game</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="OpenCvSharp4.Windows" Version="4.13.0.20260602" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RaidActions.Core\RaidActions.Core.csproj" />
+  </ItemGroup>
+
+</Project>

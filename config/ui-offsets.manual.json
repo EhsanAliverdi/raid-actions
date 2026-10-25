@@ -1,0 +1,12 @@
+{
+  "$comment": "Offsets ConfigGen cannot resolve (fields of generic bases), worked out by hand from the dump. Each must be verified in-game before it is trusted.",
+  "build": { "gameVersion": "11.85.5" },
+  "fields": {
+    "Client.MVVM.Base.ViewModel.Properties.IntProperty._value": {
+      "offset": "0x24",
+      "type": "int",
+      "source": "dump/redux/il2cpp.h: IntProperty -> Property_1_System_Int32___Fields { Property__Fields (OnChange 0x10, _oneTimeListeners 0x18); bool _changing 0x20; int32_t _value 0x24 }",
+      "status": "unverified"
+    }
+  }
+}

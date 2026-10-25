@@ -23,6 +23,13 @@ public static class Cli
           RaidActions run <plan.json>          run the plan
           RaidActions sample [<folder>]        write a made-up account and plan to try the app
 
+        Read-only, against the running game (no input, never brings it to the front):
+          RaidActions window                   find the game window: size, DPI, state
+          RaidActions capture [--out f.png]    save a capture of the game's client area
+          RaidActions ui-state [--watch]       the game's UI from memory: open views, battle, selected champion and artifact
+          RaidActions recognize [--image f]    recognize the screen (live, or an image) and save an annotated copy
+          RaidActions templates seed|recut     cut the anchor templates (from reference screenshots | from the live window)
+
         Options:
           --extractor-output <dir>   raid-extractor's output folder (default: the folder holding the plan's plans\ folder,
                                      else ..\raid-extractor\output)
@@ -30,18 +37,20 @@ public static class Cli
           --output <dir>             logs, snapshots, screenshots (default: output\ in this repo)
           --confirm <code>           the plan's confirmation code (first 8 characters of its id) instead of typing it
           --pace <min>-<max>         milliseconds between inputs (default 150-450)
+          --live                     validate: read the account from the running game instead of account.json
 
         Abort a run: Ctrl+Alt+Esc (anywhere) or Ctrl+C.
         Exit codes: 0 done, 1 refused, 2 failed, 3 aborted, 4 usage error, 5 not confirmed.
         """;
 
     public sealed record Options(string Command, string? Plan, string? ExtractorOutput, string? Account, string? Output, string? Confirm,
-        TimeSpan PaceMin, TimeSpan PaceMax);
+        TimeSpan PaceMin, TimeSpan PaceMax, bool Live = false);
 
     public static Options? Parse(string[] args, TextWriter err)
     {
         if (args.Length == 0) return null;
         string? plan = null, ext = null, account = null, output = null, confirm = null;
+        var live = false;
         TimeSpan min = TimeSpan.FromMilliseconds(150), max = TimeSpan.FromMilliseconds(450);
         var command = args[0].ToLowerInvariant();
         for (var i = 1; i < args.Length; i++)
@@ -53,6 +62,7 @@ public static class Cli
                 case "--account": account = Next(); break;
                 case "--output": output = Next(); break;
                 case "--confirm": confirm = Next(); break;
+                case "--live": live = true; break;
                 case "--pace":
                     var parts = Next().Split('-');
                     if (parts.Length != 2 || !int.TryParse(parts[0], out var a) || !int.TryParse(parts[1], out var b) || a < 0 || b < a)
@@ -66,13 +76,21 @@ public static class Cli
                     break;
             }
         }
-        return new Options(command, plan, ext, account, output, confirm, min, max);
+        if (live && command != "validate") throw new ArgumentException("--live is only for validate in this phase (runs use the fake executor).");
+        return new Options(command, plan, ext, account, output, confirm, min, max, live);
     }
 
     /// <param name="interactive">Whether <paramref name="input"/> is a person at a console (to type the confirmation).</param>
     /// <param name="abortHook">Receives the session's abort, for Ctrl+C and the kill switch.</param>
     public static async Task<int> RunAsync(string[] args, TextWriter output, TextReader input, bool interactive, Action<Action>? abortHook = null)
     {
+        if (args.Length > 0 && GameCommands.Names.Contains(args[0].ToLowerInvariant()))
+        {
+            var outIndex = Array.IndexOf(args, "--output");
+            var outDir = AppPaths.Resolve(null, outIndex >= 0 && outIndex + 1 < args.Length ? args[outIndex + 1] : null).Output;
+            return await GameCommands.RunAsync(args[0].ToLowerInvariant(), args, outDir, output);
+        }
+
         Options? o;
         try { o = Parse(args, output); }
         catch (ArgumentException e)
@@ -104,6 +122,7 @@ public static class Cli
         }
 
         paths = AppPaths.ForPlan(o.Plan, o.ExtractorOutput, o.Output);
+        if (o.Live) return await ValidateLiveAsync(o, paths, output);
         var accountPath = Path.GetFullPath(o.Account ?? Path.Combine(paths.ExtractorOutput, "account.json"));
         if (!File.Exists(accountPath))
         {
@@ -169,6 +188,34 @@ public static class Cli
         if (result.LogPath is not null) output.WriteLine($"Log: {result.LogPath}");
         if (result.ScreenshotPath is not null) output.WriteLine($"Screenshot: {result.ScreenshotPath}");
         return result.Outcome switch { RunOutcome.Completed => Ok, RunOutcome.Aborted => Aborted, _ => Failed };
+    }
+
+    /// <summary>validate --live: the plan against a fresh read of the running game (read-only; no executor).</summary>
+    private static async Task<int> ValidateLiveAsync(Options o, SessionPaths paths, TextWriter output)
+    {
+        var (game, problem) = RaidActions.Game.Memory.LiveGame.Open(GameCommands.LivePaths(paths.Output));
+        if (game is null)
+        {
+            output.WriteLine(problem);
+            return Failed;
+        }
+        using (game)
+        {
+            output.WriteLine($"LIVE READ of the running game ({game.GameVersion}), read-only. No executor: nothing can run.");
+            var session = new PlanSession(paths, new NoInputDriver(), game.Account, NoPacer.Instance);
+            var load = session.Load(Path.GetFullPath(o.Plan!));
+            foreach (var i in load.Issues) output.WriteLine("  " + i);
+            if (!load.Ok)
+            {
+                output.WriteLine("Refused: the plan file is not valid.");
+                return Refused;
+            }
+            var check = await session.CheckAsync();
+            foreach (var i in check.Issues.Where(i => !load.Issues.Contains(i))) output.WriteLine("  " + i);
+            foreach (var line in Confirmation.Lines(load.Plan!, check, null, "none")) output.WriteLine(line);
+            output.WriteLine(check.CanStart ? "The plan matches the live account." : check.Issues.HasErrors() ? "Refused: the plan does not match the live account." : "Nothing to do.");
+            return check.Issues.HasErrors() ? Refused : Ok;
+        }
     }
 
     /// <summary>IProgress that reports on the calling thread (console output stays in order).</summary>

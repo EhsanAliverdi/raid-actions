@@ -22,6 +22,7 @@ by mouse/keyboard input and screen recognition, step by step, verifying every st
 |---|---|
 | `src/RaidActions.ExtractorCore` | raid-extractor's `RaidExtractor.Core`, compiled from its sources into this repo's `bin/obj`; `core-sources.lock` pins them |
 | `src/RaidActions.Core` | Plan reader and validator, account check, plan-to-actions conversion, runner (pause/abort/verify), run log, gear snapshot, fake game |
+| `src/RaidActions.Game` | Reading the game, never input: the window, captures, screen recognition (OpenCvSharp), UI state and live account reads through Core ([docs/READING-THE-GAME.md](docs/READING-THE-GAME.md)) |
 | `src/RaidActions.Protocol` | Messages for the planner ([docs/PROTOCOL.md](docs/PROTOCOL.md)) |
 | `src/RaidActions.App` | `RaidActions.exe`: the CLI and the window |
 | `tests/RaidActions.Tests` | Everything above, without the game |
@@ -51,6 +52,10 @@ RaidActions validate <plan.json>         check the plan against the account
 RaidActions dry-run <plan.json>          navigate and highlight every step, never equip
 RaidActions run <plan.json>              run it (asks for the plan's confirmation code, or --confirm <code>)
 RaidActions sample                       a made-up account and plan to try the app
+
+Read-only, against the running game:
+RaidActions validate <plan.json> --live  check the plan against the game as it is now
+RaidActions window | capture | ui-state | recognize | templates seed|recut
 ```
 
 A plan in raid-extractor's `output\plans\` is checked against that output's `account.json` and `history\`. Phase 1: the fake
@@ -71,5 +76,6 @@ dotnet test
 
 - Phase 0: plan reader, validator, account check, action conversion, snapshot.
 - Phase 1: protocol, runner, fake game, CLI, window.
+- Phase 2: game window, DPI, capture, screen recognition, UI state and live account reads from memory (read-only).
 
 Requests for the planner: [docs/requests-for-raid-extractor.md](docs/requests-for-raid-extractor.md).

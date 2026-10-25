@@ -16,6 +16,13 @@ public static class AppPaths
         return AppContext.BaseDirectory;
     }
 
+    /// <summary>raid-extractor's folder: RaidExtractorRoot environment variable, else next to this repo.</summary>
+    public static string RaidExtractorRoot() =>
+        Path.GetFullPath(Environment.GetEnvironmentVariable("RaidExtractorRoot") ?? Path.Combine(Root(), "..", "raid-extractor"));
+
+    /// <summary>This repo's config folder (ui-offsets.json, ui-layout.json).</summary>
+    public static string Config() => Path.Combine(Root(), "config");
+
     public static SessionPaths Resolve(string? extractorOutput, string? output)
     {
         var root = Root();

@@ -90,3 +90,12 @@ public sealed class PauseGate
         return t.WaitAsync(ct);
     }
 }
+
+/// <summary>A driver for checks only: it refuses every action (used when nothing may run, e.g. validate against the live game).</summary>
+public sealed class NoInputDriver : IGameDriver
+{
+    public string Name => "none";
+    public bool SendsInput => false;
+    public Task<DriverResult> PerformAsync(UiAction action, CancellationToken ct) => Task.FromResult(DriverResult.Failure("No executor: this session only checks."));
+    public string? SaveScreenshot(string folder, string name) => null;
+}

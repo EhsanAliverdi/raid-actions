@@ -1,0 +1,34 @@
+{
+  "$comment": [
+    "The game's UI state that raid-actions reads (read-only), in raid-extractor's config/names.json format.",
+    "scripts/gen-ui-offsets.ps1 runs raid-extractor's ConfigGen on it in a staging folder and writes config/ui-offsets.json.",
+    "Path: AppViewModel (static) -> _overlayManager -> _viewMaster (RaidViewMaster) -> _views (List<ViewMeta>) -> ViewMeta.View",
+    "-> BaseView.Context -> HeroesInfoOverlayContext (the champion screen) -> _heroId, _heroDetailsContext._inventoryArtifactId."
+  ],
+  "roots": {
+    "AppViewModel": {
+      "typeInfo": "Client.ViewModel.AppViewModel",
+      "classPath": [ "parent" ],
+      "expect": { "class": "AppViewModel", "namespace": "Client.ViewModel", "parentClass": "SingleInstance`1" },
+      "staticFieldsStruct": "SingleInstance_1_Client_ViewModel_AppViewModel___StaticFields",
+      "staticField": "_instance"
+    }
+  },
+  "enums": [
+    "Client.ViewModel.DTO.ViewKey",
+    "Client.RaidApp.ViewVisibility",
+    "Client.RaidApp.ViewState"
+  ],
+  "reviewed": {},
+  "types": {
+    "Client.ViewModel.AppViewModel": [ "_overlayManager", "_messageBoxes", "_blockUi", "_routing" ],
+    "Client.ViewModel.OverlayManagerBase": [ "_viewMaster", "Views", "OpenedOverlaysCount" ],
+    "Client.ViewModel.BlockUi": [ "_blockingEventsCounter" ],
+    "Client.RaidApp.RaidViewMaster": [ "_views", "_lastTopView" ],
+    "Client.RaidApp.ViewMeta": [ "Key", "Token", "State", "View", "Visibility" ],
+    "Client.MVVM.Base.View.BaseView": [ "Context" ],
+    "Client.ViewModel.Contextes.HeroesInfoDialog.HeroesInfoOverlayContext": [ "_heroId", "_heroDetailsContext", "_selectedHeroContext", "_viewState", "_inventoryContext", "_heroes" ],
+    "Client.ViewModel.Contextes.HeroesInfoDialog.HeroDetails.HeroDetailsContext": [ "_heroId", "_inventoryArtifactId", "_activeTabIndex" ],
+    "Client.ViewModel.Contextes.HeroesInfoDialog.SelectedHero.SelectedHeroContext": [ "_heroId" ]
+  }
+}

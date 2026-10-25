@@ -390,6 +390,59 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Items.InventoryArtifactContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "Avatar": {
+          "offset": "0xC8",
+          "type": "ArtifactAvatarContext",
+          "field": "Avatar",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Items.InventoryItemContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_isSelected": {
+          "offset": "0x78",
+          "type": "BoolProperty",
+          "field": "_isSelected",
+          "source": "field",
+          "status": "direct"
+        },
+        "_isVisible": {
+          "offset": "0x80",
+          "type": "BoolProperty",
+          "field": "_isVisible",
+          "source": "field",
+          "status": "direct"
+        },
+        "_ownerIsCurrentHero": {
+          "offset": "0x90",
+          "type": "BoolProperty",
+          "field": "_ownerIsCurrentHero",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.Generic.ArtifactAvatarContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "Artifact": {
+          "offset": "0xC0",
+          "type": "Artifact",
+          "field": "_Artifact_k__BackingField",
+          "source": "backingField",
+          "status": "direct"
+        }
+      }
+    },
     "UnityEngine.UI.Selectable": {
       "kind": "class",
       "offsetsRelativeTo": "object",

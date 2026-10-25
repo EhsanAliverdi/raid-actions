@@ -33,6 +33,9 @@
     "UnityEngine.Object": [ "m_CachedPtr" ],
     "Client.MVVM.Base.View.Bindings.BindingMasterPath": [ "MasterPath" ],
     "Client.ViewModel.Contextes.HeroesInfoDialog.HeroSlot.HeroSlotContext": [ "_heroId", "_isSelected", "_slotType" ],
+    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Items.InventoryArtifactContext": [ "Avatar" ],
+    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Items.InventoryItemContext": [ "_isSelected", "_isVisible", "_ownerIsCurrentHero" ],
+    "Client.ViewModel.Contextes.Generic.ArtifactAvatarContext": [ "Artifact" ],
     "UnityEngine.UI.Selectable": [ "m_Interactable" ],
     "UnityEngine.UI.Toggle": [ "m_IsOn" ],
     "UnityEngine.UI.CanvasScaler": [ "m_ScaleFactor", "m_ReferenceResolution", "m_UiScaleMode" ]

@@ -240,9 +240,9 @@ public static class UiCommands
     public static string Table(IReadOnlyList<UiTarget> targets)
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"  {"target",-28} {"id",-6} {"rectangle",-24} {"active",-6} {"interactable",-12} {"visible",-8} click");
+        sb.AppendLine($"  {"target",-28} {"id / slot",-10} {"rectangle",-24} {"active",-6} {"interactable",-12} {"visible",-8} click");
         foreach (var t in targets)
-            sb.AppendLine($"  {t.Name,-28} {t.Id?.ToString() ?? "-",-6} {t.Rect?.ToString() ?? "-",-24} {(t.Active ? "yes" : "no"),-6} {(t.Interactable is { } i ? (i ? "yes" : "NO") : "-"),-12} {(t.FullyVisible ? "yes" : "no"),-8} {t.NotClickable ?? "ok"}{(t.Note is { } n ? $"  ({n})" : "")}");
+            sb.AppendLine($"  {t.Name,-28} {t.Id?.ToString() ?? t.Slot ?? "-",-10} {t.Rect?.ToString() ?? "-",-24} {(t.Active ? "yes" : "no"),-6} {(t.Interactable is { } i ? (i ? "yes" : "NO") : "-"),-12} {(t.FullyVisible ? "yes" : "no"),-8} {t.NotClickable ?? "ok"}{(t.Note is { } n ? $"  ({n})" : "")}");
         return sb.ToString();
     }
 

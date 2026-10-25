@@ -30,6 +30,10 @@ public static class Cli
           RaidActions ui-state [--watch [--for <minutes>]]  the game's UI from memory: views, battle, selected champion and artifact
           RaidActions recognize [--image f]    recognize the screen (live, or an image) and save an annotated copy
           RaidActions templates seed|recut     cut the anchor templates (from reference screenshots | from the live window)
+          RaidActions ui-tree [View] [--watch --for <min>]  Unity UI from memory: elements, rectangles, contexts (output\ui-trees)
+          RaidActions ui-rects [View]          clickable elements with their rectangles, interactable and context
+          RaidActions overlay [View]           memory rectangles drawn on a capture (output\overlays)
+          RaidActions probe views|dump|class   read-only memory diagnostics for the native layouts
 
         Options:
           --extractor-output <dir>   raid-extractor's output folder (default: the folder holding the plan's plans\ folder,
@@ -85,6 +89,12 @@ public static class Cli
     /// <param name="abortHook">Receives the session's abort, for Ctrl+C and the kill switch.</param>
     public static async Task<int> RunAsync(string[] args, TextWriter output, TextReader input, bool interactive, Action<Action>? abortHook = null)
     {
+        if (args.Length > 0 && UiCommands.Names.Contains(args[0].ToLowerInvariant()))
+        {
+            var outIndex = Array.IndexOf(args, "--output");
+            var outDir = AppPaths.Resolve(null, outIndex >= 0 && outIndex + 1 < args.Length ? args[outIndex + 1] : null).Output;
+            return await UiCommands.RunAsync(args[0].ToLowerInvariant(), args, outDir, output);
+        }
         if (args.Length > 0 && GameCommands.Names.Contains(args[0].ToLowerInvariant()))
         {
             var outIndex = Array.IndexOf(args, "--output");

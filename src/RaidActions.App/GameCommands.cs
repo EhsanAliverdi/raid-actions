@@ -11,7 +11,7 @@ namespace RaidActions.App;
 /// </summary>
 public static class GameCommands
 {
-    public static readonly string[] Names = ["window", "capture", "ui-state", "recognize", "templates"];
+    public static readonly string[] Names = ["window", "capture", "ui-state", "recognize", "templates", "probe"];
 
     public static LiveGamePaths LivePaths(string output) => new(AppPaths.RaidExtractorRoot(),
         Path.Combine(AppPaths.Config(), "ui-offsets.json"), Path.Combine(AppPaths.Config(), "ui-offsets.manual.json"), output);
@@ -104,6 +104,8 @@ public static class GameCommands
                 o.WriteLine($"Annotated: {file}");
                 return Cli.Ok;
             }
+            case "probe":
+                return Probe(args, output, o);
             case "templates":
             {
                 var sub = args.Length > 1 ? args[1] : "";
@@ -182,6 +184,48 @@ public static class GameCommands
         o.WriteLine($"The game took {after.Client.Width}x{after.Client.Height} (aspect {aspect:0.000}) instead of {standard.RequestedWidth}x{standard.RequestedHeight}.");
         o.WriteLine($"That is now the standard size ({WindowConfig}): {saved}.");
         return Cli.Ok;
+    }
+
+    /// <summary>probe views | probe dump &lt;hex&gt; [len] | probe class &lt;hex&gt;: read-only memory diagnostics for native layouts.</summary>
+    private static int Probe(string[] args, string output, TextWriter o)
+    {
+        var (game, problem) = LiveGame.Open(LivePaths(output));
+        if (game is null)
+        {
+            o.WriteLine(problem);
+            return Cli.Failed;
+        }
+        using (game)
+        {
+            var g = game.Objects;
+            ulong Hex(int i) => ulong.Parse(args[i].Replace("0x", ""), System.Globalization.NumberStyles.HexNumber);
+            switch (args.Length > 1 ? args[1] : "")
+            {
+                case "views":
+                {
+                    var app = g.Root("AppViewModel", "Client.ViewModel.AppViewModel");
+                    var master = g.Ref(g.Ref(app, "Client.ViewModel.AppViewModel", "_overlayManager"), "Client.ViewModel.OverlayManagerBase", "_viewMaster");
+                    foreach (var meta in g.RefList(g.Ref(master, "Client.RaidApp.RaidViewMaster", "_views"), 256))
+                    {
+                        var key = g.Int(meta, "Client.RaidApp.ViewMeta", "Key");
+                        var name = g.EnumName(UiStateReader.ViewKeyEnum, key) ?? $"#{key}";
+                        if (name.EndsWith("NotificationsView", StringComparison.Ordinal)) continue;
+                        var view = g.Ref(meta, "Client.RaidApp.ViewMeta", "View");
+                        var native = view == 0 || !game.Raw.TryReadU64(view + 0x10, out var p) ? 0 : p;
+                        o.WriteLine($"{name,-32} view 0x{view:X} {(view == 0 ? "" : g.ClassName(view)),-60} native 0x{native:X}");
+                    }
+                    return Cli.Ok;
+                }
+                case "dump" when args.Length > 2:
+                    o.Write(Game.Memory.Probe.Dump(game.Raw, Hex(2), args.Length > 3 ? int.Parse(args[3].Replace("0x", ""), System.Globalization.NumberStyles.HexNumber) : 0x100));
+                    return Cli.Ok;
+                case "class" when args.Length > 2:
+                    o.WriteLine(g.ClassName(Hex(2)));
+                    return Cli.Ok;
+            }
+            o.WriteLine("probe views | probe dump <hex> [hexlen] | probe class <hex>");
+            return Cli.Usage;
+        }
     }
 
     private static Capture? TakeCapture(TextWriter o)

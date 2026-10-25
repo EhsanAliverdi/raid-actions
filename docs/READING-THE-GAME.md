@@ -47,6 +47,47 @@ once raid-extractor has a new dump.
 At run time the UI offsets are merged with raid-extractor's `config/offsets.json` (read) into `output/runtime`. They must
 come from the same game build, or nothing is read.
 
+## Click targets from Unity's UI (memory, not templates)
+
+Where to click comes from the game's own UI objects, read from memory (read-only), not from template matching.
+
+```
+open view (ViewMeta.View, a managed RaidView)
+ → UnityEngine.Object.m_CachedPtr → native MonoBehaviour → +0x20 GameObject
+ → GameObject components[0] = its RectTransform → +0x28 TransformHierarchy, +0x30 index
+ → hierarchy: localTransforms (TRS), parentIndices, deepChildCount, transforms[], nextIndices
+```
+
+- **The subtree** of a view is a depth-first walk along `nextIndices` for `deepChildCount` nodes. Subtrees are not always
+  contiguous index ranges: the Arena HUD's range had 84 empty slots.
+- **Per element**: name, active self / in hierarchy, components, and the managed script on each component. A script counts
+  only if its `m_CachedPtr` points back to that component. Also read: the bound view-model context (any `BaseView`'s `Context`)
+  and `Selectable.m_Interactable`.
+- **Screen rectangle**: the RectTransform's cached rect (local units) is transformed by the world matrix (TRS composed up
+  the parents). Raid's UI canvases are **Screen Space – Overlay**: the canvas root sits at the client centre, scaled by the
+  canvas scaler (1600/1920 = 0.8333 at 1600×900), so world coordinates are client pixels with the origin at the bottom left.
+  Any other canvas mode, or a canvas that does not fit the current client size (e.g. a minimized game), gives **no
+  rectangle**, and a step on it refuses.
+- The native layouts are not in the IL2CPP dump. They were worked out on the running game with `RaidActions probe` and are
+  listed with how each was established in `config/ui-native.json` (verified / unverified). The reader refuses if the game
+  version differs from that file's. Managed fields (`m_CachedPtr`, `Selectable.m_Interactable`, `CanvasScaler`) come
+  through ConfigGen as before.
+- **Ids, not positions**: list items (champion tiles, inventory items, chat lines, …) each have their own context object,
+  so a target is "the element whose context is a hero item with id X", never a position worked out from a sort order. The
+  exact context classes and id fields of the champion screen are taken from its live tree (`ui-tree`) and added through
+  ConfigGen.
+- **Overlay check**: `RaidActions overlay` captures the window and draws the memory rectangles on it (green clickable, red
+  not interactable, cyan bound context) in `output/overlays`.
+- **Templates are only a cross-check**: a template that matched somewhere else than the memory rectangle (overlap under
+  50%) makes the step refuse; a template that did not match at all does not.
+
+```
+RaidActions ui-tree [View] [--watch --for <min>]   element trees with rectangles (output/ui-trees), snapshot on every change
+RaidActions ui-rects [View]                        clickable elements: rectangle, interactable, context
+RaidActions overlay [View] [--any-size]            memory rectangles on a capture (output/overlays)
+RaidActions probe views | dump <hex> [len] | class <hex>
+```
+
 ## Live account read
 
 `LiveGame.Account` uses Core's exporter on the running game, writing to `output/live` (never to raid-extractor), so

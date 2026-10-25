@@ -52,11 +52,18 @@ public static class MouseInput
         return null;
     }
 
-    /// <summary>Mouse-wheel notches at client point (x, y): negative scrolls down (towards later items).</summary>
+    /// <summary>
+    /// Mouse-wheel notches at client point (x, y): negative scrolls down (towards later items). Sent as one event per notch: the game's
+    /// scroll lists move one step per wheel event, whatever the event's delta.
+    /// </summary>
     public static string? Wheel(GameWindowInfo w, float x, float y, int notches)
     {
         if (Prepare(w, x, y) is { } problem) return problem;
-        mouse_event(WheelFlag, 0, 0, notches * 120, IntPtr.Zero);
+        for (var i = 0; i < Math.Abs(notches); i++)
+        {
+            mouse_event(WheelFlag, 0, 0, Math.Sign(notches) * 120, IntPtr.Zero);
+            Thread.Sleep(35);
+        }
         return null;
     }
 

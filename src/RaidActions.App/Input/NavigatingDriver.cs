@@ -165,7 +165,7 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
             if (known is not null) down = known.Rect!.Value.Y > ar.Y;
             // Big turns while the target is more than a viewport away, small ones near it (or when its place is unknown).
             var away = known is null ? 0 : Math.Abs(known.Rect!.Value.Center.Y - ar.Center.Y) / Math.Max(1, ar.Height);
-            var notches = away > 2 ? 6 : away > 1 ? 3 : 2;
+            var notches = away > 4 ? 15 : away > 2 ? 8 : away > 1 ? 4 : 2;
             var seen = string.Join(",", targets.Where(x => x.Kind == kind && x.FullyVisible).Select(x => x.Id));
             if (known is null && seen == lastSeen) down = !down; // nothing moved: an end of the list
             lastSeen = seen;

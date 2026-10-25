@@ -242,6 +242,20 @@ public class NavigationTargetsTests
     }
 
     [Fact]
+    public void A_popup_offer_can_only_be_closed()
+    {
+        var offer = new UiTree("AggressiveOfferOverlay",
+        [
+            N("[OV] AggressiveOfferOverlay/Box/Button", 333, 224),
+            N("[OV] AggressiveOfferOverlay/Box/Prizes/ArtifactAvatar_h", 432, 78),
+            N("[OV] AggressiveOfferOverlay/Box/BTN_Close1", 527, 3),
+        ], 1600, 900, null, 0.8333f);
+        var t = RaidActions.Game.Memory.UiTargets.Find(offer, new NoObjects());
+        Assert.Equal("dialog-close", Assert.Single(t).Kind);   // the buy button and prizes are no targets at all
+        Assert.Contains("dialog-close", App.Input.NavigatingDriver.AllowedClicks);
+    }
+
+    [Fact]
     public void Navigation_may_never_click_equip_remove_sell_upgrade_or_auto_equip()
     {
         var allowed = App.Input.NavigatingDriver.AllowedClicks;

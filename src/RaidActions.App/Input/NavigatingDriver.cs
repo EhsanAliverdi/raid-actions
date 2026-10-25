@@ -23,7 +23,7 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
     public static readonly IReadOnlySet<string> AllowedClicks = new HashSet<string>
     {
         "open-champions", "screen-close", "champion-tile", "gear-tab", "gear-slot", "inventory-item",
-        "picker-close", "popup-close-selected", "popup-close-worn", "manage-close",
+        "picker-close", "popup-close-selected", "popup-close-worn", "manage-close", "dialog-close",
     };
 
     private static readonly TimeSpan BattleWait = TimeSpan.FromMinutes(30);
@@ -59,6 +59,12 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
             case ActionKind.OpenChampion:
             {
                 var (s, _) = await Read(ct);
+                // Popups over the village (offers and the like): closed with their own close button, at most three, each confirmed gone.
+                for (var i = 0; i < 3 && !s.ChampionScreenOpen && s.Top?.Name is { } top && top.EndsWith("Overlay", StringComparison.Ordinal); i++)
+                {
+                    await Click(a, "dialog-close", null, null, (s2, _) => s2.Top?.Name != top, $"the {top} popup closes", ct);
+                    (s, _) = await Read(ct);
+                }
                 if (!s.ChampionScreenOpen)
                 {
                     if (Screen.Covering(s) is null && s.Top?.Name is "VillageHUD" or "Village")
@@ -172,7 +178,7 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
         if (!AllowedClicks.Contains(kind)) throw new StopException($"Refused: {kind} is not an allowed click.");
         await NoBattle(ct);
         var (s, targets) = await Read(ct);
-        if (Screen.Covering(s) is { } cover && kind is not ("manage-close")) throw new StopException($"Unexpected popup {cover} over the champion screen.");
+        if (Screen.Covering(s) is { } cover && kind is not ("manage-close" or "dialog-close")) throw new StopException($"Unexpected popup {cover} over the champion screen.");
         var (t, problem) = UiTargets.Resolve(targets, kind, id, slot);
         if (t is null) throw new StopException($"{kind}: {problem}");
         if (id is not null && t.Id != id) throw new StopException($"{kind}: id {t.Id}, expected {id}.");

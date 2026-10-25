@@ -153,6 +153,8 @@ public static partial class UiTargets
                 // The manage-gear dialog (RemoveArtifactOverlay).
                 "Unequip_h" when t.View == "RemoveArtifactOverlay" => ("manage-remove", "manage gear: Remove"),
                 "BTN_Close1" when t.View == "RemoveArtifactOverlay" => ("manage-close", "manage gear: close"),
+                // Any other popup's close button (offers and the like): closing only; their other buttons are never targets.
+                "BTN_Close1" when t.View.EndsWith("Overlay", StringComparison.Ordinal) => ("dialog-close", $"{t.View}: close"),
                 _ when NeverClick.Contains(n.Name) => ("forbidden", n.Name switch
                 {
                     "Sell_h" => "manage gear: Sell",

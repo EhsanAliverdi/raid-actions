@@ -45,7 +45,7 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
             case ActionKind.CheckGameIdle:
                 await NoBattle(ct);
                 FitWindow();
-                return DriverResult.Success("no battle, window at the standard size");
+                return DriverResult.Success("no battle, window usable for clicks");
             case ActionKind.FocusGame:
                 return DriverResult.Success("the game is brought to the front only when a click needs it");
             case ActionKind.OpenChampion:

@@ -45,10 +45,21 @@ public static class UiCommands
             {
                 var until = double.TryParse(Opt("--for"), System.Globalization.CultureInfo.InvariantCulture, out var min) ? DateTime.Now.AddMinutes(min) : DateTime.MaxValue;
                 string? last = null;
+                string? lastProblem = null;
+                var lastBeat = DateTime.Now;
                 o.WriteLine($"Watching until {(until == DateTime.MaxValue ? "stopped" : until.ToString("HH:mm:ss"))}; a snapshot (tree + overlay) on every UI change.");
                 while (DateTime.Now < until)
                 {
-                    var (s, _) = game.ReadUi();
+                    var (s, readProblem) = game.ReadUi();
+                    // A failed read is logged (once per distinct problem), never mistaken for "nothing changed".
+                    if (s is null && readProblem != lastProblem) o.WriteLine($"{DateTime.Now:HH:mm:ss} UI read failed: {readProblem}");
+                    lastProblem = s is null ? readProblem : null;
+                    if (DateTime.Now - lastBeat > TimeSpan.FromMinutes(1))
+                    {
+                        lastBeat = DateTime.Now;
+                        var (w2, _) = GameWindow.Find();
+                        o.WriteLine($"{DateTime.Now:HH:mm:ss} still watching: {(s is null ? "no UI state" : s.Top?.Name ?? "no top view")}, window {w2?.Client.Width}x{w2?.Client.Height}");
+                    }
                     var key = s is null ? null : string.Join("|", s.Active.Where(v => v.Visible).Select(v => v.Name)) + s.ChampionScreen;
                     if (key is not null && key != last)
                     {

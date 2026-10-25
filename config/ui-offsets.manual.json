@@ -6,13 +6,15 @@
       "offset": "0x24",
       "type": "int",
       "source": "dump/redux/il2cpp.h: IntProperty -> Property_1_System_Int32___Fields { Property__Fields (OnChange 0x10, _oneTimeListeners 0x18); bool _changing 0x20; int32_t _value 0x24 }",
-      "status": "unverified"
+      "status": "verified",
+      "verified": "2026-10-26 08:14: HeroDetailsContext._activeTabIndex read 0 -> 1 -> 0 as the user clicked gear tab 1 -> 2 (crown) -> 1, each time matching the tab Toggle with m_IsOn (ConfigGen offset)"
     },
     "Client.MVVM.Base.ViewModel.Properties.BoolProperty._value": {
       "offset": "0x21",
       "type": "bool",
       "source": "dump/redux/il2cpp.h: BoolProperty -> Property_1_System_Boolean___Fields { Property__Fields (0x10, 0x18); bool _changing 0x20; bool _value 0x21 }",
-      "status": "unverified"
+      "status": "verified",
+      "verified": "2026-10-26 08:14: of the active champion tiles exactly one read HeroSlotContext._isSelected = true, Kael's (hero 1), the champion HeroesInfoOverlayContext._heroId named"
     }
   }
 }

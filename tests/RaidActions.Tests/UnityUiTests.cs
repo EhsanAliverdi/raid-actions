@@ -253,8 +253,8 @@ public class UnityUiTests
     [Fact]
     public void Only_verified_offsets_are_marked_verified()
     {
-        Assert.Contains("hierarchy.nextIndices", L.Unverified);
-        Assert.Contains("transform.rectTransformTypeIndex", L.Unverified);
+        Assert.Contains("rectTransform.pivot", L.Unverified);               // not used for rectangles (the cached rect is)
+        Assert.DoesNotContain("hierarchy.nextIndices", L.Unverified);
         Assert.DoesNotContain("rectTransform.rect", L.Unverified);
     }
 }

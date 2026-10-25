@@ -41,8 +41,10 @@ raid-extractor's `dump/`, `work/` and `upstream/` (read-only use; ConfigGen writ
 script writes the result to `config/ui-offsets.json`. Nothing in raid-extractor is written. Re-run it after a game update,
 once raid-extractor has a new dump.
 
-`config/ui-offsets.manual.json` holds what ConfigGen cannot resolve: `IntProperty._value` (a field of the generic base
-`Property<int>`), 0x24 from the dump's C header. It stays **unverified** until checked in-game.
+`config/ui-offsets.manual.json` holds what ConfigGen cannot resolve, worked out from the dump's C header: `IntProperty._value`
+(0x24) and `BoolProperty._value` (0x21), fields of the generic base `Property<T>`. Both were **verified in-game on 2026-10-26**:
+the gear panel's `_activeTabIndex` followed the tab toggle that was on (0 → 1 → 0), and exactly one tile's `_isSelected` was set,
+the champion on screen.
 
 At run time the UI offsets are merged with raid-extractor's `config/offsets.json` (read) into `output/runtime`. They must
 come from the same game build, or nothing is read.
@@ -76,6 +78,23 @@ open view (ViewMeta.View, a managed RaidView)
   so a target is "the element whose context is a hero item with id X", never a position worked out from a sort order. The
   exact context classes and id fields of the champion screen are taken from its live tree (`ui-tree`) and added through
   ConfigGen.
+- **Targets** (`UiTargets`), each with the id it stands for:
+
+  | Target | Found by | Id |
+  |---|---|---|
+  | champion tile | the tile's `HeroSlotContext._heroId` (the list is virtual: 61 pooled tiles for 224 champions) | champion id |
+  | inventory item | `InventoryArtifactContext.Avatar.Artifact.Id` | artifact id |
+  | gear slot | `EquipmentArtifactSlot (n)` / jewelry slots, slot from `BindingMasterPath` (`WeaponSlot` … `ClothesSlot` = Chest, `CloakSlot` = Amulet) | slot id |
+  | gear tab | toggles `Tabs/1..4` (`m_IsOn`) | tab number |
+  | popup | `EquipButton_h`, `RemoveButton_h`, `HideButton` | — |
+  | manage gear dialog | `Unequip_h` (Remove), `BTN_Close1` | — |
+
+  Targets are named as the game's UI shows them (Ring / **Amulet** / Banner); the slot key is the game's data id
+  (`ArtifactKindId.Cloak` = the amulet), which plan files use. A target may be clicked only when active, interactable, on screen
+  and **fully inside its scroll viewport**. `UiTargets.Resolve` refuses when no element or **more than one** element claims the
+  id (pooled list items keep stale ids). Descendants are found by tree position, never by path text: sibling tiles share names.
+- **Never clicked**: `Sell_h` (manage gear: Sell, which sells the piece), `SellMode` (the picker's sell mode),
+  `QuickEquipButton` (Auto-Equip), `PowerUpButton` (Upgrade).
 - **Overlay check**: `RaidActions overlay` captures the window and draws the memory rectangles on it (green clickable, red
   not interactable, cyan bound context) in `output/overlays`.
 - **Templates are only a cross-check**: a template that matched somewhere else than the memory rectangle (overlap under

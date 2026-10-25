@@ -21,7 +21,7 @@
   "transform": {
     "hierarchy": { "offset": "0x28", "status": "verified", "how": "TransformHierarchy*; hierarchy.transforms[index] is this transform" },
     "index": { "offset": "0x30", "status": "verified", "how": "int index into the hierarchy (VillageHUD 8821)" },
-    "rectTransformTypeIndex": { "value": "0x7A", "status": "unverified", "how": "component[0] type index on UI GameObjects; plain Transforms differ" }
+    "rectTransformTypeIndex": { "value": "0x7A", "status": "verified", "how": "component[0] type index on UI GameObjects; plain Transforms differ. Every RectTransform rect on the champion screen (2026-10-26 07:54 overlay) landed on its element" }
   },
   "rectTransform": {
     "rect": { "offset": "0xB8", "status": "verified", "how": "cached rect {x, y, width, height} in local units: full-screen HUD = (-960, -540, 1920, 1080) at 1920x1080 reference" },
@@ -38,6 +38,6 @@
     "parentIndices": { "offset": "0x20", "status": "verified", "how": "int: VillageHUD 8821 -> 3 -> 2 -> 0 -> -1; its first child 8822 -> 8821" },
     "deepChildCount": { "offset": "0x28", "status": "verified", "how": "int, counts the node itself: leaves 1 (VillageHUD's Animation = 3: itself and two children)" },
     "transforms": { "offset": "0x30", "status": "verified", "how": "Transform*: transforms[8821] = VillageHUD's RectTransform" },
-    "nextIndices": { "offset": "0x70", "status": "unverified", "how": "int: next transform in depth-first order (8821 -> 8822 -> 8823); subtrees are walked along it (they are not always contiguous: ArenaHUD's range had 84 empty slots)" }
+    "nextIndices": { "offset": "0x70", "status": "verified", "how": "int: next transform in depth-first order (8821 -> 8822 -> 8823); subtrees are walked along it (they are not always contiguous: ArenaHUD's range had 84 empty slots). The champion screen (4,009 elements) walked with consistent parents and depths, and its overlay matched the screen" }
   }
 }

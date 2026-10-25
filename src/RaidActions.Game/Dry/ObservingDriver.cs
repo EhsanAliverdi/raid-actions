@@ -32,14 +32,24 @@ public sealed class ObservingDriver(LiveGame game, UnityUi ui, Plan plan, string
         {
             case ActionKind.CheckGameIdle:
             {
-                var (s, why) = game.ReadUi();
-                if (s is null) return DriverResult.Failure("UI state unavailable: " + why);
-                if (s.InBattle) return DriverResult.Failure("A battle (or a battle's result screen) is open: close it first.");
-                if (s.UiBlocked) return DriverResult.Failure("The game's UI is busy (blocked).");
-                var (w, problem) = GameWindow.Find();
-                if (w is null) return DriverResult.Failure(problem!);
-                if ((w.NotUsable ?? sizeCheck(w)) is { } bad) return DriverResult.Failure(bad);
-                return DriverResult.Success($"idle: top {s.Top?.Name}, no battle, window {w.Client.Width}x{w.Client.Height}");
+                var (s0, why) = game.ReadUi();
+                if (s0 is null) return DriverResult.Failure("UI state unavailable: " + why);
+                if (s0.InBattle) return DriverResult.Failure("A battle (or a battle's result screen) is open: close it first.");
+                var until = DateTime.Now + _wait;
+                var said = "";
+                while (DateTime.Now < until)
+                {
+                    ct.ThrowIfCancellationRequested();
+                    var (s, _) = game.ReadUi();
+                    if (s?.InBattle == true) return DriverResult.Failure("A battle started: the dry run stops.");
+                    var (w, problem) = GameWindow.Find();
+                    var wait = w is null ? problem : (w.NotUsable is not null ? "Restore the Raid window (or run  RaidActions window fit)." : sizeCheck(w)) ?? (s?.UiBlocked == true ? "Wait: the game's UI is busy." : null);
+                    if (wait is null) return DriverResult.Success($"idle: top {s?.Top?.Name}, no battle, window {w!.Client.Width}x{w.Client.Height}");
+                    if (wait != said) say($"Before starting: {wait}");
+                    said = wait;
+                    await Task.Delay(700, ct);
+                }
+                return DriverResult.Failure("Timed out waiting for a usable game window.");
             }
             case ActionKind.FocusGame:
                 return DriverResult.Success("observe mode: the game is not brought to the front");
@@ -113,15 +123,21 @@ public sealed class ObservingDriver(LiveGame game, UnityUi ui, Plan plan, string
     {
         var until = DateTime.Now + _wait;
         var said = false;
+        string? lastCovered = null;
         while (DateTime.Now < until)
         {
             ct.ThrowIfCancellationRequested();
             var (s, _) = game.ReadUi();
+            string? covered = null;
             if (s is not null)
             {
+                // A popup over the champion screen would take the click: wait until it is closed.
+                covered = s.ChampionScreenOpen && s.Top?.Name != UiState.ChampionScreenView ? s.Top?.Name : null;
                 var targets = Targets(s);
-                if (ready(s, targets)) return (true, pick(targets), s);
+                if (covered is null && ready(s, targets)) return (true, pick(targets), s);
             }
+            if (covered is not null && covered != lastCovered) say($"Step {a.Step} {a.Kind}: close the {covered} popup first (it covers the champion screen).");
+            lastCovered = covered;
             if (!said)
             {
                 say($"Step {a.Step} {a.Kind}: {instruction}");

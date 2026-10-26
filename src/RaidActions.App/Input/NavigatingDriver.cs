@@ -184,6 +184,9 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
         if (t is null) throw new StopException($"{kind}: {problem}");
         if (id is not null && t.Id != id) throw new StopException($"{kind}: id {t.Id}, expected {id}.");
         if (t.Forbidden || !AllowedClicks.Contains(t.Kind)) throw new StopException($"Refused: {t.Name} may not be clicked.");
+        // An offer's close: only its own close element (BTN_Close1), on the popup that is on top; nothing else on an offer.
+        if (kind == "dialog-close" && (t.View != s.Top?.Name || !t.Path.EndsWith("/BTN_Close1", StringComparison.Ordinal)))
+            throw new StopException($"Refused: the close found ({t.Path} in {t.View}) is not the close of the popup on top ({s.Top?.Name}).");
         var (w, why) = GameWindow.Find();
         if (w is null) throw new StopException(why!);
         if (policy.Problem(w) is { } bad)

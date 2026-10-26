@@ -11,7 +11,7 @@ namespace RaidActions.Game.Memory;
 /// <param name="Forbidden">Never clicked, whatever a step asks.</param>
 /// <param name="Note">Extra state: selected, tab on, the binding path, why it cannot be clicked.</param>
 public sealed record UiTarget(string Kind, string Name, int? Id, string View, ClientRect? Rect, bool Active, bool? Interactable,
-    bool FullyVisible, bool Forbidden, string Path, string? Note, string? Slot = null)
+    bool FullyVisible, bool Forbidden, string Path, string? Note, string? Slot = null, int? ClientWidth = null, int? ClientHeight = null)
 {
     public bool IsScrollArea => Kind.StartsWith("scroll-", StringComparison.Ordinal);
 
@@ -76,7 +76,7 @@ public static partial class UiTargets
         {
             var b = button ?? owner;
             return new(kind, name, id, t.View, b.Screen, owner.ActiveInHierarchy && b.ActiveInHierarchy, button?.Interactable,
-                b.FullyVisible, forbidden || NeverClick.Contains(b.Name), b.Path, note, slot);
+                b.FullyVisible, forbidden || NeverClick.Contains(b.Name), b.Path, note, slot, t.ClientWidth, t.ClientHeight);
         }
 
         for (var i = 0; i < nodes.Count; i++)
@@ -158,6 +158,8 @@ public static partial class UiTargets
                 "Continue" when t.View == UiState.SwapView => ("swap-continue", "swap dialog: Continue"),
                 // Any other popup's close button (offers and the like): closing only; their other buttons are never targets.
                 "BTN_Close1" when t.View.EndsWith("Overlay", StringComparison.Ordinal) => ("dialog-close", $"{t.View}: close"),
+                // Any other screen's back or close element (by its own name), and a battle result's way back (never Replay or Next).
+                _ when IsBackName(n.Name) || UiState.IsBattleResultView(t.View) && IsResultLeaveName(n.Name) => ("back", $"{t.View}: {n.Name}"),
                 _ when NeverClick.Contains(n.Name) => ("forbidden", n.Name switch
                 {
                     "Sell_h" => "manage gear: Sell",
@@ -189,6 +191,22 @@ public static partial class UiTargets
         if (clickable.Count == 1) return (clickable[0], null);
         return (null, $"{what}: {string.Join("; ", all.Select(t => t.NotClickable).Distinct())}.");
     }
+
+    /// <summary>A back or close element by its name: Close, Back, Hide or Return, optionally BTN_ / Button / a number / _h.</summary>
+    public static bool IsBackName(string name) => BackName().IsMatch(name);
+
+    /// <summary>On a battle result screen only: the way back to the hub or the screen the battle started from.</summary>
+    public static bool IsResultLeaveName(string name) =>
+        ResultLeaveName().IsMatch(name) && !ResultNever().IsMatch(name);
+
+    [GeneratedRegex(@"^(BTN_?|Button_?)?(Close|Back|Hide|Return)(_?(Button|Btn))?\d*(_h)?$|^\w*(Close|Back)Button\d*(_h)?$", RegexOptions.IgnoreCase)]
+    private static partial Regex BackName();
+
+    [GeneratedRegex(@"Return|Hub|Home|Exit|Leave", RegexOptions.IgnoreCase)]
+    private static partial Regex ResultLeaveName();
+
+    [GeneratedRegex(@"Replay|Repeat|Next|Retry|Again|Start|Battle|Buy|Shop|Refill", RegexOptions.IgnoreCase)]
+    private static partial Regex ResultNever();
 
     /// <summary>The slot id named in a binding path ("WeaponSlot" → Weapon, "ClothesSlot" → Chest, "CloakSlot" → Cloak).</summary>
     public static string? SlotFromBinding(string? path)

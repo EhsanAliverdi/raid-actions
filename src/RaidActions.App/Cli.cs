@@ -102,6 +102,12 @@ public static class Cli
     /// <param name="abortHook">Receives the session's abort, for Ctrl+C and the kill switch.</param>
     public static async Task<int> RunAsync(string[] args, TextWriter output, TextReader input, bool interactive, Action<Action>? abortHook = null)
     {
+        if (args.Length > 0 && args[0].Equals("go-home", StringComparison.OrdinalIgnoreCase))
+        {
+            var outIndex = Array.IndexOf(args, "--output");
+            var outDir = AppPaths.Resolve(null, outIndex >= 0 && outIndex + 1 < args.Length ? args[outIndex + 1] : null).Output;
+            return await GoHomeCommand.RunAsync(args, outDir, output, abortHook);
+        }
         if (args.Length > 0 && UiCommands.Names.Contains(args[0].ToLowerInvariant()))
         {
             var outIndex = Array.IndexOf(args, "--output");

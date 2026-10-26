@@ -108,6 +108,40 @@ public class RealStepTests : IDisposable
     }
 
     [Theory]
+    [InlineData("BTN_Close1", true)]
+    [InlineData("CloseButton", true)]
+    [InlineData("BackButton", true)]
+    [InlineData("BTN_Back", true)]
+    [InlineData("HideButton", true)]
+    [InlineData("Back_h", true)]
+    [InlineData("HeaderCloseButton", true)]
+    [InlineData("EquipButton_h", false)]
+    [InlineData("BuyButton", false)]
+    [InlineData("BattleButton", false)]
+    [InlineData("Sell_h", false)]
+    [InlineData("CloseUp", false)]
+    public void Back_and_close_elements_are_known_by_name(string name, bool back) =>
+        Assert.Equal(back, RaidActions.Game.Memory.UiTargets.IsBackName(name));
+
+    [Theory]
+    [InlineData("ReturnToHubButton", true)]
+    [InlineData("BTN_Exit", true)]
+    [InlineData("ReplayButton", false)]
+    [InlineData("NextStageButton", false)]
+    [InlineData("ReturnAndRepeat", false)]
+    public void A_battle_result_is_left_only_by_its_way_back(string name, bool leave) =>
+        Assert.Equal(leave, RaidActions.Game.Memory.UiTargets.IsResultLeaveName(name));
+
+    [Fact]
+    public void Go_home_tries_the_innermost_close_first()
+    {
+        var kinds = App.Input.NavigatingDriver.BackKinds;
+        Assert.True(kinds.ToList().IndexOf("popup-close-selected") < kinds.ToList().IndexOf("screen-close"));
+        Assert.True(kinds.ToList().IndexOf("dialog-close") < kinds.ToList().IndexOf("back"));
+        Assert.All(kinds, k => Assert.Contains(k, App.Input.NavigatingDriver.AllowedClicks));
+    }
+
+    [Theory]
     [InlineData("run", "p.json", "--live")]
     [InlineData("run", "p.json", "--live", "--navigate")]
     [InlineData("run", "p.json", "--live", "--steps", "1")]

@@ -15,7 +15,7 @@ namespace RaidActions.App.Input;
 /// </summary>
 /// <param name="equipSteps">Steps whose Equip may be clicked (a real run, after the go-ahead): each step's Equip once, then locked
 /// again. Empty: Equip is never clicked (dry run).</param>
-public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, string folder, WindowPolicy policy, Action<string> log,
+public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan? plan, string folder, WindowPolicy policy, Action<string> log,
     IReadOnlySet<int>? equipSteps = null) : IGameDriver
 {
     private readonly HashSet<int> _equipUnlocked = equipSteps is null ? [] : [.. equipSteps];
@@ -24,8 +24,12 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
     public static readonly IReadOnlySet<string> AllowedClicks = new HashSet<string>
     {
         "open-champions", "screen-close", "champion-tile", "gear-tab", "gear-slot", "inventory-item",
-        "picker-close", "popup-close-selected", "popup-close-worn", "manage-close", "dialog-close", "swap-cancel",
+        "picker-close", "popup-close-selected", "popup-close-worn", "manage-close", "dialog-close", "swap-cancel", "back",
     };
+
+    /// <summary>The ways back go home may take, innermost first: in the top view, the first of these kinds found is clicked.</summary>
+    public static readonly IReadOnlyList<string> BackKinds =
+        ["swap-cancel", "popup-close-selected", "popup-close-worn", "picker-close", "manage-close", "dialog-close", "back", "screen-close"];
 
     /// <summary>The one click outside the allow-list that the next <see cref="Click"/> may make (swap-continue, inside a step's Equip).</summary>
     private string? _once;
@@ -51,7 +55,7 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
 
     private async Task<DriverResult> Do(UiAction a, CancellationToken ct)
     {
-        var step = a.Step > 0 ? plan.Steps.Single(s => s.Number == a.Step) : null;
+        var step = a.Step > 0 ? plan!.Steps.Single(s => s.Number == a.Step) : null;
         if (step is not null && a.Kind is ActionKind.OpenChampion or ActionKind.OpenSlot or ActionKind.FindPiece or ActionKind.SelectPiece or ActionKind.VerifySelection)
         {
             var (s, _) = await Read(ct);
@@ -68,19 +72,12 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
                 return DriverResult.Success("the game is brought to the front only when a click needs it");
             case ActionKind.OpenChampion:
             {
-                // Popups over the village (offers and the like) come in a queue: close each with its own close button, let the screen
-                // settle, read again; at most four. Then the top view must have stayed the village for a moment before Champions is clicked.
+                // From whatever screen is open (popups, other screens): back to the village with back/close only, then Champions.
                 var s = await Settled(ct);
-                for (var i = 0; i < 4 && !s.ChampionScreenOpen && s.Top?.Name is { } top && top.EndsWith("Overlay", StringComparison.Ordinal); i++)
+                if (!(s.ChampionScreenOpen && s.Top?.Name == UiState.ChampionScreenView))
                 {
-                    await Click(a, "dialog-close", null, null, (s2, _) => s2.Top?.Name != top, $"the {top} popup closes", ct);
-                    s = await Settled(ct);
-                }
-                if (!s.ChampionScreenOpen)
-                {
-                    if (Screen.Covering(s) is null && s.Top?.Name is "VillageHUD" or "Village")
-                        await Click(a, "open-champions", null, null, (s2, _) => s2.ChampionScreenOpen, "the champion screen opens", ct);
-                    else throw new StopException($"Unexpected screen {s.Top?.Name}: not the village or the champion screen.");
+                    await GoHome(a, ct);
+                    await OpenChampions(a, ct);
                     (s, _) = await Read(ct);
                 }
                 if (s.ChampionScreen?.Champion == a.ChampionId) return DriverResult.Success($"{step!.ToName} (#{a.ChampionId}) is already shown: no click");
@@ -187,6 +184,67 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
         throw new StopException($"After Equip: the account does not show #{step.ArtifactId} on {step.ToName} within 25 s.");
     }
 
+    public static bool AtVillage(UiState s) => s.Top?.Name is "Village" or "VillageHUD";
+
+    /// <summary>
+    /// Back to the village from whatever screen is open, with back/close elements only: the top view first, one click at a time, each
+    /// read again after. A running battle is waited out (no input); its result screen is then left by its way back. Stops when the
+    /// top view has no back/close element memory can identify, when one is ambiguous, or when a click does not change the screen.
+    /// Returns the screens it left, in order.
+    /// </summary>
+    public async Task<List<string>> GoHome(UiAction a, CancellationToken ct)
+    {
+        var left = new List<string>();
+        string? lastPath = null;
+        for (var hop = 0; hop < 12; hop++)
+        {
+            await NoBattle(ct, resultScreenOk: true);
+            var s = await Settled(ct);
+            if (AtVillage(s)) return left;
+            var top = s.Top?.Name ?? throw new StopException("No view is on top.");
+            var (_, targets) = await Read(ct);
+            var mine = targets.Where(t => t.View == top).ToList();
+            var kind = BackKinds.FirstOrDefault(k => mine.Any(t => t.Kind == k && t.NotClickable is null && !t.Forbidden));
+            if (kind is null)
+            {
+                var seen = mine.Where(t => t.NotClickable is null).Select(t => t.Name).Distinct().Take(12);
+                throw new StopException($"{top}: no back/close element identified in memory; nothing pressed (its targets: {string.Join(", ", seen.DefaultIfEmpty("none"))}).");
+            }
+            var (target, problem) = UiTargets.Resolve(mine, kind);
+            if (target is null) throw new StopException($"{top}: {problem} Nothing pressed.");
+            if (target.Path == lastPath) throw new StopException($"{top}: {target.Name} was clicked and is still there; stopped.");
+            lastPath = target.Path;
+            var where = top == UiState.ChampionScreenView && s.ChampionScreen?.Champion is { } c ? $"{top} (champion #{c})" : top;
+            await Click(a, kind, null, null, (s2, t2) => s2.Top?.Name != top || !t2.Any(t => t.Path == target.Path && t.NotClickable is null),
+                $"{target.Name} takes the screen back", ct, view: top);
+            left.Add($"{where} via {target.Name}");
+        }
+        throw new StopException($"Not at the village after 12 back/close clicks ({string.Join(" → ", left)}).");
+    }
+
+    /// <summary>From the village: Champions, until the champion screen is open.</summary>
+    public async Task OpenChampions(UiAction a, CancellationToken ct)
+    {
+        var s = await Settled(ct);
+        if (!AtVillage(s)) throw new StopException($"Expected the village; the screen shows {s.Top?.Name}.");
+        await Click(a, "open-champions", null, null, (s2, _) => s2.ChampionScreenOpen && s2.Top?.Name == UiState.ChampionScreenView, "the champion screen opens", ct);
+    }
+
+    /// <summary>What go home would click now (read only).</summary>
+    public async Task<string> WouldGoHome(CancellationToken ct)
+    {
+        var s = await Settled(ct);
+        if (s.InBattle && !s.Active.Any(v => UiState.IsBattleResultView(v.Name))) return "a battle is running: go home waits for it to end";
+        if (AtVillage(s)) return "at the village: nothing to close";
+        var top = s.Top?.Name ?? "none";
+        var (_, targets) = await Read(ct);
+        var mine = targets.Where(t => t.View == top).ToList();
+        var kind = BackKinds.FirstOrDefault(k => mine.Any(t => t.Kind == k && t.NotClickable is null && !t.Forbidden));
+        if (kind is null) return $"{top}: no back/close element identified (targets: {string.Join(", ", mine.Select(t => $"{t.Name} [{t.NotClickable ?? "ok"}]").Distinct().Take(16).DefaultIfEmpty("none"))})";
+        var (target, problem) = UiTargets.Resolve(mine, kind);
+        return target is null ? $"{top}: {problem}" : $"{top}: would click {target.Name} at {target.Rect} ({target.Path})";
+    }
+
     /// <summary>The piece the plan has <paramref name="step"/>'s champion wearing in its slot just before the step (null: empty).</summary>
     public static int? PlannedWorn(Plan plan, PlanStep step)
     {
@@ -222,7 +280,7 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
         await NoBattle(ct);
         var (s, _) = await Read(ct);
         if (s.Top?.Name != UiState.SwapView || s.Swap is not { } d) throw new StopException($"Expected the swap confirmation; the screen shows {s.Top?.Name}.");
-        var worn = PlannedWorn(plan, step);
+        var worn = PlannedWorn(plan!, step);
         var shown = $"champion #{s.ChampionScreen?.Champion}, worn #{d.EquippedArtifactId}, to equip #{d.ArtifactToEquipId}";
         log($"step {a.Step}: swap confirmation: {shown}; title \"{d.Title}\"; text \"{d.Warning}\"");
         if (worn is null || s.ChampionScreen?.Champion != step.ToChampionId || d.EquippedArtifactId != worn || d.ArtifactToEquipId != step.ArtifactId)
@@ -259,14 +317,27 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
     /// window, then the click, then reads until <paramref name="expect"/> holds (or stop).
     /// </summary>
     private async Task Click(UiAction a, string kind, int? id, string? slot, Func<UiState, IReadOnlyList<UiTarget>, bool> expect, string expected, CancellationToken ct,
-        Func<UiState, string?>? before = null)
+        Func<UiState, string?>? before = null, string? view = null)
     {
         var once = _once == kind;
         _once = null;
         if (!AllowedClicks.Contains(kind) && !once) throw new StopException($"Refused: {kind} is not an allowed click.");
-        await NoBattle(ct);
+        await NoBattle(ct, resultScreenOk: view is not null && UiState.IsBattleResultView(view));
+        // The window first: rectangles are read at the size the click is sent at.
+        var (w, why) = GameWindow.Find();
+        if (w is null) throw new StopException(why!);
+        if (policy.Problem(w) is not null)
+        {
+            FitWindow();
+            await Task.Delay(800, ct);
+        }
         var (s, targets) = await Read(ct);
-        if (Screen.Covering(s) is { } cover && kind is not ("manage-close" or "dialog-close" or "swap-cancel" or "swap-continue")) throw new StopException($"Unexpected popup {cover} over the champion screen.");
+        if (view is not null)
+        {
+            if (s.Top?.Name != view) throw new StopException($"Expected {view} on top; the screen shows {s.Top?.Name}.");
+            targets = targets.Where(t => t.View == view).ToList();
+        }
+        if (Screen.Covering(s) is { } cover && kind is not ("manage-close" or "dialog-close" or "swap-cancel" or "swap-continue" or "back")) throw new StopException($"Unexpected popup {cover} over the champion screen.");
         if (before?.Invoke(s) is { } changed) throw new StopException(changed);
         var (t, problem) = UiTargets.Resolve(targets, kind, id, slot);
         if (t is null) throw new StopException($"{kind}: {problem}");
@@ -276,14 +347,11 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
         // An offer's close: only its own close element (BTN_Close1), on the popup that is on top; nothing else on an offer.
         if (kind == "dialog-close" && (t.View != s.Top?.Name || !t.Path.EndsWith("/BTN_Close1", StringComparison.Ordinal)))
             throw new StopException($"Refused: the close found ({t.Path} in {t.View}) is not the close of the popup on top ({s.Top?.Name}).");
-        var (w, why) = GameWindow.Find();
+        (w, why) = GameWindow.Find();
         if (w is null) throw new StopException(why!);
-        if (policy.Problem(w) is { } bad)
-        {
-            FitWindow();
-            (w, why) = GameWindow.Find();
-            if (w is null || policy.Problem(w) is { } still) throw new StopException(why ?? policy.Problem(w!)!);
-        }
+        if (policy.Problem(w) is { } bad) throw new StopException($"The window changed before the click: {bad}");
+        if (t.ClientWidth is { } cw && (cw != w.Client.Width || t.ClientHeight != w.Client.Height))
+            throw new StopException($"The window changed size ({t.ClientWidth}x{t.ClientHeight} → {w.Client.Width}x{w.Client.Height}) before the click.");
 
         var r = t.Rect!.Value;
         var x = r.X + r.Width * (0.35f + 0.3f * (float)_random.NextDouble());
@@ -358,7 +426,8 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
     }
 
     /// <summary>Waits (no input) while a battle or its result screen is open.</summary>
-    private async Task NoBattle(CancellationToken ct)
+    /// <param name="resultScreenOk">A battle's result screen (the battle is over) does not count: go home leaves it by its way back.</param>
+    private async Task NoBattle(CancellationToken ct, bool resultScreenOk = false)
     {
         var until = DateTime.Now + BattleWait;
         var said = false;
@@ -366,7 +435,8 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
         {
             var (s, why) = game.ReadUi();
             if (s is null) throw new StopException("UI state unavailable: " + why);
-            if (!s.InBattle && !s.UiBlocked) return;
+            var running = resultScreenOk ? s.Active.Any(v => UiState.BattleRunningViews.Contains(v.Name)) : s.InBattle;
+            if (!running && !s.UiBlocked) return;
             if (DateTime.Now > until) throw new StopException("A battle (or its result screen) stayed open for 30 minutes.");
             if (!said && s.InBattle) log("A battle (or its result screen) is open: waiting for it to end, no input.");
             said = true;
@@ -400,8 +470,10 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
         var (w, why) = GameWindow.Find();
         if (w is null) return "window not restored: " + why;
         var problem = WindowFit.Restore(w, _before);
+        var before = _before;
+        if (problem is null) _before = null;
         return problem is null
-            ? $"window restored to {_before.Normal.Width}x{_before.Normal.Height} at ({_before.Normal.X},{_before.Normal.Y}){(_before.Minimized ? ", minimized" : "")}"
+            ? $"window restored to {before.Normal.Width}x{before.Normal.Height} at ({before.Normal.X},{before.Normal.Y}){(before.Minimized ? ", minimized" : "")}"
             : "window not restored: " + problem;
     }
 
@@ -435,5 +507,5 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
         }
     }
 
-    private sealed class StopException(string message) : Exception(message);
+    public sealed class StopException(string message) : Exception(message);
 }

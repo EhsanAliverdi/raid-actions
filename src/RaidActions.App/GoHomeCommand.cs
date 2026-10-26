@@ -128,7 +128,8 @@ public static class GoHomeCommand
         {
             await Task.Delay(1000, ct);
             var (s, _) = game.ReadUi();
-            if (s is null || s.InBattle) { seen = null; continue; }
+            // A running battle is never a screen to leave; its result screen is (go home leaves it by its way back).
+            if (s is null || s.Active.Any(v => UiState.BattleRunningViews.Contains(v.Name))) { seen = null; continue; }
             var now = Describe(s);
             if (now != seen) { seen = now; since = DateTime.Now; }
             if (now != start && DateTime.Now - since >= TimeSpan.FromSeconds(3) && IdleFor() >= TimeSpan.FromSeconds(10)) return;

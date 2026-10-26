@@ -202,7 +202,7 @@ public static partial class UiTargets
     [GeneratedRegex(@"^(BTN_?|Button_?)?(Close|Back|Hide|Return)(_?(Button|Btn))?\d*(_h)?$|^\w*(Close|Back)Button\d*(_h)?$", RegexOptions.IgnoreCase)]
     private static partial Regex BackName();
 
-    [GeneratedRegex(@"Return|Hub|Home|Exit|Leave", RegexOptions.IgnoreCase)]
+    [GeneratedRegex(@"Return|Hub|Home|Exit|Leave|Lobby", RegexOptions.IgnoreCase)]
     private static partial Regex ResultLeaveName();
 
     [GeneratedRegex(@"Replay|Repeat|Next|Retry|Again|Start|Battle|Buy|Shop|Refill", RegexOptions.IgnoreCase)]

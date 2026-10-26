@@ -234,7 +234,7 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan? plan, stri
     public async Task<string> WouldGoHome(CancellationToken ct)
     {
         var s = await Settled(ct);
-        if (s.InBattle && !s.Active.Any(v => UiState.IsBattleResultView(v.Name))) return "a battle is running: go home waits for it to end";
+        if (s.BattleRunning) return "a battle is running: go home waits for it to end";
         if (AtVillage(s)) return "at the village: nothing to close";
         var top = s.Top?.Name ?? "none";
         var (_, targets) = await Read(ct);
@@ -434,8 +434,14 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan? plan, stri
         while (true)
         {
             var (s, why) = game.ReadUi();
+            // A read can fail while the game swaps screens: retried for a few seconds before it stops the run.
+            for (var retry = 0; s is null && retry < 10; retry++)
+            {
+                await Task.Delay(300, ct);
+                (s, why) = game.ReadUi();
+            }
             if (s is null) throw new StopException("UI state unavailable: " + why);
-            var running = resultScreenOk ? s.Active.Any(v => UiState.BattleRunningViews.Contains(v.Name)) : s.InBattle;
+            var running = resultScreenOk ? s.BattleRunning : s.InBattle;
             if (!running && !s.UiBlocked) return;
             if (DateTime.Now > until) throw new StopException("A battle (or its result screen) stayed open for 30 minutes.");
             if (!said && s.InBattle) log("A battle (or its result screen) is open: waiting for it to end, no input.");
@@ -479,12 +485,12 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan? plan, stri
 
     private async Task<(UiState State, List<UiTarget> Targets)> Read(CancellationToken ct)
     {
-        for (var i = 0; i < 5; i++)
+        for (var i = 0; i < 15; i++)
         {
             ct.ThrowIfCancellationRequested();
             var (s, _) = game.ReadUi();
             if (s is not null) return (s, Screen.Targets(game, ui, s));
-            await Task.Delay(200, ct);
+            await Task.Delay(300, ct);
         }
         throw new StopException("The UI state could not be read.");
     }

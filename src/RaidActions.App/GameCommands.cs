@@ -330,6 +330,8 @@ public static class GameCommands
             lines.Add($"  champion screen: hero {c.HeroId?.ToString() ?? "-"} (selected {c.SelectedHeroId?.ToString() ?? "-"}, details {c.DetailsHeroId?.ToString() ?? "-"}),"
                 + $" inventory artifact {c.InventoryArtifactId?.ToString() ?? "-"}, details tab {c.DetailsTab?.ToString() ?? "-"}, view state {c.ViewState?.ToString() ?? "-"}");
         else if (s.ChampionScreenOpen) lines.Add("  champion screen: open, context not bound yet");
+        if (s.Swap is { } d)
+            lines.Add($"  swap confirmation: worn #{d.EquippedArtifactId?.ToString() ?? "-"}, to equip #{d.ArtifactToEquipId?.ToString() ?? "-"}, title \"{d.Title}\", text \"{d.Warning}\"");
         return string.Join("\n", lines);
     }
 }

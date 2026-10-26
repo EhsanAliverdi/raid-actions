@@ -443,6 +443,40 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Overlays.SwapArtifactsOverlayContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_warning": {
+          "offset": "0x80",
+          "type": "StringProperty",
+          "field": "_warning",
+          "source": "field",
+          "status": "direct"
+        },
+        "_title": {
+          "offset": "0x88",
+          "type": "StringProperty",
+          "field": "_title",
+          "source": "field",
+          "status": "direct"
+        },
+        "_equippedArtifactContext": {
+          "offset": "0x98",
+          "type": "ArtifactAvatarContext",
+          "field": "_equippedArtifactContext",
+          "source": "field",
+          "status": "direct"
+        },
+        "_artifactToEquipContext": {
+          "offset": "0xA0",
+          "type": "ArtifactAvatarContext",
+          "field": "_artifactToEquipContext",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "UnityEngine.UI.Selectable": {
       "kind": "class",
       "offsetsRelativeTo": "object",

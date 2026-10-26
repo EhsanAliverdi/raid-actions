@@ -15,6 +15,12 @@
       "source": "dump/redux/il2cpp.h: BoolProperty -> Property_1_System_Boolean___Fields { Property__Fields (0x10, 0x18); bool _changing 0x20; bool _value 0x21 }",
       "status": "verified",
       "verified": "2026-10-26 08:14: of the active champion tiles exactly one read HeroSlotContext._isSelected = true, Kael's (hero 1), the champion HeroesInfoOverlayContext._heroId named"
+    },
+    "Client.MVVM.Base.ViewModel.Properties.StringProperty._value": {
+      "offset": "0x28",
+      "type": "string",
+      "source": "dump/redux/il2cpp.h: StringProperty -> Property_1_System_String___Fields { ReadProperty fields (0x10, 0x18); bool _changing 0x20; String *_value 0x28 (pointer-aligned) }",
+      "status": "unverified"
     }
   }
 }

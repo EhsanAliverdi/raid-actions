@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using RaidActions.Execution;
 using RaidActions.Game.Dry;
 using RaidActions.Game.Memory;
@@ -23,8 +24,11 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
     public static readonly IReadOnlySet<string> AllowedClicks = new HashSet<string>
     {
         "open-champions", "screen-close", "champion-tile", "gear-tab", "gear-slot", "inventory-item",
-        "picker-close", "popup-close-selected", "popup-close-worn", "manage-close", "dialog-close",
+        "picker-close", "popup-close-selected", "popup-close-worn", "manage-close", "dialog-close", "swap-cancel",
     };
+
+    /// <summary>The one click outside the allow-list that the next <see cref="Click"/> may make (swap-continue, inside a step's Equip).</summary>
+    private string? _once;
 
     private static readonly TimeSpan BattleWait = TimeSpan.FromMinutes(30);
     private readonly Random _random = new();
@@ -48,6 +52,12 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
     private async Task<DriverResult> Do(UiAction a, CancellationToken ct)
     {
         var step = a.Step > 0 ? plan.Steps.Single(s => s.Number == a.Step) : null;
+        if (step is not null && a.Kind is ActionKind.OpenChampion or ActionKind.OpenSlot or ActionKind.FindPiece or ActionKind.SelectPiece or ActionKind.VerifySelection)
+        {
+            var (s, _) = await Read(ct);
+            if (SwapOpenFor(s, step))
+                return DriverResult.Success($"the swap confirmation for #{step.ArtifactId} onto {step.ToName} is already open: no click (Equip handles it)");
+        }
         switch (a.Kind)
         {
             case ActionKind.CheckGameIdle:
@@ -134,6 +144,12 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
         if (!_equipUnlocked.Contains(a.Step)) return DriverResult.Failure($"Refused: Equip is not unlocked for step {a.Step}.");
         await NoBattle(ct);
         var (s, targets) = await Read(ct);
+        if (SwapOpenFor(s, step))
+        {
+            _equipUnlocked.Remove(a.Step); // this step's Equip was clicked before; its confirmation counts as its one use
+            log($"step {a.Step}: the swap confirmation is already open (Equip clicked earlier); Equip locked");
+            return await ConfirmSwap(a, step, ct);
+        }
         if (Screen.Covering(s) is { } cover) throw new StopException($"Unexpected popup {cover} over the champion screen.");
         if (s.ChampionScreen?.Champion != step.ToChampionId || s.ChampionScreen.InventoryArtifactId != step.ArtifactId)
             throw new StopException($"Before Equip: memory shows champion #{s.ChampionScreen?.Champion} and artifact #{s.ChampionScreen?.InventoryArtifactId}; expected #{step.ToChampionId} and #{step.ArtifactId}.");
@@ -162,6 +178,7 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
         {
             await Task.Delay(1500, ct);
             var (after, _) = game.ReadUi();
+            if (after?.Top?.Name == UiState.SwapView) return await ConfirmSwap(a, step, ct);
             if (after is not null && Screen.Covering(after) is { } popup) throw new StopException($"After Equip: unexpected popup {popup}.");
             var fresh = await game.Account.ReadAsync(ct);
             var owner = fresh.Artifacts.FirstOrDefault(x => x.Id == step.ArtifactId)?.OwnerHeroId;
@@ -170,20 +187,92 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan plan, strin
         throw new StopException($"After Equip: the account does not show #{step.ArtifactId} on {step.ToName} within 25 s.");
     }
 
+    /// <summary>The piece the plan has <paramref name="step"/>'s champion wearing in its slot just before the step (null: empty).</summary>
+    public static int? PlannedWorn(Plan plan, PlanStep step)
+    {
+        var state = new GearState(plan.Pieces.Select(p => (p.ArtifactId, p.Slot, p.Owner)));
+        foreach (var earlier in plan.Steps.Where(x => x.Number < step.Number).OrderBy(x => x.Number)) state.Apply(earlier);
+        var worn = state.WornIn(step.ToChampionId, step.Slot);
+        return worn == step.ArtifactId ? null : worn;
+    }
+
+    private static bool SwapOpenFor(UiState s, PlanStep step) =>
+        s.Top?.Name == UiState.SwapView && s.ChampionScreen?.Champion == step.ToChampionId && s.Swap?.ArtifactToEquipId == step.ArtifactId;
+
+    /// <summary>
+    /// Why the swap confirmation's text may not be confirmed: unreadable, or it mentions a cost or a currency (any number counts,
+    /// rich-text tags aside). Null when it may.
+    /// </summary>
+    public static string? SwapTextProblem(string? title, string? warning)
+    {
+        if (string.IsNullOrWhiteSpace(title) || string.IsNullOrWhiteSpace(warning)) return "its title or warning could not be read from memory";
+        var text = Regex.Replace($"{title} {warning}", "<[^>]*>", " ");
+        var cost = Regex.Match(text, @"\d|silver|gold|gem|rub(y|ies)|coin|crystal|energy|currenc|cost|price|pay|spend|fee\b|charge|purchase|buy",
+            RegexOptions.IgnoreCase);
+        return cost.Success ? $"its text mentions \"{cost.Value}\"" : null;
+    }
+
+    /// <summary>
+    /// The confirmation the game shows when Equip replaces a worn piece, a planned part of the step's Equip: Continue only when memory
+    /// shows exactly the step's champion, the planned worn piece and the step's piece, and the text names no cost or currency.
+    /// Wrong ids: Cancel, then stop. A cost (or unreadable text): stop with the dialog left open, nothing pressed.
+    /// </summary>
+    private async Task<DriverResult> ConfirmSwap(UiAction a, PlanStep step, CancellationToken ct)
+    {
+        await NoBattle(ct);
+        var (s, _) = await Read(ct);
+        if (s.Top?.Name != UiState.SwapView || s.Swap is not { } d) throw new StopException($"Expected the swap confirmation; the screen shows {s.Top?.Name}.");
+        var worn = PlannedWorn(plan, step);
+        var shown = $"champion #{s.ChampionScreen?.Champion}, worn #{d.EquippedArtifactId}, to equip #{d.ArtifactToEquipId}";
+        log($"step {a.Step}: swap confirmation: {shown}; title \"{d.Title}\"; text \"{d.Warning}\"");
+        if (worn is null || s.ChampionScreen?.Champion != step.ToChampionId || d.EquippedArtifactId != worn || d.ArtifactToEquipId != step.ArtifactId)
+        {
+            await Click(a, "swap-cancel", null, null, (s2, _) => s2.Top?.Name != UiState.SwapView, "the swap confirmation closes", ct);
+            throw new StopException($"The swap confirmation shows {shown}; planned: champion #{step.ToChampionId}, worn #{(worn is null ? "none" : worn)}, to equip #{step.ArtifactId}. Pressed Cancel.");
+        }
+        if (SwapTextProblem(d.Title, d.Warning) is { } why)
+            throw new StopException($"The swap confirmation is left open, nothing pressed: {why}. Title \"{d.Title}\", text \"{d.Warning}\".");
+
+        _once = "swap-continue";
+        await Click(a, "swap-continue", null, null, (s2, _) => s2.Top?.Name != UiState.SwapView, "the swap confirmation closes", ct,
+            before: s2 => s2.Swap is { } d2 && d2.EquippedArtifactId == worn && d2.ArtifactToEquipId == step.ArtifactId && s2.ChampionScreen?.Champion == step.ToChampionId
+                ? null : "the swap confirmation changed before Continue");
+        log($"step {a.Step}: confirmed the swap (#{worn} off, #{step.ArtifactId} on {step.ToName})");
+
+        var until = DateTime.Now + TimeSpan.FromSeconds(25);
+        while (DateTime.Now < until)
+        {
+            await Task.Delay(1500, ct);
+            var (after, _) = game.ReadUi();
+            if (after is not null && Screen.Covering(after) is { } popup) throw new StopException($"After Continue: unexpected popup {popup}.");
+            var fresh = await game.Account.ReadAsync(ct);
+            var owner = fresh.Artifacts.FirstOrDefault(x => x.Id == step.ArtifactId)?.OwnerHeroId;
+            var wornOwner = fresh.Artifacts.FirstOrDefault(x => x.Id == worn)?.OwnerHeroId;
+            if (owner == step.ToChampionId && wornOwner is null)
+                return DriverResult.Success($"Equip and its swap confirmation done; the account shows #{step.ArtifactId} on {step.ToName} (#{step.ToChampionId}) and #{worn} in the inventory");
+        }
+        throw new StopException($"After Continue: the account does not show #{step.ArtifactId} on {step.ToName} and #{worn} in the inventory within 25 s.");
+    }
+
     /// <summary>
     /// One click: allowed kind, no battle, nothing covering the champion screen, the target resolved fresh with its id, the standard
     /// window, then the click, then reads until <paramref name="expect"/> holds (or stop).
     /// </summary>
-    private async Task Click(UiAction a, string kind, int? id, string? slot, Func<UiState, IReadOnlyList<UiTarget>, bool> expect, string expected, CancellationToken ct)
+    private async Task Click(UiAction a, string kind, int? id, string? slot, Func<UiState, IReadOnlyList<UiTarget>, bool> expect, string expected, CancellationToken ct,
+        Func<UiState, string?>? before = null)
     {
-        if (!AllowedClicks.Contains(kind)) throw new StopException($"Refused: {kind} is not an allowed click.");
+        var once = _once == kind;
+        _once = null;
+        if (!AllowedClicks.Contains(kind) && !once) throw new StopException($"Refused: {kind} is not an allowed click.");
         await NoBattle(ct);
         var (s, targets) = await Read(ct);
-        if (Screen.Covering(s) is { } cover && kind is not ("manage-close" or "dialog-close")) throw new StopException($"Unexpected popup {cover} over the champion screen.");
+        if (Screen.Covering(s) is { } cover && kind is not ("manage-close" or "dialog-close" or "swap-cancel" or "swap-continue")) throw new StopException($"Unexpected popup {cover} over the champion screen.");
+        if (before?.Invoke(s) is { } changed) throw new StopException(changed);
         var (t, problem) = UiTargets.Resolve(targets, kind, id, slot);
         if (t is null) throw new StopException($"{kind}: {problem}");
         if (id is not null && t.Id != id) throw new StopException($"{kind}: id {t.Id}, expected {id}.");
-        if (t.Forbidden || !AllowedClicks.Contains(t.Kind)) throw new StopException($"Refused: {t.Name} may not be clicked.");
+        if (t.Forbidden || !(AllowedClicks.Contains(t.Kind) || once && t.Kind == kind)) throw new StopException($"Refused: {t.Name} may not be clicked.");
+        if (kind is "swap-cancel" or "swap-continue" && t.View != UiState.SwapView) throw new StopException($"Refused: {t.Path} is not on the swap confirmation.");
         // An offer's close: only its own close element (BTN_Close1), on the popup that is on top; nothing else on an offer.
         if (kind == "dialog-close" && (t.View != s.Top?.Name || !t.Path.EndsWith("/BTN_Close1", StringComparison.Ordinal)))
             throw new StopException($"Refused: the close found ({t.Path} in {t.View}) is not the close of the popup on top ({s.Top?.Name}).");

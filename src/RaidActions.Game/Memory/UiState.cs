@@ -50,9 +50,16 @@ public sealed record ChampionScreenState(int? HeroId, int? SelectedHeroId, int? 
 }
 
 /// <summary>The game's UI as read from memory: the open views (in the view master's order), whether the UI is blocked, the champion screen.</summary>
-public sealed record UiState(IReadOnlyList<OpenView> Views, int BlockingEvents, ChampionScreenState? ChampionScreen)
+/// <summary>
+/// The confirmation the game shows when Equip replaces a worn piece (SwapArtifactsOverlay): the piece worn now, the piece to equip,
+/// and the dialog's title and warning text, all from its context (SwapArtifactsOverlayContext).
+/// </summary>
+public sealed record SwapDialogState(int? EquippedArtifactId, int? ArtifactToEquipId, string? Title, string? Warning);
+
+public sealed record UiState(IReadOnlyList<OpenView> Views, int BlockingEvents, ChampionScreenState? ChampionScreen, SwapDialogState? Swap = null)
 {
     public const string ChampionScreenView = "HeroesInfoOverlay";
+    public const string SwapView = "SwapArtifactsOverlay";
 
     /// <summary>
     /// Views of a battle being loaded, fought, paused or left (explicit: many other view names contain "Battle", such as the always-open

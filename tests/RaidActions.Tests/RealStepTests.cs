@@ -76,6 +76,37 @@ public class RealStepTests : IDisposable
         Assert.Contains("from Brute", donor.Problem);
     }
 
+    [Fact]
+    public void The_swap_confirmation_expects_the_planned_worn_piece()
+    {
+        var (plan, _) = WithReplacedHelmet();
+        Assert.Equal(101, App.Input.NavigatingDriver.PlannedWorn(plan, plan.Steps.Single(s => s.Number == 1)));
+        Assert.Null(App.Input.NavigatingDriver.PlannedWorn(TestData.Plan(), TestData.Plan().Steps.Single(s => s.Number == 1))); // Aria had no helmet
+    }
+
+    [Theory]
+    [InlineData("Replace artifact", "The artifact currently equipped will be moved to the inventory.", null)]
+    [InlineData("Replace artifact", "<color=#FFAA00>Swap</color> the artifacts?", null)]
+    [InlineData("Replace artifact", "Removing it costs Silver.", "cost")]
+    [InlineData("Replace artifact", "Takes 25000 to swap.", "2")]
+    [InlineData("Replace artifact", "Spend gems?", "Spend")]
+    [InlineData("Replace artifact", null, "could not be read")]
+    [InlineData("", "Swap?", "could not be read")]
+    public void The_swap_confirmation_is_refused_when_its_text_names_a_cost(string? title, string? warning, string? problem)
+    {
+        var why = App.Input.NavigatingDriver.SwapTextProblem(title, warning);
+        if (problem is null) Assert.Null(why);
+        else Assert.Contains(problem, why);
+    }
+
+    [Fact]
+    public void Continue_is_never_on_the_allow_list()
+    {
+        Assert.Contains("swap-cancel", App.Input.NavigatingDriver.AllowedClicks);
+        Assert.DoesNotContain("swap-continue", App.Input.NavigatingDriver.AllowedClicks);
+        Assert.DoesNotContain("popup-equip", App.Input.NavigatingDriver.AllowedClicks);
+    }
+
     [Theory]
     [InlineData("run", "p.json", "--live")]
     [InlineData("run", "p.json", "--live", "--navigate")]

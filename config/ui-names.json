@@ -36,6 +36,7 @@
     "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Items.InventoryArtifactContext": [ "Avatar" ],
     "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Items.InventoryItemContext": [ "_isSelected", "_isVisible", "_ownerIsCurrentHero" ],
     "Client.ViewModel.Contextes.Generic.ArtifactAvatarContext": [ "Artifact" ],
+    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Overlays.SwapArtifactsOverlayContext": [ "_warning", "_title", "_equippedArtifactContext", "_artifactToEquipContext" ],
     "UnityEngine.UI.Selectable": [ "m_Interactable" ],
     "UnityEngine.UI.Toggle": [ "m_IsOn" ],
     "UnityEngine.UI.CanvasScaler": [ "m_ScaleFactor", "m_ReferenceResolution", "m_UiScaleMode" ]

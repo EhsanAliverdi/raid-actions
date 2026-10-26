@@ -18,6 +18,10 @@ public sealed class UiStateReader(IGameObjects g)
     private const string HeroDetails = "Client.ViewModel.Contextes.HeroesInfoDialog.HeroDetails.HeroDetailsContext";
     private const string SelectedHero = "Client.ViewModel.Contextes.HeroesInfoDialog.SelectedHero.SelectedHeroContext";
     private const string IntProperty = "Client.MVVM.Base.ViewModel.Properties.IntProperty";
+    private const string StringProperty = "Client.MVVM.Base.ViewModel.Properties.StringProperty";
+    private const string SwapContext = "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Overlays.SwapArtifactsOverlayContext";
+    private const string ArtifactAvatar = "Client.ViewModel.Contextes.Generic.ArtifactAvatarContext";
+    private const string Artifact = "SharedModel.Meta.Artifacts.Artifact";
     public const string ViewKeyEnum = "Client.ViewModel.DTO.ViewKey";
     private const string ViewStateEnum = "Client.RaidApp.ViewState";
     private const string VisibilityEnum = "Client.RaidApp.ViewVisibility";
@@ -34,6 +38,7 @@ public sealed class UiStateReader(IGameObjects g)
 
         var views = new List<OpenView>();
         ChampionScreenState? champion = null;
+        SwapDialogState? swap = null;
         foreach (var meta in g.RefList(list, MaxViews))
         {
             Expect(meta, ViewMeta, "RaidViewMaster._views[]");
@@ -45,11 +50,13 @@ public sealed class UiStateReader(IGameObjects g)
             views.Add(view);
             if (name == UiState.ChampionScreenView && view.IsActive && g.Ref(meta, ViewMeta, "View") is var v and not 0)
                 champion = ReadChampionScreen(g.Ref(v, BaseView, "Context"));
+            if (name == UiState.SwapView && view.IsActive && g.Ref(meta, ViewMeta, "View") is var sv and not 0 && g.Ref(sv, BaseView, "Context") is var sc and not 0)
+                swap = ReadSwap(Expect(sc, SwapContext, "SwapArtifactsOverlay view's Context"));
         }
 
         var block = g.Ref(app, AppViewModel, "_blockUi");
         var blocking = block == 0 ? 0 : g.Int(Expect(block, BlockUi, "AppViewModel._blockUi"), BlockUi, "_blockingEventsCounter");
-        return new UiState(views, blocking, champion);
+        return new UiState(views, blocking, champion, swap);
     }
 
     private ChampionScreenState? ReadChampionScreen(ulong ctx)
@@ -66,6 +73,21 @@ public sealed class UiStateReader(IGameObjects g)
             IntValue(g.Ref(details, HeroDetails, "_activeTabIndex")),
             IntValue(g.Ref(ctx, HeroesInfo, "_viewState")));
     }
+
+    private SwapDialogState ReadSwap(ulong ctx) => new(
+        ArtifactId(g.Ref(ctx, SwapContext, "_equippedArtifactContext")),
+        ArtifactId(g.Ref(ctx, SwapContext, "_artifactToEquipContext")),
+        StringValue(g.Ref(ctx, SwapContext, "_title")),
+        StringValue(g.Ref(ctx, SwapContext, "_warning")));
+
+    private int? ArtifactId(ulong avatar)
+    {
+        if (avatar == 0) return null;
+        var artifact = g.Ref(Expect(avatar, ArtifactAvatar, "swap dialog avatar"), ArtifactAvatar, "Artifact");
+        return artifact == 0 ? null : g.Int(Expect(artifact, Artifact, "swap dialog artifact"), Artifact, "Id");
+    }
+
+    private string? StringValue(ulong property) => property == 0 ? null : g.String(Expect(property, StringProperty, "StringProperty"), StringProperty, "_value");
 
     private int? IntValue(ulong property) => property == 0 ? null : g.Int(Expect(property, IntProperty, "IntProperty"), IntProperty, "_value");
 

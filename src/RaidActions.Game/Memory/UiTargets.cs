@@ -153,6 +153,9 @@ public static partial class UiTargets
                 // The manage-gear dialog (RemoveArtifactOverlay).
                 "Unequip_h" when t.View == "RemoveArtifactOverlay" => ("manage-remove", "manage gear: Remove"),
                 "BTN_Close1" when t.View == "RemoveArtifactOverlay" => ("manage-close", "manage gear: close"),
+                // The confirmation Equip opens when it replaces a worn piece: Cancel (allowed), Continue (only inside a step's Equip).
+                "Cancel" when t.View == UiState.SwapView => ("swap-cancel", "swap dialog: Cancel"),
+                "Continue" when t.View == UiState.SwapView => ("swap-continue", "swap dialog: Continue"),
                 // Any other popup's close button (offers and the like): closing only; their other buttons are never targets.
                 "BTN_Close1" when t.View.EndsWith("Overlay", StringComparison.Ordinal) => ("dialog-close", $"{t.View}: close"),
                 _ when NeverClick.Contains(n.Name) => ("forbidden", n.Name switch

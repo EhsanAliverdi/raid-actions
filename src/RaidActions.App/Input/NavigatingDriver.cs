@@ -347,31 +347,48 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan? plan, stri
         // An offer's close: only its own close element (BTN_Close1), on the popup that is on top; nothing else on an offer.
         if (kind == "dialog-close" && (t.View != s.Top?.Name || !t.Path.EndsWith("/BTN_Close1", StringComparison.Ordinal)))
             throw new StopException($"Refused: the close found ({t.Path} in {t.View}) is not the close of the popup on top ({s.Top?.Name}).");
-        (w, why) = GameWindow.Find();
-        if (w is null) throw new StopException(why!);
-        if (policy.Problem(w) is { } bad) throw new StopException($"The window changed before the click: {bad}");
-        if (t.ClientWidth is { } cw && (cw != w.Client.Width || t.ClientHeight != w.Client.Height))
-            throw new StopException($"The window changed size ({t.ClientWidth}x{t.ClientHeight} → {w.Client.Width}x{w.Client.Height}) before the click.");
-
-        var r = t.Rect!.Value;
-        var x = r.X + r.Width * (0.35f + 0.3f * (float)_random.NextDouble());
-        var y = r.Y + r.Height * (0.35f + 0.3f * (float)_random.NextDouble());
-        var png = Shot(a, $"step {a.Step}: CLICK {t.Name} at {r}", r);
-        await Task.Delay(_random.Next(250, 600), ct);
-        ct.ThrowIfCancellationRequested();
-        if (MouseInput.Click(w, x, y, _random) is { } notSent) throw new StopException($"Not clicked ({t.Name}): {notSent}");
-        Clicks.Add((a.Step, t.Name, r, true, png ?? "-"));
-        log($"step {a.Step}: clicked {t.Name} at ({x:0},{y:0})");
-
-        var until = DateTime.Now + TimeSpan.FromSeconds(6);
-        while (DateTime.Now < until)
+        // A back/close click the game ignored (a popup still opening, e.g. a combo offer, or a click lost while the window came to the
+        // front) is sent again, up to twice, after a longer wait each time; every other click is sent once.
+        var attempts = BackKinds.Contains(kind) ? 3 : 1;
+        for (var attempt = 1; ; attempt++)
         {
-            await Task.Delay(300, ct);
-            var (s2, t2) = await Read(ct);
-            if (expect(s2, t2)) return;
+            (w, why) = GameWindow.Find();
+            if (w is null) throw new StopException(why!);
+            if (policy.Problem(w) is { } bad) throw new StopException($"The window changed before the click: {bad}");
+            if (t.ClientWidth is { } cw && (cw != w.Client.Width || t.ClientHeight != w.Client.Height))
+                throw new StopException($"The window changed size ({t.ClientWidth}x{t.ClientHeight} → {w.Client.Width}x{w.Client.Height}) before the click.");
+
+            var r = t.Rect!.Value;
+            var x = r.X + r.Width * (0.35f + 0.3f * (float)_random.NextDouble());
+            var y = r.Y + r.Height * (0.35f + 0.3f * (float)_random.NextDouble());
+            var png = Shot(a, $"step {a.Step}: CLICK {t.Name} at {r}", r);
+            await Task.Delay(_random.Next(250, 600), ct);
+            ct.ThrowIfCancellationRequested();
+            if (MouseInput.Click(w, x, y, _random) is { } notSent) throw new StopException($"Not clicked ({t.Name}): {notSent}");
+            Clicks.Add((a.Step, t.Name, r, true, png ?? "-"));
+            log($"step {a.Step}: clicked {t.Name} at ({x:0},{y:0})" + (attempt > 1 ? $" (attempt {attempt} of {attempts})" : ""));
+
+            var until = DateTime.Now + TimeSpan.FromSeconds(6);
+            while (DateTime.Now < until)
+            {
+                await Task.Delay(300, ct);
+                var (s2, t2) = await Read(ct);
+                if (expect(s2, t2)) return;
+            }
+            var (sEnd, tEnd) = await Read(ct);
+            var shows = $"the screen shows {sEnd.Top?.Name}, champion #{sEnd.ChampionScreen?.Champion}, artifact #{sEnd.ChampionScreen?.InventoryArtifactId}";
+            if (attempt >= attempts)
+                throw new StopException($"After clicking {t.Name}{(attempts > 1 ? $" {attempts} times" : "")}, expected {expected}; {shows}." +
+                    (attempts > 1 ? " The game may be stuck: run restart-game, then go-home." : ""));
+            // The same element again, read afresh (it may have moved while the popup opened); anything else on top: stop.
+            await Task.Delay(TimeSpan.FromSeconds(2 * attempt), ct);
+            (sEnd, tEnd) = await Read(ct);
+            if (view is not null && sEnd.Top?.Name != view) throw new StopException($"After clicking {t.Name}: expected {view} on top; {shows}.");
+            var again = UiTargets.Resolve(view is null ? tEnd : tEnd.Where(x2 => x2.View == view).ToList(), kind, id, slot);
+            if (again.Target is not { } t3 || t3.Path != t.Path) throw new StopException($"After clicking {t.Name}, expected {expected}; {shows}.");
+            log($"step {a.Step}: {t.Name} is still there; clicking it again");
+            t = t3;
         }
-        var (sEnd, _) = await Read(ct);
-        throw new StopException($"After clicking {t.Name}, expected {expected}; the screen shows {sEnd.Top?.Name}, champion #{sEnd.ChampionScreen?.Champion}, artifact #{sEnd.ChampionScreen?.InventoryArtifactId}.");
     }
 
     /// <summary>Scrolls a list with the wheel until the target with <paramref name="id"/> may be clicked.</summary>

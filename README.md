@@ -54,6 +54,7 @@ RaidActions run <plan.json>              run it (asks for the plan's confirmatio
 RaidActions sample                       a made-up account and plan to try the app
 RaidActions restart-game [--wait 300]    a stuck game: close Raid (end it after 30 s), start it through Plarium Play, wait for the village
 RaidActions go-home                      back to the village with back/close elements only (closes offers), then Champions
+                                         (a back/close the game ignores, e.g. an offer still opening, is clicked again up to twice)
 
 Read-only, against the running game:
 RaidActions validate <plan.json> --live  check the plan against the game as it is now

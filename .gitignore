@@ -28,3 +28,4 @@ appsettings.local.json
 
 # WPF build temp projects (left behind by an interrupted build)
 *_wpftmp.csproj
+.claude/settings.local.json

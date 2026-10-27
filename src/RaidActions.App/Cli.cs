@@ -108,6 +108,12 @@ public static class Cli
             var outDir = AppPaths.Resolve(null, outIndex >= 0 && outIndex + 1 < args.Length ? args[outIndex + 1] : null).Output;
             return await GoHomeCommand.RunAsync(args, outDir, output, abortHook);
         }
+        if (args.Length > 0 && args[0].Equals("restart-game", StringComparison.OrdinalIgnoreCase))
+        {
+            var outIndex = Array.IndexOf(args, "--output");
+            var outDir = AppPaths.Resolve(null, outIndex >= 0 && outIndex + 1 < args.Length ? args[outIndex + 1] : null).Output;
+            return await RestartGameCommand.RunAsync(args, outDir, output);
+        }
         if (args.Length > 0 && UiCommands.Names.Contains(args[0].ToLowerInvariant()))
         {
             var outIndex = Array.IndexOf(args, "--output");

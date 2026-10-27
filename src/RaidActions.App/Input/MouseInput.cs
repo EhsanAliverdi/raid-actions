@@ -13,33 +13,81 @@ public static class MouseInput
     /// <summary>Brings the game to the front if it is not; the reason it could not, or null.</summary>
     public static string? EnsureForeground(GameWindowInfo w)
     {
-        // A second try after a short pause: another window can take the front for a moment (a notification). Still not in front: refuse.
+        if (GetForegroundWindow() == w.Handle) return null;
+        if (SessionProblem() is { } session) return session;
+        // Each way in turn until Windows confirms the game is in front; a second round after a short pause (another window can take the
+        // front for a moment, a notification). Still not in front: refuse.
         for (var attempt = 0; attempt < 2; attempt++)
         {
-            if (TryForeground(w)) return null;
+            foreach (var way in Ways)
+                if (way(w.Handle)) return null;
             Thread.Sleep(500);
         }
         return "Could not bring the game window to the front.";
     }
 
-    private static bool TryForeground(GameWindowInfo w)
+    /// <summary>
+    /// Why no window can come to the front (nothing can receive input): the session is disconnected (a closed Remote Desktop) or locked.
+    /// Null when the session has the input desktop.
+    /// </summary>
+    public static string? SessionProblem()
     {
-        if (GetForegroundWindow() == w.Handle) return true;
-        var fg = GetForegroundWindow();
-        var fgThread = GetWindowThreadProcessId(fg, out _);
+        if (WTSQuerySessionInformation(IntPtr.Zero, -1 /* this session */, 8 /* WTSConnectState */, out var buffer, out _))
+        {
+            var state = Marshal.ReadInt32(buffer);
+            WTSFreeMemory(buffer);
+            if (state != 0 /* WTSActive */)
+                return "This Windows session is not active (a disconnected Remote Desktop session, state " + state + "): no window can be "
+                    + "brought to the front and no input reaches the game. Reconnect, or hand the session to the console (tscon) instead of disconnecting.";
+        }
+        var desk = OpenInputDesktop(0, false, 0x0100 /* DESKTOP_SWITCHDESKTOP */);
+        if (desk == IntPtr.Zero) return "The screen is locked (the input desktop is not this one): no input reaches the game. Unlock the PC.";
+        CloseDesktop(desk);
+        return null;
+    }
+
+    // The ways to the front, in order: Windows lets a process take the front after it sends input, so an Alt tap comes first; then joining
+    // the input of the window in front; then minimizing and restoring the game.
+    private static readonly Func<IntPtr, bool>[] Ways = [AfterAltTap, Attached, MinimizeRestore];
+
+    private static bool Confirmed(IntPtr game)
+    {
+        Thread.Sleep(250);
+        return GetForegroundWindow() == game;
+    }
+
+    private static bool AfterAltTap(IntPtr game)
+    {
+        keybd_event(VkMenu, 0, 0, IntPtr.Zero);
+        keybd_event(VkMenu, 0, KeyUp, IntPtr.Zero);
+        SetForegroundWindow(game);
+        return Confirmed(game);
+    }
+
+    private static bool Attached(IntPtr game)
+    {
+        var fgThread = GetWindowThreadProcessId(GetForegroundWindow(), out _);
         var me = GetCurrentThreadId();
         var attached = fgThread != 0 && fgThread != me && AttachThreadInput(me, fgThread, true);
         try
         {
-            BringWindowToTop(w.Handle);
-            SetForegroundWindow(w.Handle);
+            BringWindowToTop(game);
+            SetForegroundWindow(game);
         }
         finally
         {
             if (attached) AttachThreadInput(me, fgThread, false);
         }
-        Thread.Sleep(250);
-        return GetForegroundWindow() == w.Handle;
+        return Confirmed(game);
+    }
+
+    private static bool MinimizeRestore(IntPtr game)
+    {
+        ShowWindow(game, 6 /* SW_MINIMIZE */);
+        Thread.Sleep(150);
+        ShowWindow(game, 9 /* SW_RESTORE */);
+        SetForegroundWindow(game);
+        return Confirmed(game);
     }
 
     /// <summary>A left click at client point (x, y). Returns null when sent, else why not (nothing sent).</summary>
@@ -88,7 +136,8 @@ public static class MouseInput
         return null;
     }
 
-    private const uint LeftDown = 0x0002, LeftUp = 0x0004, WheelFlag = 0x0800;
+    private const uint LeftDown = 0x0002, LeftUp = 0x0004, WheelFlag = 0x0800, KeyUp = 0x0002;
+    private const byte VkMenu = 0x12;
 
     [StructLayout(LayoutKind.Sequential)]
     private struct POINT
@@ -107,4 +156,10 @@ public static class MouseInput
     [DllImport("user32.dll")] private static extern bool AttachThreadInput(uint attach, uint to, bool on);
     [DllImport("kernel32.dll")] private static extern uint GetCurrentThreadId();
     [DllImport("user32.dll")] private static extern IntPtr SetThreadDpiAwarenessContext(IntPtr context);
+    [DllImport("user32.dll")] private static extern void keybd_event(byte vk, byte scan, uint flags, IntPtr extra);
+    [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr hWnd, int cmd);
+    [DllImport("user32.dll")] private static extern IntPtr OpenInputDesktop(uint flags, bool inherit, uint access);
+    [DllImport("user32.dll")] private static extern bool CloseDesktop(IntPtr desktop);
+    [DllImport("wtsapi32.dll")] private static extern bool WTSQuerySessionInformation(IntPtr server, int sessionId, int infoClass, out IntPtr buffer, out int bytes);
+    [DllImport("wtsapi32.dll")] private static extern void WTSFreeMemory(IntPtr memory);
 }

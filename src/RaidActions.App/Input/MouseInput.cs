@@ -125,8 +125,12 @@ public static class MouseInput
         try
         {
             var under = GetAncestor(WindowFromPoint(new POINT { X = sx, Y = sy }), 2 /* GA_ROOT */);
+            // A point off every screen (a window wider than a narrow Remote Desktop screen) would be clicked at the screen's edge instead.
+            var (vx, vy, vw, vh) = (GetSystemMetrics(76), GetSystemMetrics(77), GetSystemMetrics(78), GetSystemMetrics(79));
+            if (sx < vx || sy < vy || sx >= vx + vw || sy >= vy + vh)
+                return $"({sx},{sy}) is off the screen ({vw}x{vh} at ({vx},{vy})): the game window does not fit the screen. Use a screen at least as large as the window (Remote Desktop in landscape, or a larger resolution).";
             if (under != w.Handle) return $"The window under ({sx},{sy}) is not the game.";
-            if (!SetCursorPos(sx, sy)) return "Could not move the cursor.";
+            if (!SetCursorPos(sx, sy) || !GetCursorPos(out var at) || at.X != sx || at.Y != sy) return "Could not move the cursor to the point.";
         }
         finally
         {
@@ -147,6 +151,8 @@ public static class MouseInput
 
     [DllImport("user32.dll")] private static extern void mouse_event(uint flags, int dx, int dy, int data, IntPtr extra);
     [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
+    [DllImport("user32.dll")] private static extern bool GetCursorPos(out POINT p);
+    [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
     [DllImport("user32.dll")] private static extern IntPtr WindowFromPoint(POINT p);
     [DllImport("user32.dll")] private static extern IntPtr GetAncestor(IntPtr hWnd, uint flags);
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();

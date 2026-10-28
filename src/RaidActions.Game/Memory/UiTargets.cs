@@ -152,6 +152,11 @@ public static partial class UiTargets
                 targets.Add(Make("scroll-champions", "champion list (scroll)", null, n, n, null));
                 continue;
             }
+            if (n.Name is "BathhouseViewport_h" or "VaultViewport_h" && n.Path.Contains("/StorageWindow/", StringComparison.Ordinal))
+            {
+                targets.Add(Make("scroll-vault", $"vaults: {(n.Name.StartsWith("Bath", StringComparison.Ordinal) ? "Reserve" : "Master")} grid (scroll)", null, n, n, null));
+                continue;
+            }
             if (n.Name == "GroupsViewport" && n.Path.Contains("/InventoryWindow/", StringComparison.Ordinal))
             {
                 targets.Add(Make("scroll-picker", "picker (scroll)", null, n, n, null));
@@ -166,6 +171,15 @@ public static partial class UiTargets
                 "CloseButton" when n.Path.EndsWith("/HeroesHeader/CloseButton", StringComparison.Ordinal) => ("screen-close", "champion screen: close"),
                 // The picker and the artifact popup's two panels (the selected piece, the piece worn now), each with its own close.
                 "HideButton" when n.Path.EndsWith("/InventoryWindow/HideButton", StringComparison.Ordinal) => ("picker-close", "picker: close"),
+                // The champion list's Champion Vaults button (the vault commands only).
+                "StorageButton_h" when t.View == UiState.ChampionScreenView => ("vaults-open", "champion screen: Champion Vaults"),
+                // The Vaults panel (StorageWindow): its two tabs, its close, and its move buttons (bottom).
+                "VaultButton" when n.Path.Contains("/StorageWindow/", StringComparison.Ordinal) => ("vault-tab-master", "vaults: Master Vault tab"),
+                "BathhouseButton" when n.Path.Contains("/StorageWindow/", StringComparison.Ordinal) => ("vault-tab-reserve", "vaults: Reserve Vault tab"),
+                "HideButton" when n.Path.Contains("/StorageWindow/", StringComparison.Ordinal) => ("vault-close", "vaults: close"),
+                // With champions ticked in a vault's grid: left "To Collection" (the champion list), right "To <the other vault>".
+                "SingleOrLeftButton" when n.Path.Contains("/StorageWindow/", StringComparison.Ordinal) => ("vault-move-left", "vaults: left button (To Collection when champions are ticked)"),
+                "RightButton_h" when n.Path.Contains("/StorageWindow/", StringComparison.Ordinal) => ("forbidden", "vaults: right button (to the other vault; never)"),
                 "HideButton" when n.Path.Contains("/SelectedItemWindow/", StringComparison.Ordinal) => ("popup-close-selected", "popup (selected piece): close"),
                 "HideButton" when n.Path.Contains("/EquipedItemWindow/", StringComparison.Ordinal) => ("popup-close-worn", "popup (worn piece): close"),
                 // The artifact popup's actions: never clicked by navigation (Equip only in a real run, after the go-ahead).

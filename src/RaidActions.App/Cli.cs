@@ -120,6 +120,12 @@ public static class Cli
             return await SellCommand.RunAsync(args, output, input, interactive, abortHook);
         if (args.Length > 0 && args[0].Equals("upgrade", StringComparison.OrdinalIgnoreCase))
             return await UpgradeCommand.RunAsync(args, output, input, interactive, abortHook);
+        if (args.Length > 0 && (args[0].Equals("vault-open", StringComparison.OrdinalIgnoreCase) || args[0].Equals("vault-withdraw", StringComparison.OrdinalIgnoreCase)))
+        {
+            var outIndex = Array.IndexOf(args, "--output");
+            var outDir = AppPaths.Resolve(null, outIndex >= 0 && outIndex + 1 < args.Length ? args[outIndex + 1] : null).Output;
+            return await VaultCommand.RunAsync(args, outDir, output, abortHook);
+        }
         if (args.Length > 0 && args[0].Equals("restart-game", StringComparison.OrdinalIgnoreCase))
         {
             var outIndex = Array.IndexOf(args, "--output");

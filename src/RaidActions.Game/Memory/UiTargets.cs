@@ -50,7 +50,8 @@ public static partial class UiTargets
 
     /// <summary>
     /// Element names that are never clicked: Sell (manage-gear dialog: sells the piece at once), the sell panel's Select all (would tick
-    /// every piece), Auto-Equip (re-gears the champion by itself), PowerUp (Upgrade: spends resources). The picker's Sell mode toggle is
+    /// every piece), Auto-Equip (re-gears the champion by itself), PowerUp (Upgrade: spends resources; only the upgrade command
+    /// clicks the popup's Upgrade). The picker's Sell mode toggle is
     /// a target of its own (sell-mode), which only the sell command may click: it is not in the swap runs' allow-list.
     /// </summary>
     public static readonly IReadOnlySet<string> NeverClick = new HashSet<string> { "Sell_h", "SelectAll_h", "QuickEquipButton", "PowerUpButton" };
@@ -83,7 +84,7 @@ public static partial class UiTargets
         {
             var b = button ?? owner;
             return new(kind, name, id, t.View, b.Screen, owner.ActiveInHierarchy && b.ActiveInHierarchy, button?.Interactable,
-                b.FullyVisible, forbidden || NeverClick.Contains(b.Name) && kind is not ("popup-upgrade" or "powerup"), b.Path, note, slot, t.ClientWidth, t.ClientHeight);
+                b.FullyVisible, forbidden || NeverClick.Contains(b.Name) && kind is not "popup-upgrade", b.Path, note, slot, t.ClientWidth, t.ClientHeight);
         }
 
         for (var i = 0; i < nodes.Count; i++)
@@ -179,8 +180,11 @@ public static partial class UiTargets
                 // Upgrading (the upgrade command only): the selected piece's popup Upgrade (opens the upgrade screen) and that screen's one-level
                 // Upgrade. The upgrade screen's Sell and its "upgrade to level" button are never clicked.
                 "PowerUpButton" when n.Path.Contains("/SelectedItemWindow/", StringComparison.Ordinal) => ("popup-upgrade", "popup (selected piece): Upgrade"),
-                "PowerUpButton" when t.View == UiState.PowerUpView && n.Path.Contains("/UpgradeButtons_h/PowerUpButton", StringComparison.Ordinal) => ("powerup", "upgrade screen: Upgrade (one level)"),
-                "SellButton" or "UpgradeButton" or "Dropdown" when t.View == UiState.PowerUpView => ("forbidden", $"upgrade screen: {n.Name} (never)"),
+                // The upgrade screen: "upgrade to level" (the game keeps trying until the level set in its dropdown, 1 by default, is
+                // reached) and its Cancel while it runs. The one-attempt Upgrade, Sell and the level dropdown are never clicked.
+                "UpgradeButton" when t.View == UiState.PowerUpView && n.Path.Contains("/LevelUpGradationDropdown_h/UpgradeButton", StringComparison.Ordinal) => ("powerup-level", "upgrade screen: Upgrade (to level)"),
+                "CancelMultiPowerUpButton_h" when t.View == UiState.PowerUpView => ("powerup-cancel", "upgrade screen: Cancel (stop upgrading)"),
+                "SellButton" or "PowerUpButton" or "Dropdown" when t.View == UiState.PowerUpView => ("forbidden", $"upgrade screen: {n.Name} (never)"),
                 // The picker's sell mode: its toggle, and the sell panel's Cancel and Apply (Apply opens the game's own confirmation).
                 "SellMode" when n.BindingPath?.Contains("SellArtifactsButton", StringComparison.Ordinal) == true => ("sell-mode", "picker: Sell mode"),
                 "Cancel" when n.Path.Contains("/SellArtifactsPanel_h/", StringComparison.Ordinal) => ("sell-cancel", "sell panel: Cancel"),

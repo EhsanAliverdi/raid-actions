@@ -156,12 +156,14 @@ public static class UpgradeCommand
             }
             catch (NavigatingDriver.StopException e)
             {
+                if (driver.Current is { } partial) results.Add(partial);
                 Log("STOPPED: " + e.Message);
                 driver.SaveScreenshot(folder, "stopped");
                 outcome = Cli.Failed;
             }
             catch (OperationCanceledException)
             {
+                if (driver.Current is { } partial) results.Add(partial);
                 Log("ABORTED.");
                 outcome = Cli.Aborted;
             }
@@ -175,7 +177,7 @@ public static class UpgradeCommand
             var notReached = plan.Items.Where(x => !results.Any(r => r.Id == x.Piece.ArtifactId)).Select(x => $"#{x.Piece.ArtifactId}").ToList();
             Log($"Summary: {done.Count} of {ids.Count} at their target" + (notReached.Count > 0 ? $"; not reached: {string.Join(", ", notReached)}" : "")
                 + $"; {results.Sum(r => r.Attempts)} attempts, {results.Sum(r => r.SilverSpent):N0} silver.");
-            if (!dry && results.Any(r => r.Attempts > 0)) await AfterAsync(game, before, results.Select(r => r.Id).ToHashSet(), Log);
+            if (!dry && results.Any(r => r.Attempts > 0 || r.SilverSpent > 0)) await AfterAsync(game, before, results.Select(r => r.Id).ToHashSet(), Log);
             Log(outcome == Cli.Ok
                 ? dry ? $"Dry run done: each piece's upgrade screen opened and closed. Nothing upgraded. To upgrade: RaidActions upgrade \"{planPath}\" --confirm {plan.Code}" : "Done."
                 : "Not finished: see above.");

@@ -343,7 +343,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             if (s.Top?.Name != view) throw new StopException($"Expected {view} on top; the screen shows {s.Top?.Name}.");
             targets = targets.Where(t => t.View == view).ToList();
         }
-        if (Screen.Covering(s) is { } cover && kind is not ("manage-close" or "dialog-close" or "swap-cancel" or "swap-continue" or "back" or "message-button" or "powerup")) throw new StopException($"Unexpected popup {cover} over the champion screen.");
+        if (Screen.Covering(s) is { } cover && kind is not ("manage-close" or "dialog-close" or "swap-cancel" or "swap-continue" or "back" or "message-button" or "powerup-level" or "powerup-cancel")) throw new StopException($"Unexpected popup {cover} over the champion screen.");
         if (before?.Invoke(s) is { } changed) throw new StopException(changed);
         var (t, problem) = UiTargets.Resolve(targets, kind, id, slot);
         if (t is null) throw new StopException($"{kind}: {problem}");

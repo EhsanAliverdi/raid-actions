@@ -7,15 +7,19 @@ namespace RaidActions.App.Input;
 
 /// <summary>
 /// Upgrading one piece (the upgrade command only): the champion screen, the piece's picker list, the piece found by its id and selected,
-/// its popup's Upgrade (the upgrade screen), then the screen's one-level Upgrade, one attempt at a time, each followed by a live read of
-/// the account until the piece's level or the silver changes. Never past the target; stops before an attempt it cannot pay for. The
-/// upgrade screen's Sell and its "upgrade to level" button are never clicked. A dry run opens the screen, shows the click it would make
+/// its popup's Upgrade (the upgrade screen), then the screen's "upgrade to level" (the game retries failed attempts by itself until the
+/// level goes up), one level per click, watched by live reads of the account. Never past the target (Cancel the moment it is reached
+/// if the game's level dropdown is set higher); stops before an attempt it cannot pay for. The upgrade screen's Sell, its one-attempt
+/// Upgrade and the level dropdown are never clicked. A dry run opens the screen, shows the click it would make
 /// and closes it: nothing is upgraded.
 /// </summary>
 public sealed partial class NavigatingDriver
 {
-    /// <summary>The clicks only the upgrade command adds: the selected piece's popup Upgrade and the upgrade screen's one-level Upgrade.</summary>
-    public static readonly IReadOnlySet<string> UpgradeOnlyClicks = new HashSet<string> { "popup-upgrade", "powerup" };
+    /// <summary>The clicks only the upgrade command adds: the selected piece's popup Upgrade, the upgrade screen's "upgrade to level" and its Cancel.</summary>
+    public static readonly IReadOnlySet<string> UpgradeOnlyClicks = new HashSet<string> { "popup-upgrade", "powerup-level", "powerup-cancel" };
+
+    /// <summary>The piece being upgraded so far (level, attempts, silver), for the run's summary when it stops partway; null between pieces.</summary>
+    public UpgradeResult? Current { get; private set; }
 
     /// <summary>How a piece's upgrade ended: done (at target), out of silver, piece gone, changed, or a dry run.</summary>
     public sealed record UpgradeResult(int Id, int From, int To, int Target, int Attempts, long SilverSpent, string Outcome)
@@ -58,6 +62,8 @@ public sealed partial class NavigatingDriver
         var level = from;
         var silver = silverStart;
         var outcome = "done";
+        Current = new UpgradeResult(id, from, from, target, 0, 0, "stopped");
+        void Note(string o) => Current = new UpgradeResult(id, from, level, target, attempts, (long)Math.Max(0, silverStart - silver), o);
         while (true)
         {
             ct.ThrowIfCancellationRequested();
@@ -66,44 +72,65 @@ public sealed partial class NavigatingDriver
             if (piece is null) throw new StopException($"#{id} is gone from the account while its upgrade screen is open.");
             level = piece.Level;
             silver = account.Account.Resources.GetValueOrDefault("Silver");
+            Note("stopped");
             if (level >= target) break;
             if (priceOf(piece) is { } price && silver < price) { outcome = $"out of silver at +{level} ({silver:N0}, the next attempt costs {price:N0})"; break; }
             var (s, targets) = await Read(ct);
             if (s.Top?.Name != UiState.PowerUpView) throw new StopException($"Expected the upgrade screen on top; the screen shows {s.Top?.Name}.");
-            var (button, problem) = UiTargets.Resolve(targets.Where(t => t.View == UiState.PowerUpView).ToList(), "powerup");
+            var mine = targets.Where(t => t.View == UiState.PowerUpView).ToList();
+            var (button, problem) = UiTargets.Resolve(mine, "powerup-level");
             if (button is null) { outcome = $"the Upgrade button is not available at +{level} ({problem})"; break; }
             if (!real)
             {
-                Shot(a, $"upgrade #{id}: WOULD CLICK Upgrade at {button.Rect} (dry run: NOT pressed)", button.Rect!.Value);
-                Clicks.Add((0, $"upgrade screen: Upgrade #{id} (not pressed)", button.Rect!.Value, false, "-"));
+                Shot(a, $"upgrade #{id}: WOULD CLICK Upgrade (to level) at {button.Rect} (dry run: NOT pressed)", button.Rect!.Value);
+                Clicks.Add((0, $"upgrade screen: Upgrade (to level) #{id} (not pressed)", button.Rect!.Value, false, "-"));
                 outcome = "dry run";
                 break;
             }
             log($"upgrade #{id} ({UiTargets.DisplayName(slot)}): +{level} → +{level + 1} ({index} of {total})");
             var levelBefore = level;
-            var silverBefore = silver;
-            await Click(a, "powerup", null, null, (_, _) => true, "the attempt starts", ct, view: UiState.PowerUpView);
-            attempts++;
-            // The attempt's effect, from the account: the level (success) or only the silver (a failed attempt) changes.
-            var until = DateTime.Now + TimeSpan.FromSeconds(20);
-            var changed = false;
-            while (DateTime.Now < until)
+            await Click(a, "powerup-level", null, null, (_, _) => true, "the upgrade starts", ct, view: UiState.PowerUpView);
+            // The game now tries until the level goes up (failed attempts only cost silver). Watched from the account: each silver
+            // change is an attempt; the target reached while it still runs (its dropdown set above one level): Cancel at once.
+            var lastChange = DateTime.Now;
+            var lastSilver = silver;
+            while (true)
             {
-                await Task.Delay(1200, ct);
-                var (after, _) = game.ReadUi();
-                if (after is not null && after.Top?.Name != UiState.PowerUpView && Screen.Covering(after) is { } popup)
-                    throw new StopException($"After Upgrade: {popup} opened (not enough silver, or an offer). Stopped at +{levelBefore}.");
+                await Task.Delay(350, ct);
+                var (after, afterTargets) = await Read(ct);
+                if (after.Top?.Name != UiState.PowerUpView && Screen.Covering(after) is { } popup)
+                    throw new StopException($"While upgrading: {popup} opened (not enough silver, or an offer). Stopped at +{level}.");
                 var now = await game.Account.ReadAsync(ct);
                 var p = now.Artifacts.FirstOrDefault(x => x.Id == id);
                 var sv = now.Account.Resources.GetValueOrDefault("Silver");
-                if (p is not null && (p.Level != levelBefore || sv != silverBefore))
+                if (sv != lastSilver)
                 {
-                    changed = true;
-                    log(p.Level > levelBefore ? $"#{id}: +{p.Level} (silver {sv:N0})" : $"#{id}: attempt failed, still +{p.Level} (silver {sv:N0})");
-                    break;
+                    attempts++;
+                    lastSilver = sv;
+                    lastChange = DateTime.Now;
+                    if (p is not null && p.Level == level) log($"#{id}: attempt failed, still +{p.Level} (silver {sv:N0})");
                 }
+                silver = (long)sv;
+                var running = afterTargets.Any(t => t.Kind == "powerup-cancel" && t.NotClickable is null) == true;
+                if (p is not null && p.Level != level)
+                {
+                    level = p.Level;
+                    lastChange = DateTime.Now;
+                    log($"#{id}: +{level} (silver {sv:N0})");
+                }
+                Note("stopped");
+                if (level >= target && running)
+                {
+                    await Click(a, "powerup-cancel", null, null, (_, _) => true, "the upgrade stops", ct, view: UiState.PowerUpView);
+                    log($"#{id}: target +{target} reached while the game kept going: Cancel pressed");
+                    await Task.Delay(1500, ct);
+                    continue;
+                }
+                if (level > levelBefore && !running) break;
+                if (DateTime.Now - lastChange > TimeSpan.FromSeconds(20))
+                    throw new StopException($"After Upgrade: neither the level of #{id} nor the silver changed within 20 s. Stopped at +{level}.");
             }
-            if (!changed) throw new StopException($"After Upgrade: neither the level of #{id} nor the silver changed within 20 s. Stopped at +{levelBefore}.");
+            if (level > target) log($"WARNING: #{id} went past its target: +{level} (target +{target}).");
         }
 
         // Back from the upgrade screen and the popup.
@@ -112,6 +139,7 @@ public sealed partial class NavigatingDriver
         if (s2.ChampionScreen?.InventoryArtifactId is not null)
             await Click(a, "popup-close-selected", null, null, (s3, _) => s3.ChampionScreen?.InventoryArtifactId is null, "the piece's popup closes", ct);
         if (outcome == "done") log($"#{id}: done at +{level}");
+        Current = null;
         return new UpgradeResult(id, from, level, target, attempts, (long)Math.Max(0, silverStart - silver), outcome);
     }
 }

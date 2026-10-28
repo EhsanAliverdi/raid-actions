@@ -83,7 +83,7 @@ public static partial class UiTargets
         {
             var b = button ?? owner;
             return new(kind, name, id, t.View, b.Screen, owner.ActiveInHierarchy && b.ActiveInHierarchy, button?.Interactable,
-                b.FullyVisible, forbidden || NeverClick.Contains(b.Name), b.Path, note, slot, t.ClientWidth, t.ClientHeight);
+                b.FullyVisible, forbidden || NeverClick.Contains(b.Name) && kind is not ("popup-upgrade" or "powerup"), b.Path, note, slot, t.ClientWidth, t.ClientHeight);
         }
 
         for (var i = 0; i < nodes.Count; i++)

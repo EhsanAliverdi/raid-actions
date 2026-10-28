@@ -226,14 +226,21 @@ public class UiTargetsTests
         Assert.Equal(["back", "message-button", "message-button"], m.Select(x => x.Kind));
         Assert.Equal([0, 1], m.Where(x => x.Kind == "message-button").Select(x => x.Id!.Value));
         var views = new List<OpenView> { new(1, "HeroesInfoOverlay", "Active", true), new(2, "MessageBox", "Active", true) };
-        var s = new UiState(views, 0, null, MessageBox: new MessageBoxInfo("Sell", "Sell the selected artifacts?"));
-        Assert.Null(App.Input.NavigatingDriver.ConfirmationProblem(s, m));
-        Assert.Contains("worn", App.Input.NavigatingDriver.ConfirmationProblem(s with { MessageBox = new("Sell", "Some are equipped by champions. Sell?") }, m));
-        Assert.Contains("on top", App.Input.NavigatingDriver.ConfirmationProblem(s with { Views = [views[0]] }, m));
-        Assert.Contains("say Sell", App.Input.NavigatingDriver.ConfirmationProblem(s, m.Select(x => x.Kind == "message-button" ? x with { Note = "OK" } : x).ToList()));
-        Assert.Contains("buttons", App.Input.NavigatingDriver.ConfirmationProblem(s, m.Take(2).ToList()));
+        var s = new UiState(views, 0, null, MessageBox: new MessageBoxInfo("Attention", "Are you sure you want to sell 3 Artifacts? (0 equipped)"));
+        Assert.Null(App.Input.NavigatingDriver.ConfirmationProblem(s, m, 3));
+        Assert.Contains("planned 3", App.Input.NavigatingDriver.ConfirmationProblem(s with { MessageBox = new("Attention", "Are you sure you want to sell 4 Artifacts? (0 equipped)") }, m, 3));
+        Assert.Contains("worn", App.Input.NavigatingDriver.ConfirmationProblem(s with { MessageBox = new("Attention", "Are you sure you want to sell 3 Artifacts? (1 equipped)") }, m, 3));
+        Assert.Contains("not the sell confirmation", App.Input.NavigatingDriver.ConfirmationProblem(s with { MessageBox = new("Attention", "Leave the battle?") }, m, 3));
+        Assert.Contains("on top", App.Input.NavigatingDriver.ConfirmationProblem(s with { Views = [views[0]] }, m, 3));
+        Assert.Contains("say Sell", App.Input.NavigatingDriver.ConfirmationProblem(s, m.Select(x => x.Kind == "message-button" ? x with { Note = "OK" } : x).ToList(), 3));
+        Assert.Contains("buttons", App.Input.NavigatingDriver.ConfirmationProblem(s, m.Take(2).ToList(), 3));
         Assert.True(App.Input.NavigatingDriver.IsSellText(" SELL "));
         Assert.False(App.Input.NavigatingDriver.IsSellText("Sell all"));
+
+        // The pieces in the picker's order: top to bottom, then left to right; pieces not in the picker last.
+        UiTarget Item(int id, float x, float y) => new("inventory-item", $"artifact #{id}", id, "HeroesInfoOverlay", R(x, y, 50, 50), true, true, false, false, $"p{id}", null);
+        var list = new List<UiTarget> { Item(1, 300, 900), Item(2, 400, -300), Item(3, 300, -300), Item(4, 350, 902) };
+        Assert.Equal([3, 2, 1, 4, 99], App.Input.NavigatingDriver.InListOrder([99, 1, 2, 3, 4], list));
 
         var sell = new SellState(2, [11, 12]);
         Assert.True(sell.Is([12, 11]));

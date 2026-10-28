@@ -401,6 +401,10 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
     {
         var down = true;
         string? lastSeen = null;
+        // Pixels one wheel notch moves the list, measured from the target's own rectangle between turns (null until measured).
+        float? perNotch = null;
+        float? lastY = null;
+        var lastNotches = 0;
         for (var i = 0; i < 80; i++)
         {
             var (s, targets) = await Read(ct);
@@ -413,9 +417,16 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             // Direction: towards the target when the list holds it (above or below the viewport); else down, then up at the end.
             var known = targets.FirstOrDefault(x => x.Kind == kind && x.Id == id && x.Active && x.Rect is not null);
             if (known is not null) down = known.Rect!.Value.Y > ar.Y;
-            // Big turns while the target is more than a viewport away, small ones near it (or when its place is unknown).
-            var away = known is null ? 0 : Math.Abs(known.Rect!.Value.Center.Y - ar.Center.Y) / Math.Max(1, ar.Height);
-            var notches = away > 4 ? 15 : away > 2 ? 8 : away > 1 ? 4 : 2;
+            // Big turns while the target is more than a viewport away, small ones near it (or when its place is unknown). Once one
+            // turn has shown how far a notch moves the list, the turn brings the target to the middle of the viewport in one go.
+            var gap = known is null ? 0 : Math.Abs(known.Rect!.Value.Center.Y - ar.Center.Y);
+            if (known is not null && lastY is { } y0 && lastNotches > 0 && Math.Abs(known.Rect!.Value.Y - y0) is var moved and > 1)
+                perNotch = moved / lastNotches;
+            lastY = known?.Rect!.Value.Y;
+            var away = gap / Math.Max(1, ar.Height);
+            var notches = perNotch is { } ppn && known is not null ? Math.Clamp((int)Math.Round(gap / ppn), 1, 60)
+                : away > 4 ? 15 : away > 2 ? 8 : away > 1 ? 4 : 2;
+            lastNotches = notches;
             var seen = string.Join(",", targets.Where(x => x.Kind == kind && x.FullyVisible).Select(x => x.Id));
             if (known is null && seen == lastSeen) down = !down; // nothing moved: an end of the list
             lastSeen = seen;
@@ -424,7 +435,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             await NoBattle(ct);
             var (cx, cy) = ar.Center;
             if (MouseInput.Wheel(w, cx, cy, down ? -notches : notches) is { } notSent) throw new StopException($"Not scrolled: {notSent}");
-            log($"step {a.Step}: scrolled {area.Name} {(down ? "down" : "up")}");
+            log($"step {a.Step}: scrolled {area.Name} {(down ? "down" : "up")} {notches} notch{(notches == 1 ? "" : "es")}{(perNotch is { } pn ? $" ({pn:0.#} px each)" : "")}");
             await Task.Delay(450, ct);
         }
         throw new StopException($"{kind} {id} not found after scrolling the list.");

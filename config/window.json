@@ -1,13 +1,13 @@
 {
   "$comment": "Game window sizes raid-actions accepts. Any size works: click targets come from memory rectangles that scale with the window. Refused only when minimized or smaller than minimumClient; then the window is restored / enlarged to minimumClient by itself, and put back after the run. minimumClient keeps the smallest click target (champion tile, picker item) at least targetPx pixels at the game's aspect ratio, never below floorClient. Worked out by  RaidActions window minimum.",
   "minimumClient": {
-    "width": 1280,
-    "height": 720
+    "width": 864,
+    "height": 486
   },
   "floorClient": {
-    "width": 1280,
-    "height": 720
+    "width": 864,
+    "height": 486
   },
   "targetPx": 40,
-  "how": "2026-10-26 10:45: at 1280x720 the smallest target was 61 px (inventory-item 61 px); 40 px needs 844x475; with the floor 1280x720: 1280x720"
+  "how": "2026-10-28: lowered on request (Ehsan) from the 1280x720 floor to 864x486, 16:9: the smallest target measured on 2026-10-26 was 61 px at 1280x720 (inventory items), so 864x486 keeps it at about 41 px (40 px needs 844x475)."
 }

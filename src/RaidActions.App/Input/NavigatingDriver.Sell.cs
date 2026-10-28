@@ -2,6 +2,7 @@ using System.Text.RegularExpressions;
 using RaidActions.Execution;
 using RaidActions.Game.Dry;
 using RaidActions.Game.Memory;
+using RaidActions.Game.Window;
 
 namespace RaidActions.App.Input;
 
@@ -22,17 +23,21 @@ public sealed partial class NavigatingDriver
 
     /// <summary>
     /// Why the game's sell confirmation may not be accepted, or null: it must be the message box on top, with exactly two buttons of
-    /// which exactly one sells, and its text must not mention worn (equipped) pieces, which this command never sells.
+    /// which exactly one sells, and its text must be the game's "sell <paramref name="count"/> Artifacts? (0 equipped)": the planned
+    /// number of pieces and no worn piece (seen 2026-10-28: "Are you sure you want to sell 3 Artifacts? (0 equipped)").
     /// </summary>
-    public static string? ConfirmationProblem(UiState s, IReadOnlyList<UiTarget> targets)
+    public static string? ConfirmationProblem(UiState s, IReadOnlyList<UiTarget> targets, int count)
     {
         if (s.Top?.Name != UiState.MessageBoxView) return $"the confirmation is not on top ({s.Top?.Name})";
         var buttons = targets.Where(t => t.View == UiState.MessageBoxView && t.Kind == "message-button").ToList();
         if (buttons.Count != 2) return $"it has {buttons.Count} buttons, expected 2 ({string.Join(", ", buttons.Select(b => b.Note ?? "?"))})";
         var sellButtons = buttons.Count(b => IsSellText(b.Note));
         if (sellButtons != 1) return $"{sellButtons} of its buttons say Sell ({string.Join(", ", buttons.Select(b => $"\"{b.Note ?? "?"}\""))})";
-        var text = $"{s.MessageBox?.Title} {s.MessageBox?.Message}";
-        if (Regex.IsMatch(text, @"equip|worn|champion|hero", RegexOptions.IgnoreCase)) return $"its text mentions worn pieces: \"{text.Trim()}\"";
+        var text = Regex.Replace(s.MessageBox?.Message ?? "", "<[^>]*>", "");
+        var m = Regex.Match(text, @"\bsell\s+(?<n>\d+)\s+artifacts?\b.*?\((?<e>\d+)\s+equipped\)", RegexOptions.IgnoreCase | RegexOptions.Singleline);
+        if (!m.Success) return $"its text is not the sell confirmation this command knows: \"{text.Trim()}\"";
+        if (int.Parse(m.Groups["n"].Value) != count) return $"it sells {m.Groups["n"].Value} pieces, planned {count}";
+        if (m.Groups["e"].Value != "0") return $"it includes {m.Groups["e"].Value} worn (equipped) pieces";
         return null;
     }
 
@@ -63,21 +68,13 @@ public sealed partial class NavigatingDriver
             throw new StopException($"Pieces were already ticked for sale ({start}); cancelled, nothing sold.");
         }
 
-        // Each piece: found by id, unequipped and not ticked in memory, then ticked; the game's list must then be the pieces so far.
+        // One sweep down the picker: from the top, every planned piece is ticked as it comes into view, then the list is turned
+        // down; it is never turned back up. (The picker keeps only the items near the viewport in memory, so the order cannot be
+        // known in advance.)
         var ticked = new List<int>();
         try
         {
-            foreach (var id in ids)
-            {
-                var item = await Scrolled(a, "inventory-item", id, "scroll-picker", ct);
-                if (item.HasOwner != false) throw new StopException($"#{id}: memory does not show it unequipped ({(item.HasOwner is null ? "unread" : "worn")}); not ticked.");
-                if (item.SellMarked == true) throw new StopException($"#{id} is already ticked for sale.");
-                var sofar = ticked.ToList();
-                await Click(a, "inventory-item", id, null, (s2, _) => s2.Sell is { } x && x.Is([.. sofar, id]), $"#{id} ticked (and only the pieces so far)", ct,
-                    before: s2 => s2.Sell is { } x && x.Is(sofar) ? null : $"the ticked pieces changed before #{id} ({s2.Sell})");
-                ticked.Add(id);
-                log($"sell {slot}: #{id} ticked ({ticked.Count} of {ids.Count})");
-            }
+            await SweepTick(a, slot, ids, ticked, ct);
 
             (s, var targets) = await Read(ct);
             if (s.Sell is not { } all || !all.Is(ids)) throw new StopException($"Before Sell: the game shows {s.Sell} ticked; planned [{string.Join(", ", ids)}].");
@@ -99,7 +96,7 @@ public sealed partial class NavigatingDriver
         var buttons = boxTargets.Where(x => x.View == UiState.MessageBoxView && x.Kind == "message-button").ToList();
         var shown = $"title \"{box.MessageBox?.Title}\", text \"{box.MessageBox?.Message}\", buttons {string.Join(", ", buttons.Select(b => $"{b.Id}: \"{b.Note}\""))}";
         log($"sell {slot}: confirmation: {shown}");
-        var problem = ConfirmationProblem(box, boxTargets);
+        var problem = ConfirmationProblem(box, boxTargets, ids.Count);
         var sellButton = buttons.FirstOrDefault(b => IsSellText(b.Note));
         if (sellButton?.Rect is { } sr) Shot(a, real && problem is null ? $"sell {slot}: CLICK Sell at {sr}" : $"sell {slot}: WOULD CLICK Sell at {sr} (NOT pressed)", sr);
 
@@ -141,6 +138,111 @@ public sealed partial class NavigatingDriver
         throw new StopException($"After Sell: the account still has some of [{string.Join(", ", ids)}] after 30 s.");
     }
 
+    /// <summary>
+    /// Ticks <paramref name="ids"/> in one pass down the picker: the list is turned to the top first, then each planned piece fully in
+    /// view is ticked (top to bottom), then the list is turned down by about one viewport (straight to a planned piece further down
+    /// when memory already holds it). Stops at the end of the list with the pieces it did not find.
+    /// </summary>
+    private async Task SweepTick(UiAction a, string slot, IReadOnlyList<int> ids, List<int> ticked, CancellationToken ct)
+    {
+        var left = ids.ToHashSet();
+        await TurnToTop(a, ct);
+        float? perNotch = null;
+        string? lastSeen = null;
+        for (var turn = 0; turn < 200 && left.Count > 0; turn++)
+        {
+            var (s, targets) = await Read(ct);
+            if (Screen.Covering(s) is { } cover) throw new StopException($"Unexpected popup {cover} over the champion screen.");
+            // Planned pieces that may be clicked now, top to bottom.
+            var here = targets.Where(t => t.Kind == "inventory-item" && t.Id is { } id && left.Contains(id)).Select(t => t.Id!.Value).Distinct()
+                .Select(id => UiTargets.Resolve(targets, "inventory-item", id).Target).OfType<UiTarget>()
+                .OrderBy(t => Math.Round(t.Rect!.Value.Y / Math.Max(1f, t.Rect.Value.Height))).ThenBy(t => t.Rect!.Value.X).ToList();
+            foreach (var item in here)
+            {
+                var id = item.Id!.Value;
+                await Tick(a, slot, id, item, ticked, ids.Count, ct);
+                left.Remove(id);
+            }
+            if (left.Count == 0) return;
+
+            // Turn down: straight to the nearest planned piece memory holds below, else about one viewport.
+            (s, targets) = await Read(ct);
+            var (area, problem) = UiTargets.Resolve(targets, "scroll-picker");
+            if (area is null) throw new StopException($"scroll-picker: {problem}");
+            var ar = area.Rect!.Value;
+            var seenNow = targets.Where(t => t.Kind == "inventory-item" && t.FullyVisible).Select(t => t.Id).OrderBy(x => x).ToList();
+            var seen = string.Join(",", seenNow);
+            if (seen == lastSeen) throw new StopException($"End of the {UiTargets.DisplayName(slot)} list: not found [{string.Join(", ", left.Select(i => $"#{i}"))}] (ticked so far: {ticked.Count}).");
+            lastSeen = seen;
+            var below = targets.Where(t => t.Kind == "inventory-item" && t.Id is { } id && left.Contains(id) && t.Rect is { } r && r.Y > ar.Y)
+                .Select(t => t.Rect!.Value.Center.Y - ar.Center.Y).Where(d => d > 0).DefaultIfEmpty().Min();
+            var distance = below > 0 ? below : ar.Height * 0.8f;
+            var notches = perNotch is { } ppn ? Math.Clamp((int)Math.Round(distance / ppn), 1, 60) : 4;
+            var anchor = targets.FirstOrDefault(t => t.Kind == "inventory-item" && t.FullyVisible && t.Id is not null && t.Rect is not null);
+            var (w, why) = GameWindow.Find();
+            if (w is null) throw new StopException(why!);
+            await NoBattle(ct);
+            var (cx, cy) = ar.Center;
+            if (MouseInput.Wheel(w, cx, cy, -notches) is { } notSent) throw new StopException($"Not scrolled: {notSent}");
+            await Task.Delay(450, ct);
+            // How far one notch moved the list: measured on an item seen before and after the turn.
+            var (_, afterTurn) = await Read(ct);
+            if (anchor is not null && afterTurn.FirstOrDefault(t => t.Kind == "inventory-item" && t.Id == anchor.Id && t.Rect is not null) is { } same
+                && anchor.Rect!.Value.Y - same.Rect!.Value.Y is var moved and > 1)
+                perNotch = moved / notches;
+            log($"sell {slot}: turned the picker down {notches} notch{(notches == 1 ? "" : "es")}{(perNotch is { } pn ? $" ({pn:0.#} px each)" : "")}, {left.Count} to find");
+        }
+        if (left.Count > 0) throw new StopException($"Not found in the {UiTargets.DisplayName(slot)} list: [{string.Join(", ", left.Select(i => $"#{i}"))}].");
+    }
+
+    /// <summary>Turns the picker up until the pieces in view stop changing (the top).</summary>
+    private async Task TurnToTop(UiAction a, CancellationToken ct)
+    {
+        string? last = null;
+        for (var i = 0; i < 30; i++)
+        {
+            var (_, targets) = await Read(ct);
+            var seen = string.Join(",", targets.Where(t => t.Kind == "inventory-item" && t.FullyVisible).Select(t => t.Id).OrderBy(x => x));
+            if (seen == last) return;
+            last = seen;
+            var (area, problem) = UiTargets.Resolve(targets, "scroll-picker");
+            if (area is null) throw new StopException($"scroll-picker: {problem}");
+            if (i == 0 && targets.Where(t => t.Kind == "inventory-item" && t.Rect is not null).Select(t => t.Rect!.Value.Y).DefaultIfEmpty(float.MaxValue).Min() >= area.Rect!.Value.Y - 1)
+                return; // nothing above the viewport: already at the top
+            var (w, why) = GameWindow.Find();
+            if (w is null) throw new StopException(why!);
+            var (cx, cy) = area.Rect!.Value.Center;
+            if (MouseInput.Wheel(w, cx, cy, 30) is { } notSent) throw new StopException($"Not scrolled: {notSent}");
+            log("sell: turned the picker up to the top");
+            await Task.Delay(450, ct);
+        }
+    }
+
+    /// <summary>One tick: the piece unequipped and not ticked in memory; after the click the game's list is the pieces so far plus it.</summary>
+    private async Task Tick(UiAction a, string slot, int id, UiTarget item, List<int> ticked, int total, CancellationToken ct)
+    {
+        if (item.HasOwner != false) throw new StopException($"#{id}: memory does not show it unequipped ({(item.HasOwner is null ? "unread" : "worn")}); not ticked.");
+        if (item.SellMarked == true) throw new StopException($"#{id} is already ticked for sale.");
+        var sofar = ticked.ToList();
+        await Click(a, "inventory-item", id, null, (s2, _) => s2.Sell is { } x && x.Is([.. sofar, id]), $"#{id} ticked (and only the pieces so far)", ct,
+            before: s2 => s2.Sell is { } x && x.Is(sofar) ? null : $"the ticked pieces changed before #{id} ({s2.Sell})");
+        ticked.Add(id);
+        log($"sell {slot}: #{id} ticked ({ticked.Count} of {total})");
+    }
+
+    /// <summary>
+    /// <paramref name="ids"/> by their place in the picker (every item is in the UI tree with its rectangle, also outside the viewport):
+    /// top to bottom, then left to right. Pieces the picker does not hold come last, in plan order (the scroll then finds them or stops).
+    /// </summary>
+    public static IReadOnlyList<int> InListOrder(IReadOnlyList<int> ids, IReadOnlyList<UiTarget> targets)
+    {
+        var place = targets.Where(t => t.Kind == "inventory-item" && t.Id is not null && t.Rect is not null)
+            .GroupBy(t => t.Id!.Value).Where(g => g.Count() == 1).ToDictionary(g => g.Key, g => g.Single().Rect!.Value);
+        return ids.Select((id, i) => (id, i)).OrderBy(x => place.ContainsKey(x.id) ? 0 : 1)
+            .ThenBy(x => place.TryGetValue(x.id, out var r) ? Math.Round(r.Y / Math.Max(1f, r.Height)) : 0)
+            .ThenBy(x => place.TryGetValue(x.id, out var r) ? r.X : 0).ThenBy(x => x.i).Select(x => x.id).ToList();
+    }
+
     /// <summary>The champion screen with <paramref name="slot"/>'s picker open (an earlier picker and sell mode closed first).</summary>
     private async Task OpenPicker(UiAction a, string slot, CancellationToken ct)
     {
@@ -149,6 +251,9 @@ public sealed partial class NavigatingDriver
         {
             await GoHome(a, ct);
             await OpenChampions(a, ct);
+            // The champion screen loads its gear icons after it opens (spinners); a click before that is ignored.
+            await Task.Delay(3000, ct);
+            await Settled(ct);
         }
         var (s1, t1) = await Read(ct);
         if (t1.Any(x => x.Kind == "sell-cancel" && x.NotClickable is null)) await LeaveSellMode(a, ct);
@@ -160,7 +265,19 @@ public sealed partial class NavigatingDriver
         (s1, _) = await Read(ct);
         if (s1.ChampionScreen?.DetailsTab != 0)
             await Click(a, "gear-tab", 1, null, (s2, _) => s2.ChampionScreen?.DetailsTab == 0, "the gear tab is on", ct);
-        await Click(a, "gear-slot", null, slot, (_, t) => t.Any(x => x.Kind == "inventory-item" && x.Active), $"the {UiTargets.DisplayName(slot)} picker shows pieces", ct);
+        try
+        {
+            await Click(a, "gear-slot", null, slot, (_, t) => t.Any(x => x.Kind == "inventory-item" && x.Active), $"the {UiTargets.DisplayName(slot)} picker shows pieces", ct);
+        }
+        catch (StopException e)
+        {
+            // A slot click the game ignored (still loading): once more after a pause, only when nothing else opened.
+            var (s2, t2) = await Read(ct);
+            if (s2.Top?.Name != UiState.ChampionScreenView || s2.ChampionScreen?.InventoryArtifactId is not null || t2.Any(x => x.Kind == "inventory-item" && x.Active)) throw;
+            log($"{e.Message} Clicking the slot once more.");
+            await Task.Delay(2000, ct);
+            await Click(a, "gear-slot", null, slot, (_, t) => t.Any(x => x.Kind == "inventory-item" && x.Active), $"the {UiTargets.DisplayName(slot)} picker shows pieces", ct);
+        }
     }
 
     /// <summary>The sell panel's Cancel: sell mode off, nothing ticked.</summary>

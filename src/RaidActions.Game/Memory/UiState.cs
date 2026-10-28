@@ -80,6 +80,8 @@ public sealed record UiState(IReadOnlyList<OpenView> Views, int BlockingEvents, 
     public const string ChampionScreenView = "HeroesInfoOverlay";
     public const string SwapView = "SwapArtifactsOverlay";
     public const string MessageBoxView = "MessageBox";
+    /// <summary>The artifact upgrade screen (Upgrade from a piece's popup).</summary>
+    public const string PowerUpView = "ArtifactPowerUpOverlay";
 
     /// <summary>
     /// Views of a battle being loaded, fought, paused or left (explicit: many other view names contain "Battle", such as the always-open

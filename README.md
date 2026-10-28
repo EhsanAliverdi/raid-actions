@@ -54,6 +54,7 @@ RaidActions run <plan.json>              run it (asks for the plan's confirmatio
 RaidActions sample                       a made-up account and plan to try the app
 RaidActions restart-game [--wait 300]    a stuck game: close Raid (end it after 30 s), start it through Plarium Play, wait for the village
 RaidActions sell <sell-plan.json> [--dry-run] [--confirm <code>] [--start-game]
+RaidActions upgrade <upgrade-plan.json> [--dry-run] [--confirm <code>] [--start-game]   upgrade pieces to their targets, one level at a time
                                          sell exactly a raid-extractor sell plan's pieces (output\plans\sell; the app's Sell review
                                          starts this itself): one sweep per picker list (gear; accessories), every tick checked in
                                          memory, one confirmation per list; --dry-run cancels at the confirmation; --start-game opens

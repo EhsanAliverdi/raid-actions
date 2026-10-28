@@ -26,6 +26,10 @@ public static class Cli
                                                sell a sell plan's pieces (raid-extractor's Sell review), slot by slot;
                                                --dry-run ticks them, reads the confirmation and cancels: nothing is sold;
                                                --start-game starts Raid through Plarium Play first when it is not running
+          RaidActions upgrade <upgrade-plan.json> [--dry-run] [--confirm <code>] [--start-game]
+                                               upgrade an upgrade plan's pieces (raid-extractor's Upgrade review) to their
+                                               targets, one level at a time; stops before an attempt it cannot pay for;
+                                               --dry-run opens each piece's upgrade screen and closes it: nothing is upgraded
 
         Read-only, against the running game (no input, never brings it to the front):
           RaidActions window                   find the game window: size, DPI, state, usable for clicks
@@ -114,6 +118,8 @@ public static class Cli
         }
         if (args.Length > 0 && args[0].Equals("sell", StringComparison.OrdinalIgnoreCase))
             return await SellCommand.RunAsync(args, output, input, interactive, abortHook);
+        if (args.Length > 0 && args[0].Equals("upgrade", StringComparison.OrdinalIgnoreCase))
+            return await UpgradeCommand.RunAsync(args, output, input, interactive, abortHook);
         if (args.Length > 0 && args[0].Equals("restart-game", StringComparison.OrdinalIgnoreCase))
         {
             var outIndex = Array.IndexOf(args, "--output");

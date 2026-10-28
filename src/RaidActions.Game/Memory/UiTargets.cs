@@ -176,6 +176,11 @@ public static partial class UiTargets
                 // The confirmation Equip opens when it replaces a worn piece: Cancel (allowed), Continue (only inside a step's Equip).
                 "Cancel" when t.View == UiState.SwapView => ("swap-cancel", "swap dialog: Cancel"),
                 "Continue" when t.View == UiState.SwapView => ("swap-continue", "swap dialog: Continue"),
+                // Upgrading (the upgrade command only): the selected piece's popup Upgrade (opens the upgrade screen) and that screen's one-level
+                // Upgrade. The upgrade screen's Sell and its "upgrade to level" button are never clicked.
+                "PowerUpButton" when n.Path.Contains("/SelectedItemWindow/", StringComparison.Ordinal) => ("popup-upgrade", "popup (selected piece): Upgrade"),
+                "PowerUpButton" when t.View == UiState.PowerUpView && n.Path.Contains("/UpgradeButtons_h/PowerUpButton", StringComparison.Ordinal) => ("powerup", "upgrade screen: Upgrade (one level)"),
+                "SellButton" or "UpgradeButton" or "Dropdown" when t.View == UiState.PowerUpView => ("forbidden", $"upgrade screen: {n.Name} (never)"),
                 // The picker's sell mode: its toggle, and the sell panel's Cancel and Apply (Apply opens the game's own confirmation).
                 "SellMode" when n.BindingPath?.Contains("SellArtifactsButton", StringComparison.Ordinal) == true => ("sell-mode", "picker: Sell mode"),
                 "Cancel" when n.Path.Contains("/SellArtifactsPanel_h/", StringComparison.Ordinal) => ("sell-cancel", "sell panel: Cancel"),

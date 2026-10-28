@@ -121,9 +121,23 @@ public sealed partial class NavigatingDriver
                 Note("stopped");
                 if (level >= target && running)
                 {
-                    await Click(a, "powerup-cancel", null, null, (_, _) => true, "the upgrade stops", ct, view: UiState.PowerUpView);
-                    log($"#{id}: target +{target} reached while the game kept going: Cancel pressed");
-                    await Task.Delay(1500, ct);
+                    // The Cancel button lingers a moment after a one-level upgrade ends: look again before pressing it.
+                    await Task.Delay(600, ct);
+                    var (_, again) = await Read(ct);
+                    if (again.Any(t => t.Kind == "powerup-cancel" && t.NotClickable is null))
+                    {
+                        try
+                        {
+                            await Click(a, "powerup-cancel", null, null, (_, _) => true, "the upgrade stops", ct, view: UiState.PowerUpView);
+                            log($"#{id}: target +{target} reached while the game kept going: Cancel pressed");
+                        }
+                        catch (StopException)
+                        {
+                            // It ended by itself just before the click: fine. Still running: stop the run.
+                            if ((await Read(ct)).Targets.Any(t => t.Kind == "powerup-cancel" && t.NotClickable is null)) throw;
+                        }
+                        await Task.Delay(1500, ct);
+                    }
                     continue;
                 }
                 if (level > levelBefore && !running) break;

@@ -19,7 +19,7 @@ namespace RaidActions.App.Input;
 /// <param name="upgrade">The upgrade command's driver: the popup's Upgrade and the upgrade screen's one-level Upgrade are allowed too
 /// (<see cref="UpgradeOnlyClicks"/>); swap and sell runs never have them.</param>
 public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? plan, string folder, WindowPolicy policy, Action<string> log,
-    IReadOnlySet<int>? equipSteps = null, bool sell = false, bool upgrade = false, bool vault = false) : IGameDriver, IStepPicker
+    IReadOnlySet<int>? equipSteps = null, bool sell = false, bool upgrade = false, bool vault = false, bool unequip = false) : IGameDriver, IStepPicker
 {
     /// <summary>The kinds this driver may click: <see cref="AllowedClicks"/>, plus the sell-mode clicks for the sell command.</summary>
     private bool IsAllowed(string kind) => AllowedClicks.Contains(kind) || sell && SellOnlyClicks.Contains(kind) || upgrade && UpgradeOnlyClicks.Contains(kind)
@@ -398,7 +398,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             if (s.Top?.Name != view) throw new StopException($"Expected {view} on top; the screen shows {s.Top?.Name}.");
             targets = targets.Where(t => t.View == view).ToList();
         }
-        if (Screen.Covering(s) is { } cover && kind is not ("manage-close" or "dialog-close" or "swap-cancel" or "swap-continue" or "back" or "message-button" or "powerup-level" or "powerup-cancel")) throw new StopException($"Unexpected popup {cover} over the champion screen.");
+        if (Screen.Covering(s) is { } cover && kind is not ("manage-close" or "manage-remove" or "dialog-close" or "swap-cancel" or "swap-continue" or "back" or "message-button" or "powerup-level" or "powerup-cancel")) throw new StopException($"Unexpected popup {cover} over the champion screen.");
         if (before?.Invoke(s) is { } changed) throw new StopException(changed);
         var (t, problem) = UiTargets.Resolve(targets, kind, id, slot);
         if (t is null) throw new StopException($"{kind}: {problem}");

@@ -184,7 +184,7 @@ public static partial class UiTargets
                 "HideButton" when n.Path.Contains("/EquipedItemWindow/", StringComparison.Ordinal) => ("popup-close-worn", "popup (worn piece): close"),
                 // The artifact popup's actions: never clicked by navigation (Equip only in a real run, after the go-ahead).
                 "EquipButton_h" => ("popup-equip", "popup: Equip"),
-                "RemoveButton_h" => ("popup-remove", "popup: Remove"),
+                "RemoveButton_h" => ("popup-remove", "popup: Manage (opens the manage-gear dialog)"),
                 // The manage-gear dialog (RemoveArtifactOverlay).
                 "Unequip_h" when t.View == "RemoveArtifactOverlay" => ("manage-remove", "manage gear: Remove"),
                 "BTN_Close1" when t.View == "RemoveArtifactOverlay" => ("manage-close", "manage gear: close"),

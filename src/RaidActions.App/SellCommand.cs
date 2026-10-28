@@ -145,15 +145,18 @@ public static class SellCommand
             var outcome = Cli.Ok;
             try
             {
-                foreach (var g in bySlot)
+                // One pass per picker list (not per slot): the gear list holds all six gear slots, so one sweep down it ticks every planned
+                // gear piece and one sale sells them; the accessories are the second list.
+                var byList = plan.Items.GroupBy(x => NavigatingDriver.PickerSlot(x.Piece.Slot)).OrderBy(g => g.Key == "Ring" ? 1 : 0).ToList();
+                foreach (var g in byList)
                 {
                     // Every slot checked again against the account as it is now.
                     var now = await game.Account.ReadAsync(cts.Token);
                     var slotPlan = plan with { Items = g.ToList() };
-                    if (slotPlan.Check(now) is { Count: > 0 } changed) throw new NavigatingDriver.StopException("Before " + g.Key + ": " + string.Join(" ", changed));
+                    if (slotPlan.Check(now) is { Count: > 0 } changed) throw new NavigatingDriver.StopException($"Before the {NavigatingDriver.ListName(g.Key)}: " + string.Join(" ", changed));
                     var r = await driver.SellSlot(g.Key, g.Select(x => x.Piece.ArtifactId).ToList(), real: !dry, cts.Token);
                     results.Add(r);
-                    Log($"{UiTargets.DisplayName(g.Key)}: {r.Detail}");
+                    Log($"{NavigatingDriver.ListName(g.Key)}: {r.Detail}");
                 }
             }
             catch (NavigatingDriver.StopException e)

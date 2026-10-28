@@ -242,6 +242,10 @@ public class UiTargetsTests
         var list = new List<UiTarget> { Item(1, 300, 900), Item(2, 400, -300), Item(3, 300, -300), Item(4, 350, 902) };
         Assert.Equal([3, 2, 1, 4, 99], App.Input.NavigatingDriver.InListOrder([99, 1, 2, 3, 4], list));
 
+        // One picker list for all six gear slots, one for the accessories: a sale is one pass per list, not per slot.
+        Assert.Equal(["Weapon", "Weapon", "Weapon", "Weapon", "Weapon", "Weapon", "Ring", "Ring", "Ring"], UiTargets.SlotIds.Select(App.Input.NavigatingDriver.PickerSlot));
+        Assert.Equal(("gear", "accessories"), (App.Input.NavigatingDriver.ListName("Weapon"), App.Input.NavigatingDriver.ListName("Ring")));
+
         var sell = new SellState(2, [11, 12]);
         Assert.True(sell.Is([12, 11]));
         Assert.False(sell.Is([11]));

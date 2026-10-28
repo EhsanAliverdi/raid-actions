@@ -53,6 +53,11 @@ RaidActions dry-run <plan.json>          navigate and highlight every step, neve
 RaidActions run <plan.json>              run it (asks for the plan's confirmation code, or --confirm <code>)
 RaidActions sample                       a made-up account and plan to try the app
 RaidActions restart-game [--wait 300]    a stuck game: close Raid (end it after 30 s), start it through Plarium Play, wait for the village
+RaidActions sell <sell-plan.json> [--dry-run] [--confirm <code>] [--start-game]
+                                         sell exactly a raid-extractor sell plan's pieces (output\plans\sell; the app's Sell review
+                                         starts this itself): one sweep per picker list (gear; accessories), every tick checked in
+                                         memory, one confirmation per list; --dry-run cancels at the confirmation; --start-game opens
+                                         Raid through Plarium Play when it is not running
 RaidActions go-home                      back to the village with back/close elements only (closes offers), then Champions
                                          (a back/close the game ignores, e.g. an offer still opening, is clicked again up to twice)
 
@@ -63,6 +68,10 @@ RaidActions window | capture | ui-state | recognize | templates seed|recut
 
 A plan in raid-extractor's `output\plans\` is checked against that output's `account.json` and `history\`. Phase 1: the fake
 executor starts from that saved `account.json` and moves pieces in memory; nothing is sent to the game.
+
+The game window: any size at or above the minimum in `config\window.json` (864×486) is used as it is. A smaller or minimized
+window is resized to the minimum **in place** (its top-left corner stays; only pulled back on screen when needed) and left at that
+size after the run.
 
 Abort: **Ctrl+Alt+Esc** anywhere (a global hotkey that works while the game has focus), the Abort button, or Ctrl+C in the CLI.
 Logs, snapshots and screenshots go to `output\` (gitignored). Exit codes: 0 done, 1 refused, 2 failed, 3 aborted, 4 usage,

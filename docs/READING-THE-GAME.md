@@ -97,8 +97,21 @@ open view (ViewMeta.View, a managed RaidView)
   **1600×900** and at **1280×720**. Every rectangle at 1280×720 is the 1600×900 one times 0.8 (canvas scale 0.833 → 0.667).
   Tile ids matched the champions shown (Kael = 1, selected), and the bottom rows were refused as outside the list's viewport.
   Placeholder tiles (id 0 or −1) are not targets.
-- **Never clicked**: `Sell_h` (manage gear: Sell, which sells the piece), `SellMode` (the picker's sell mode),
+- **Never clicked**: `Sell_h` (manage gear: Sell, which sells the piece at once), `SelectAll_h` (the sell panel's Select all),
   `QuickEquipButton` (Auto-Equip), `PowerUpButton` (Upgrade).
+- **Sell mode** (2026-10-28, the `sell` command only; swap runs never have these clicks): the picker's `SellMode` toggle (binding
+  `DisplayMode.SellArtifactsButton`) opens `SellArtifactsPanel_h` with `Cancel` (sell-cancel) and `Apply` (sell-apply, the panel's
+  Sell). What is ticked is read from memory: `HeroesInfoOverlayContext._inventoryContext` (InventoryViewContext) → `_sellArtifacts`
+  (SellArtifactsContext) → `_sellArtifactsCount` and `_markedForSell` (the items' InventoryArtifactContext → Avatar → Artifact.Id); each
+  item also has `_withSellMark` (ticked) and `_hasOwner` (worn). Apply opens the game's `MessageBox` view: `MessageBoxContext._titleText`
+  / `_mainMessage` ("Are you sure you want to sell 3 Artifacts? (0 equipped)") and two buttons with `MessageBoxButtonContext` (their
+  `ButtonContextBase.Text`: "Cancel", "Sell"); its X is `BTN_Close1_h`. The confirmation's Sell is clicked only once per list, after a
+  one-time unlock, when the text names the planned count and "(0 equipped)" and the ticked list is exactly the plan's pieces.
+- **The picker's lists**: all six gear slots are one list, grouped by set (a helmet shows while the weapon slot's list is scrolled), so a
+  sale opens it from the Weapon slot and sweeps it once from the top; accessories (ring, amulet, banner) are the other list, opened from
+  the Ring slot. The list keeps only the items near the viewport in memory (pooled, some with old rectangles), so the order of the pieces
+  is found while sweeping, the top is where a turn no longer changes the pieces in view, and the list is read again once it stops gliding
+  after a wheel turn. A single wheel event carrying many notches counts as one notch in the game: long turns are many notches 8 ms apart.
 - **Overlay check**: `RaidActions overlay` captures the window and draws the memory rectangles on it (green clickable, red
   not interactable, cyan bound context) in `output/overlays`.
 - **Templates are only a cross-check**: a template that matched somewhere else than the memory rectangle (overlap under

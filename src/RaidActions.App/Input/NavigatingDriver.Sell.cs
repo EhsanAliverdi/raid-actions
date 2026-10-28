@@ -41,6 +41,18 @@ public sealed partial class NavigatingDriver
         return null;
     }
 
+    /// <summary>The accessories (rings, amulets, banners): the picker's second list. Every other slot is in the gear list.</summary>
+    public static readonly IReadOnlySet<string> AccessorySlots = new HashSet<string> { "Ring", "Cloak", "Banner" };
+
+    /// <summary>
+    /// The picker list a piece is in, and the gear slot that opens it: the gear list (all six gear slots together, grouped by set; seen
+    /// 2026-10-28: a helmet in view while the weapon slot's list was scrolled) opens from the Weapon slot, the accessories from the Ring.
+    /// </summary>
+    public static string PickerSlot(string slot) => AccessorySlots.Contains(slot) ? "Ring" : "Weapon";
+
+    /// <summary>The list's name in the log: gear or accessories.</summary>
+    public static string ListName(string pickerSlot) => AccessorySlots.Contains(pickerSlot) ? "accessories" : "gear";
+
     public sealed record SellSlotResult(string Slot, IReadOnlyList<int> Ids, bool Sold, string Detail);
 
     /// <summary>
@@ -51,7 +63,7 @@ public sealed partial class NavigatingDriver
     {
         if (!sell) throw new StopException("Refused: this driver is not the sell command's.");
         if (ids.Count == 0 || ids.Distinct().Count() != ids.Count) throw new StopException($"{slot}: no pieces, or a piece twice.");
-        var a = new UiAction(ActionKind.FindPiece, 0, $"sell {ids.Count} {UiTargets.DisplayName(slot)}", Slot: slot);
+        var a = new UiAction(ActionKind.FindPiece, 0, $"sell {ids.Count} {ListName(slot)}", Slot: slot);
         await NoBattle(ct);
         FitWindow();
 
@@ -78,7 +90,7 @@ public sealed partial class NavigatingDriver
 
             (s, var targets) = await Read(ct);
             if (s.Sell is not { } all || !all.Is(ids)) throw new StopException($"Before Sell: the game shows {s.Sell} ticked; planned [{string.Join(", ", ids)}].");
-            if (targets.FirstOrDefault(x => x.Kind == "sell-apply") is { Rect: { } r }) Shot(a, $"sell {slot}: {ids.Count} ticked, Sell at {r}", r);
+            if (targets.FirstOrDefault(x => x.Kind == "sell-apply") is { Rect: { } r }) Shot(a, $"sell {ListName(slot)}: {ids.Count} ticked, Sell at {r}", r);
 
             // Sell opens the game's own confirmation.
             await Click(a, "sell-apply", null, null, (s2, _) => s2.Top?.Name == UiState.MessageBoxView, "the sell confirmation opens", ct,
@@ -95,10 +107,10 @@ public sealed partial class NavigatingDriver
         var (box, boxTargets) = await Read(ct);
         var buttons = boxTargets.Where(x => x.View == UiState.MessageBoxView && x.Kind == "message-button").ToList();
         var shown = $"title \"{box.MessageBox?.Title}\", text \"{box.MessageBox?.Message}\", buttons {string.Join(", ", buttons.Select(b => $"{b.Id}: \"{b.Note}\""))}";
-        log($"sell {slot}: confirmation: {shown}");
+        log($"sell {ListName(slot)}: confirmation: {shown}");
         var problem = ConfirmationProblem(box, boxTargets, ids.Count);
         var sellButton = buttons.FirstOrDefault(b => IsSellText(b.Note));
-        if (sellButton?.Rect is { } sr) Shot(a, real && problem is null ? $"sell {slot}: CLICK Sell at {sr}" : $"sell {slot}: WOULD CLICK Sell at {sr} (NOT pressed)", sr);
+        if (sellButton?.Rect is { } sr) Shot(a, real && problem is null ? $"sell {ListName(slot)}: CLICK Sell at {sr}" : $"sell {ListName(slot)}: WOULD CLICK Sell at {sr} (NOT pressed)", sr);
 
         if (!real || problem is not null)
         {
@@ -119,7 +131,7 @@ public sealed partial class NavigatingDriver
         _once = "message-button";
         await Click(a, "message-button", sellButton!.Id, null, (s2, _) => s2.Top?.Name != UiState.MessageBoxView, "the confirmation closes", ct,
             before: s2 => s2.Sell is { } x && x.Is(ids) && s2.Top?.Name == UiState.MessageBoxView ? null : $"the ticked pieces or the dialog changed before Sell ({s2.Sell}, {s2.Top?.Name})");
-        log($"sell {slot}: clicked Sell on the confirmation for [{string.Join(", ", ids)}]");
+        log($"sell {ListName(slot)}: clicked Sell on the confirmation for [{string.Join(", ", ids)}]");
 
         // The effect, from the account itself: every planned piece gone, nothing else.
         var until = DateTime.Now + TimeSpan.FromSeconds(30);
@@ -177,8 +189,8 @@ public sealed partial class NavigatingDriver
                 // Nothing moved since the last turn: the end, unless the list was still gliding. One more turn decides.
                 if (atEndOnce)
                 {
-                    if (targets.FirstOrDefault(t => t.Kind == "scroll-picker")?.Rect is { } er) Shot(a, $"sell {slot}: end of the list, not found [{string.Join(", ", left)}]", er);
-                    throw new StopException($"End of the {UiTargets.DisplayName(slot)} list: not found [{string.Join(", ", left.Select(i => $"#{i}"))}] (ticked so far: {ticked.Count}; in view at the end: {seen}).");
+                    if (targets.FirstOrDefault(t => t.Kind == "scroll-picker")?.Rect is { } er) Shot(a, $"sell {ListName(slot)}: end of the list, not found [{string.Join(", ", left)}]", er);
+                    throw new StopException($"End of the {ListName(slot)} list: not found [{string.Join(", ", left.Select(i => $"#{i}"))}] (ticked so far: {ticked.Count}; in view at the end: {seen}).");
                 }
                 atEndOnce = true;
             }
@@ -199,9 +211,9 @@ public sealed partial class NavigatingDriver
             if (anchor is not null && afterTurn.FirstOrDefault(t => t.Kind == "inventory-item" && t.Id == anchor.Id && t.Rect is not null) is { } same
                 && anchor.Rect!.Value.Y - same.Rect!.Value.Y is var moved and > 1)
                 perNotch = moved / notches;
-            log($"sell {slot}: turned the picker down {notches} notch{(notches == 1 ? "" : "es")}{(perNotch is { } pn ? $" ({pn:0.#} px each)" : "")}, {left.Count} to find; in view: {SeenIds(afterTurn)}");
+            log($"sell {ListName(slot)}: turned the picker down {notches} notch{(notches == 1 ? "" : "es")}{(perNotch is { } pn ? $" ({pn:0.#} px each)" : "")}, {left.Count} to find; in view: {SeenIds(afterTurn)}");
         }
-        if (left.Count > 0) throw new StopException($"Not found in the {UiTargets.DisplayName(slot)} list: [{string.Join(", ", left.Select(i => $"#{i}"))}].");
+        if (left.Count > 0) throw new StopException($"Not found in the {ListName(slot)} list: [{string.Join(", ", left.Select(i => $"#{i}"))}].");
     }
 
     /// <summary>
@@ -267,7 +279,7 @@ public sealed partial class NavigatingDriver
         await Click(a, "inventory-item", id, null, (s2, _) => s2.Sell is { } x && x.Is([.. sofar, id]), $"#{id} ticked (and only the pieces so far)", ct,
             before: s2 => s2.Sell is { } x && x.Is(sofar) ? null : $"the ticked pieces changed before #{id} ({s2.Sell})");
         ticked.Add(id);
-        log($"sell {slot}: #{id} ticked ({ticked.Count} of {total})");
+        log($"sell {ListName(slot)}: #{id} ticked ({ticked.Count} of {total})");
     }
 
     /// <summary>

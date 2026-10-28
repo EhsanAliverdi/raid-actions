@@ -44,7 +44,8 @@ public sealed record ActionScript(RunMode Mode, IReadOnlyList<UiAction> Actions,
 
 /// <summary>
 /// Turns a checked plan into the input sequence, one step at a time, exactly in plan order. Steps the account already shows as done
-/// are skipped (no input). Refuses a plan whose check did not pass. Never reorders, merges or adds moves.
+/// are skipped (no input). Refuses a plan whose check did not pass. Never reorders, merges or adds moves (the runner may let the
+/// driver pick the order of consecutive interchangeable steps: see <see cref="IStepPicker"/>).
 /// </summary>
 public static class ActionPlanner
 {

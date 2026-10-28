@@ -132,6 +132,43 @@ public class RunnerTests : IDisposable
         Assert.Equal(RunOutcome.Completed, r.Result.Outcome);
     }
 
+    private sealed class Picking(FakeGame g, Func<IReadOnlyList<int>, int> choose) : IGameDriver, IStepPicker
+    {
+        public List<List<int>> Asked { get; } = [];
+        public string Name => "picking";
+        public bool SendsInput => false;
+        public Task<DriverResult> PerformAsync(UiAction a, CancellationToken ct) => g.PerformAsync(a, ct);
+        public string? SaveScreenshot(string folder, string name) => null;
+        public Task<int> PickAsync(IReadOnlyList<int> steps, CancellationToken ct) { Asked.Add([.. steps]); return Task.FromResult(choose(steps)); }
+    }
+
+    [Theory]
+    [InlineData(RunMode.Real, "last", "2,1,3,4")]
+    [InlineData(RunMode.Real, "bogus", "1,2,3,4")]
+    [InlineData(RunMode.DryRun, "last", "2,1,3,4")]
+    public async Task A_picking_driver_orders_only_same_champion_inventory_steps(RunMode mode, string choice, string expected)
+    {
+        var json = TestData.PlanJson();
+        json["steps"] = new System.Text.Json.Nodes.JsonArray(
+            TestData.Step(1, 100, "Helmet", null, "the inventory", 1, "Aria"),
+            TestData.Step(2, 999, "Chest", null, "the inventory", 1, "Aria"),
+            TestData.Step(3, 200, "Gloves", 2, "Brute", 1, "Aria"),
+            TestData.Step(4, 300, "Boots", 2, "Brute", 3, "Cora"));
+        ((System.Text.Json.Nodes.JsonArray)json["pieces"]!).Add(TestData.Piece(999, "Chest", null, 1));
+        var game = new FakeGame(TestData.Export());
+        var loaded = TestData.Load(json);
+        var read = await game.ReadAsync(default);
+        var script = ActionPlanner.Build(loaded.Plan, AccountCheck.Check(loaded.Plan, read, TestData.MadeFrom()), mode);
+        var driver = new Picking(game, s => choice == "last" ? s[^1] : 42);
+        using var log = new RunLog(Folders.Logs, loaded.Plan.PlanId, DateTimeOffset.Now);
+        var r = await new Runner(driver, game, NoPacer.Instance, Folders).RunAsync(loaded, read, script, log, new PauseGate(), null, default);
+        Assert.Equal(RunOutcome.Completed, r.Outcome);
+        Assert.Equal(expected, string.Join(",", game.Performed.Where(a => a.Kind == ActionKind.OpenChampion).Select(a => a.Step)));
+        // Offered once (steps 1 and 2 of Aria's inventory group); the donor steps and the last of a group are never offered.
+        Assert.Equal("1,2", string.Join(" | ", driver.Asked.Select(x => string.Join(",", x))));
+        Assert.Equal(mode == RunMode.Real ? new[] { 1, 2, 3, 4 } : Array.Empty<int>(), r.DoneSteps.ToArray());
+    }
+
     [Fact]
     public async Task Abort_while_paused()
     {

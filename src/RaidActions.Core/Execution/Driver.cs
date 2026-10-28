@@ -27,6 +27,15 @@ public interface IGameDriver
     string? SaveScreenshot(string folder, string name);
 }
 
+/// <summary>
+/// A driver that can tell which of several interchangeable steps (same champion, each from the inventory) is cheapest to do next,
+/// e.g. the one whose piece is already on screen. Reads only; a step not in <c>steps</c> means "the first".
+/// </summary>
+public interface IStepPicker
+{
+    Task<int> PickAsync(IReadOnlyList<int> steps, CancellationToken ct);
+}
+
 /// <summary>A fresh read of the account: RaidExtractor.Core against the game, or the fake game.</summary>
 public interface IAccountSource
 {

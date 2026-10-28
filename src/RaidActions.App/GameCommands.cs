@@ -60,6 +60,27 @@ public static class GameCommands
                 }
                 using (game)
                 {
+                    // --time <n>: how long the bot's reads take (the state, the views, the targets), n times each.
+                    if (int.TryParse(Opt("--time"), out var times))
+                    {
+                        UnityUi ui;
+                        try { ui = game.Ui(UiCommands.NativeLayoutPath); }
+                        catch (UiReadException e) { o.WriteLine(e.Message); return Cli.Failed; }
+                        void Time(string what, Action read)
+                        {
+                            var ms = new List<double>();
+                            for (var i = 0; i < times; i++) { var sw = System.Diagnostics.Stopwatch.StartNew(); read(); ms.Add(sw.Elapsed.TotalMilliseconds); }
+                            o.WriteLine($"{what,-28} avg {ms.Average(),7:0.0} ms  min {ms.Min(),7:0.0}  max {ms.Max(),7:0.0}");
+                        }
+                        UiState? s = null;
+                        Time("ReadUi (state)", () => s = game.ReadUi().State);
+                        if (s is null) { o.WriteLine("UI state unavailable."); return Cli.Failed; }
+                        Time("Views", () => game.Views().ToList());
+                        Time("Screen.Targets (tree walk)", () => RaidActions.Game.Dry.Screen.Targets(game, ui, s));
+                        Time("GameWindow.Find", () => GameWindow.Find());
+                        o.WriteLine($"targets now: {RaidActions.Game.Dry.Screen.Targets(game, ui, s).Count} (none when the window is not usable)");
+                        return Cli.Ok;
+                    }
                     var watch = args.Contains("--watch");
                     // --for <minutes>: stop watching by itself (no wrapper process needed).
                     var until = double.TryParse(Opt("--for"), System.Globalization.CultureInfo.InvariantCulture, out var minutes)

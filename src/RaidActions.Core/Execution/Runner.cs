@@ -18,7 +18,8 @@ public sealed record RunEvent(DateTimeOffset Time, int Step, ActionKind Kind, st
 public sealed record RunFolders(string Snapshots, string Logs, string Screenshots);
 
 /// <summary>
-/// Runs an action script, one action at a time, in order. Stops at the first failure (a driver failure, a verification mismatch,
+/// Runs an action script, one action at a time, in order (a driver that is an <see cref="IStepPicker"/> may choose the order of
+/// consecutive interchangeable steps: same champion, each from the inventory). Stops at the first failure (a driver failure, a verification mismatch,
 /// an exception) and never tries again; stops at once on abort; holds between actions while paused. The snapshot is saved by the
 /// script's first action, before any input.
 /// </summary>
@@ -40,9 +41,62 @@ public sealed class Runner(IGameDriver driver, IAccountSource account, IPacer pa
         }
 
         UiAction? current = null;
+        // Steps that may run in any order: consecutive steps onto the same champion, each from the inventory (none takes a piece another
+        // gives back). A driver that can tell which is cheapest next (the piece already on screen) picks among them; else plan order.
+        var picker = driver as IStepPicker;
+        var stepOf = plan.Steps.ToDictionary(s => s.Number);
+        bool Free(int n) => stepOf.TryGetValue(n, out var ps) && ps.FromChampionId is null;
+        var items = new List<(int Step, List<UiAction> Actions)>();
+        foreach (var a in script.Actions)
+        {
+            if (a.Step > 0 && items.Count > 0 && items[^1].Step == a.Step) items[^1].Actions.Add(a);
+            else items.Add((a.Step, [a]));
+        }
         try
         {
-            foreach (var a in script.Actions)
+            for (var i = 0; i < items.Count;)
+            {
+                var first = items[i];
+                var j = i + 1;
+                if (picker is not null && first.Step > 0 && Free(first.Step))
+                    while (j < items.Count && items[j].Step > 0 && Free(items[j].Step) && stepOf[items[j].Step].ToChampionId == stepOf[first.Step].ToChampionId) j++;
+                var batch = items.GetRange(i, j - i);
+                i = j;
+                while (batch.Count > 0)
+                {
+                    var next = batch[0];
+                    if (batch.Count > 1)
+                    {
+                        var steps = batch.Select(b => b.Step).ToList();
+                        var pick = await picker!.PickAsync(steps, abort);
+                        if (steps.Contains(pick) && pick != next.Step)
+                        {
+                            next = batch.First(b => b.Step == pick);
+                            log.Write(pick, "Pick", $"Step {pick} next (its piece is nearest on screen)", "info", $"left in this champion's group: {string.Join(", ", steps)}");
+                        }
+                    }
+                    batch.Remove(next);
+                    foreach (var a in next.Actions)
+                        if (await RunOne(a) is { } stopped) return stopped;
+                }
+            }
+        }
+        catch (OperationCanceledException) when (abort.IsCancellationRequested)
+        {
+            return await Stop(RunOutcome.Aborted, current, "Aborted.");
+        }
+        catch (Exception e)
+        {
+            return await Stop(RunOutcome.Failed, current, $"{e.GetType().Name}: {e.Message}");
+        }
+
+        var end = script.Mode == RunMode.Real ? "All steps done and verified." : "Dry run done: every step found and highlighted, nothing changed.";
+        log.Write(0, "Run", "End", "ok", end);
+        return new RunResult(RunOutcome.Completed, doneByRun.Order().ToList(), null, end, log.Path, snapshot, null);
+
+        // One action; a result when the run stops there, null to go on.
+        async Task<RunResult?> RunOne(UiAction a)
+        {
             {
                 current = a;
                 abort.ThrowIfCancellationRequested();
@@ -62,7 +116,9 @@ public sealed class Runner(IGameDriver driver, IAccountSource account, IPacer pa
                     case ActionKind.VerifyStep:
                     case ActionKind.VerifyEnd:
                     {
-                        var expectDone = a.Kind == ActionKind.VerifyEnd ? plan.Steps.Select(s => s.Number).ToHashSet() : a.DoneThrough!.ToHashSet();
+                        // Real run: the steps done before this run, those this run verified, and this one (the order may differ from the plan's).
+                        var expectDone = a.Kind == ActionKind.VerifyEnd ? plan.Steps.Select(s => s.Number).ToHashSet()
+                            : script.Mode == RunMode.Real ? doneByRun.Append(a.Step).ToHashSet() : a.DoneThrough!.ToHashSet();
                         var fresh = await account.ReadAsync(abort);
                         var issues = Verify(plan, fresh, expectDone);
                         if (issues.Count > 0) return await Stop(RunOutcome.Failed, a, "Verification failed: " + string.Join(" ", issues));
@@ -81,20 +137,9 @@ public sealed class Runner(IGameDriver driver, IAccountSource account, IPacer pa
                     }
                 }
                 Report(a, "ok", detail);
+                return null;
             }
         }
-        catch (OperationCanceledException) when (abort.IsCancellationRequested)
-        {
-            return await Stop(RunOutcome.Aborted, current, "Aborted.");
-        }
-        catch (Exception e)
-        {
-            return await Stop(RunOutcome.Failed, current, $"{e.GetType().Name}: {e.Message}");
-        }
-
-        var end = script.Mode == RunMode.Real ? "All steps done and verified." : "Dry run done: every step found and highlighted, nothing changed.";
-        log.Write(0, "Run", "End", "ok", end);
-        return new RunResult(RunOutcome.Completed, doneByRun.Order().ToList(), null, end, log.Path, snapshot, null);
 
         async Task<RunResult> Stop(RunOutcome outcome, UiAction? at, string message)
         {

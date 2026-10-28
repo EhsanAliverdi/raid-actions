@@ -19,13 +19,16 @@ namespace RaidActions.App.Input;
 /// <param name="upgrade">The upgrade command's driver: the popup's Upgrade and the upgrade screen's one-level Upgrade are allowed too
 /// (<see cref="UpgradeOnlyClicks"/>); swap and sell runs never have them.</param>
 public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? plan, string folder, WindowPolicy policy, Action<string> log,
-    IReadOnlySet<int>? equipSteps = null, bool sell = false, bool upgrade = false, bool vault = false) : IGameDriver
+    IReadOnlySet<int>? equipSteps = null, bool sell = false, bool upgrade = false, bool vault = false) : IGameDriver, IStepPicker
 {
     /// <summary>The kinds this driver may click: <see cref="AllowedClicks"/>, plus the sell-mode clicks for the sell command.</summary>
     private bool IsAllowed(string kind) => AllowedClicks.Contains(kind) || sell && SellOnlyClicks.Contains(kind) || upgrade && UpgradeOnlyClicks.Contains(kind)
         || vault && VaultOnlyClicks.Contains(kind);
 
     private readonly HashSet<int> _equipUnlocked = equipSteps is null ? [] : [.. equipSteps];
+    private int _equipUsed;
+    /// <summary>The read in which <see cref="Scrolled"/> found its target without scrolling (when, what, the read).</summary>
+    private (DateTime Time, string Kind, int? Id, UiState State, IReadOnlyList<UiTarget> Targets)? _found;
 
     /// <summary>The only kinds this driver may click. Equip, Remove, Sell, PowerUp, Auto-Equip and everything else are refused.</summary>
     public static readonly IReadOnlySet<string> AllowedClicks = new HashSet<string>
@@ -65,7 +68,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
         var step = a.Step > 0 ? plan!.Steps.Single(s => s.Number == a.Step) : null;
         if (step is not null && a.Kind is ActionKind.OpenChampion or ActionKind.OpenSlot or ActionKind.FindPiece or ActionKind.SelectPiece or ActionKind.VerifySelection)
         {
-            var (s, _) = await Read(ct);
+            var s = await ReadState(ct);
             if (SwapOpenFor(s, step))
                 return DriverResult.Success($"the swap confirmation for #{step.ArtifactId} onto {step.ToName} is already open: no click (Equip handles it)");
         }
@@ -79,8 +82,13 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
                 return DriverResult.Success("the game is brought to the front only when a click needs it");
             case ActionKind.OpenChampion:
             {
+                // Already on this champion (the next piece of the same champion): one read, no wait, no click.
+                var s0 = await ReadState(ct);
+                if (s0.ChampionScreenOpen && s0.Top?.Name == UiState.ChampionScreenView && s0.ChampionScreen?.Champion == a.ChampionId && Screen.Covering(s0) is null)
+                    return DriverResult.Success($"{step!.ToName} (#{a.ChampionId}) is already shown: no click");
                 // From whatever screen is open (popups, other screens): back to the village with back/close only, then Champions.
-                var s = await Settled(ct);
+                // The champion screen already on top (another champion of the run): no wait for popups to queue up.
+                var s = s0.ChampionScreenOpen && s0.Top?.Name == UiState.ChampionScreenView ? s0 : await Settled(ct);
                 if (!(s.ChampionScreenOpen && s.Top?.Name == UiState.ChampionScreenView))
                 {
                     await GoHome(a, ct);
@@ -88,20 +96,32 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
                     (s, _) = await Read(ct);
                 }
                 if (s.ChampionScreen?.Champion == a.ChampionId) return DriverResult.Success($"{step!.ToName} (#{a.ChampionId}) is already shown: no click");
+                // After a real Equip the worn piece's popup (and the picker) stay open over the champion list: close them first,
+                // or the click lands on the popup instead of the champion's tile.
+                await ClosePiecePanels(a, ct);
                 await Scrolled(a, "champion-tile", a.ChampionId, "scroll-champions", ct);
                 await Click(a, "champion-tile", a.ChampionId, null, (s2, _) => s2.ChampionScreen?.Champion == a.ChampionId, $"{step!.ToName} is shown", ct);
                 return DriverResult.Success($"{step.ToName} (#{a.ChampionId}) shown");
             }
             case ActionKind.OpenSlot:
             {
-                var (s, _) = await Read(ct);
+                var s = await ReadState(ct);
                 if (s.ChampionScreen?.Champion != a.ChampionId) throw new StopException($"Expected champion #{a.ChampionId}, the screen shows #{s.ChampionScreen?.Champion}.");
                 if (s.ChampionScreen.InventoryArtifactId is not null)
                     await Click(a, "popup-close-selected", null, null, (s2, _) => s2.ChampionScreen?.InventoryArtifactId is null, "the piece's popup closes", ct);
-                (s, _) = await Read(ct);
+                // The worn piece's popup (left by a real Equip) is closed before anything else, also when no slot click follows.
+                var r0 = await ClosePiecePanels(a, ct, picker: false) ?? await Read(ct);
+                s = r0.State;
+                // The picker lists every piece of its tab (all six gear slots, grouped by set), whichever slot opened it: when it is open
+                // and holds the step's piece, no slot click (Equip puts a piece in its own slot; selection and owner are checked after).
+                if (r0.Targets.Any(x => x.Kind == "inventory-item" && x.Active) && r0.Targets.Any(x => x.Kind == "inventory-item" && x.Id == a.ArtifactId))
+                    return DriverResult.Success($"the picker is open and lists #{a.ArtifactId}: no slot click");
                 if (s.ChampionScreen?.DetailsTab != 0)
-                    await Click(a, "gear-tab", 1, null, (s2, _) => s2.ChampionScreen?.DetailsTab == 0, "the gear tab is on", ct);
-                await Click(a, "gear-slot", null, a.Slot, (_, t) => t.Any(x => x.Kind == "inventory-item" && x.Active), "the picker shows pieces", ct);
+                {
+                    await Click(a, "gear-tab", 1, null, (s2, _) => s2.ChampionScreen?.DetailsTab == 0, "the gear tab is on", ct, read: r0);
+                    r0 = await Read(ct);
+                }
+                await Click(a, "gear-slot", null, a.Slot, (_, t) => t.Any(x => x.Kind == "inventory-item" && x.Active), "the picker shows pieces", ct, read: r0);
                 return DriverResult.Success($"{UiTargets.DisplayName(a.Slot!)} slot open");
             }
             case ActionKind.FindPiece:
@@ -111,11 +131,17 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
                 return DriverResult.Success($"{t.Name} in the picker at {t.Rect} → {png}");
             }
             case ActionKind.SelectPiece:
-                await Click(a, "inventory-item", a.ArtifactId, null, (s, _) => s.ChampionScreen?.InventoryArtifactId == a.ArtifactId, $"artifact #{a.ArtifactId} is selected", ct);
+            {
+                // FindPiece's read, when it found this piece on a still list a moment ago (no input since); else Click reads afresh.
+                var found = _found is { } f && f.Kind == "inventory-item" && f.Id == a.ArtifactId && DateTime.Now - f.Time < TimeSpan.FromSeconds(1)
+                    ? (f.State, f.Targets) : ((UiState, IReadOnlyList<UiTarget>)?)null;
+                _found = null;
+                await Click(a, "inventory-item", a.ArtifactId, null, (s, _) => s.ChampionScreen?.InventoryArtifactId == a.ArtifactId, $"artifact #{a.ArtifactId} is selected", ct, read: found);
+            }
                 return DriverResult.Success($"artifact #{a.ArtifactId} selected");
             case ActionKind.VerifySelection:
             {
-                var (s, _) = await Read(ct);
+                var s = await ReadState(ct);
                 return s.ChampionScreen?.Champion == a.ChampionId && s.ChampionScreen.InventoryArtifactId == a.ArtifactId
                     ? DriverResult.Success($"memory: champion #{a.ChampionId} shown, artifact #{a.ArtifactId} selected")
                     : DriverResult.Failure($"memory: champion #{s.ChampionScreen?.Champion}, artifact #{s.ChampionScreen?.InventoryArtifactId}; expected #{a.ChampionId}, #{a.ArtifactId}.");
@@ -168,10 +194,10 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
         var r = equip.Rect!.Value;
         var x = r.X + r.Width * (0.35f + 0.3f * (float)_random.NextDouble());
         var y = r.Y + r.Height * (0.35f + 0.3f * (float)_random.NextDouble());
-        var png = Shot(a, $"step {a.Step}: CLICK Equip (#{step.ArtifactId} onto {step.ToName}) at {r}", r);
-        await Task.Delay(_random.Next(300, 700), ct);
+        var png = Shot(a, $"step {a.Step}: CLICK Equip (#{step.ArtifactId} onto {step.ToName}) at {r}", r, always: true);
+        await Task.Delay(_random.Next(150, 350), ct);
         ct.ThrowIfCancellationRequested();
-        _equipUnlocked.Remove(a.Step); // locked again before the click is sent, whatever happens next
+        if (_equipUnlocked.Remove(a.Step)) _equipUsed++; // locked again before the click is sent, whatever happens next
         if (MouseInput.Click(w, x, y, _random) is { } notSent) throw new StopException($"Equip not clicked: {notSent}");
         Clicks.Add((a.Step, $"popup: Equip #{step.ArtifactId}", r, true, png ?? "-"));
         log($"step {a.Step}: clicked Equip for #{step.ArtifactId} at ({x:0},{y:0}); Equip locked again");
@@ -180,7 +206,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
         var until = DateTime.Now + TimeSpan.FromSeconds(25);
         while (DateTime.Now < until)
         {
-            await Task.Delay(1500, ct);
+            await Task.Delay(400, ct);
             var (after, _) = game.ReadUi();
             if (after?.Top?.Name == UiState.SwapView) return await ConfirmSwap(a, step, ct);
             if (after is not null && Screen.Covering(after) is { } popup) throw new StopException($"After Equip: unexpected popup {popup}.");
@@ -227,6 +253,32 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             left.Add($"{where} via {target.Name}");
         }
         throw new StopException($"Not at the village after 12 back/close clicks ({string.Join(" → ", left)}).");
+    }
+
+    /// <summary>
+    /// Closes what a previous step left open on the champion screen: the selected piece's popup, the worn piece's popup (the game
+    /// opens it after a real Equip) and, with <paramref name="picker"/>, the picker. Close buttons only; nothing open: no click, and
+    /// the read it made is returned (still fresh: no input since); null after a click.
+    /// </summary>
+    private async Task<(UiState State, IReadOnlyList<UiTarget> Targets)?> ClosePiecePanels(UiAction a, CancellationToken ct, bool picker = true)
+    {
+        string[] kinds = picker ? ["popup-close-selected", "popup-close-worn", "picker-close"] : ["popup-close-selected", "popup-close-worn"];
+        var (s, t) = await Read(ct);
+        var (stale, clicked) = (false, false);
+        foreach (var kind in kinds)
+        {
+            if (stale)
+            {
+                (s, t) = await Read(ct);
+                stale = false;
+            }
+            var open = t.FirstOrDefault(x => x.Kind == kind && x.NotClickable is null);
+            if (open is null) continue;
+            await Click(a, kind, null, null, (_, t2) => !t2.Any(x => x.Kind == kind && x.NotClickable is null), $"{open.Name} closes", ct, read: (s, t));
+            (stale, clicked) = (true, true);
+            log($"step {a.Step}: closed {open.Name} before going on");
+        }
+        return clicked ? null : (s, t);
     }
 
     /// <summary>From the village: Champions, until the champion screen is open.</summary>
@@ -321,10 +373,11 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
 
     /// <summary>
     /// One click: allowed kind, no battle, nothing covering the champion screen, the target resolved fresh with its id, the standard
-    /// window, then the click, then reads until <paramref name="expect"/> holds (or stop).
+    /// window, then the click, then reads until <paramref name="expect"/> holds (or stop). <paramref name="read"/>: the caller's read,
+    /// made just before with no input since (a walk of the champion screen's tree costs about 0.6 s); else a fresh one.
     /// </summary>
     private async Task Click(UiAction a, string kind, int? id, string? slot, Func<UiState, IReadOnlyList<UiTarget>, bool> expect, string expected, CancellationToken ct,
-        Func<UiState, string?>? before = null, string? view = null)
+        Func<UiState, string?>? before = null, string? view = null, (UiState State, IReadOnlyList<UiTarget> Targets)? read = null)
     {
         var once = _once == kind;
         _once = null;
@@ -337,8 +390,9 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
         {
             FitWindow();
             await Task.Delay(800, ct);
+            read = null; // rectangles read before the resize are wrong now
         }
-        var (s, targets) = await Read(ct);
+        var (s, targets) = read is { } r0 ? (r0.State, r0.Targets) : await Read(ct);
         if (view is not null)
         {
             if (s.Top?.Name != view) throw new StopException($"Expected {view} on top; the screen shows {s.Top?.Name}.");
@@ -370,7 +424,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             var x = r.X + r.Width * (0.35f + 0.3f * (float)_random.NextDouble());
             var y = r.Y + r.Height * (0.35f + 0.3f * (float)_random.NextDouble());
             var png = Shot(a, $"step {a.Step}: CLICK {t.Name} at {r}", r);
-            await Task.Delay(_random.Next(250, 600), ct);
+            await Task.Delay(_random.Next(120, 300), ct);
             ct.ThrowIfCancellationRequested();
             if (MouseInput.Click(w, x, y, _random) is { } notSent) throw new StopException($"Not clicked ({t.Name}): {notSent}");
             Clicks.Add((a.Step, t.Name, r, true, png ?? "-"));
@@ -379,9 +433,10 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             var until = DateTime.Now + TimeSpan.FromSeconds(6);
             while (DateTime.Now < until)
             {
-                await Task.Delay(300, ct);
-                var (s2, t2) = await Read(ct);
-                if (expect(s2, t2)) return;
+                await Task.Delay(200, ct);
+                var s2 = await ReadState(ct);
+                // The targets (a walk of the whole UI tree) only when the check looks at them.
+                if (expect(s2, new LazyTargets(() => Screen.Targets(game, ui, s2)))) return;
             }
             var (sEnd, tEnd) = await Read(ct);
             var shows = $"the screen shows {sEnd.Top?.Name}, champion #{sEnd.ChampionScreen?.Champion}, artifact #{sEnd.ChampionScreen?.InventoryArtifactId}";
@@ -413,6 +468,8 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             var (s, targets) = await Read(ct);
             if (Screen.Covering(s) is { } cover) throw new StopException($"Unexpected popup {cover} over the champion screen.");
             var (t, _) = UiTargets.Resolve(targets, kind, id);
+            // Found without scrolling: the list is still, so the click that follows may use this read (see SelectPiece).
+            _found = t is not null && i == 0 ? (DateTime.Now, kind, id, s, targets) : null;
             if (t is not null) return t;
             var (area, problem) = UiTargets.Resolve(targets, areaKind);
             if (area is null) throw new StopException($"{areaKind}: {problem}");
@@ -437,9 +494,10 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             if (w is null) throw new StopException(why!);
             await NoBattle(ct);
             var (cx, cy) = ar.Center;
-            if (MouseInput.Wheel(w, cx, cy, down ? -notches : notches) is { } notSent) throw new StopException($"Not scrolled: {notSent}");
+            // The picker takes fast notches (8 ms apart, as the sell command's turns); other lists keep the default.
+            if (MouseInput.Wheel(w, cx, cy, down ? -notches : notches, gapMs: areaKind == "scroll-picker" ? 8 : 35) is { } notSent) throw new StopException($"Not scrolled: {notSent}");
             log($"step {a.Step}: scrolled {area.Name} {(down ? "down" : "up")} {notches} notch{(notches == 1 ? "" : "es")}{(perNotch is { } pn ? $" ({pn:0.#} px each)" : "")}");
-            await Task.Delay(450, ct);
+            await Task.Delay(300, ct);
         }
         throw new StopException($"{kind} {id} not found after scrolling the list.");
     }
@@ -447,13 +505,13 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
     /// <summary>Reads until the top view has stayed the same for 1.5 s (popups that queue up have appeared), at most 10 s.</summary>
     private async Task<UiState> Settled(CancellationToken ct)
     {
-        var (s, _) = await Read(ct);
+        var s = await ReadState(ct);
         var since = DateTime.Now;
         var until = DateTime.Now + TimeSpan.FromSeconds(10);
         while (DateTime.Now < until)
         {
             await Task.Delay(500, ct);
-            var (s2, _) = await Read(ct);
+            var s2 = await ReadState(ct);
             if (s2.Top?.Name != s.Top?.Name || s2.ChampionScreenOpen != s.ChampionScreenOpen) since = DateTime.Now;
             s = s2;
             if (DateTime.Now - since >= TimeSpan.FromSeconds(1.5)) break;
@@ -529,8 +587,45 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
         throw new StopException("The UI state could not be read.");
     }
 
-    private string? Shot(UiAction a, string caption, ClientRect r) =>
-        Screen.Overlay(folder, $"{++_shot:00}-step{a.Step}-{a.Kind}.png", caption, r, WindowPolicy.CaptureProblem);
+    /// <summary>An overlay picture of the click. In a real run only the Equip clicks (<paramref name="always"/>): a capture per navigation
+    /// click costs time; dry runs keep every one.</summary>
+    private string? Shot(UiAction a, string caption, ClientRect r, bool always = false) =>
+        !always && _equipUnlocked.Count + _equipUsed > 0 ? null
+        : Screen.Overlay(folder, $"{++_shot:00}-step{a.Step}-{a.Kind}.png", caption, r, WindowPolicy.CaptureProblem);
+
+    /// <summary>The UI state alone (no target walk), for checks that need no rectangles.</summary>
+    private async Task<UiState> ReadState(CancellationToken ct)
+    {
+        for (var i = 0; i < 15; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var (s, _) = game.ReadUi();
+            if (s is not null) return s;
+            await Task.Delay(300, ct);
+        }
+        throw new StopException("The UI state could not be read.");
+    }
+
+    /// <summary>
+    /// Which of the steps (same champion, each from the inventory) to do next: the one whose piece the open picker shows fully,
+    /// else the one nearest the middle of the picker; the first when the picker is not open or shows none of them. Reads only.
+    /// </summary>
+    public async Task<int> PickAsync(IReadOnlyList<int> steps, CancellationToken ct)
+    {
+        if (plan is null || steps.Count == 0) return steps.FirstOrDefault();
+        var (s, t) = await Read(ct);
+        var first = plan.Steps.Single(x => x.Number == steps[0]);
+        if (s.ChampionScreen?.Champion != first.ToChampionId || Screen.Covering(s) is not null) return steps[0];
+        var items = t.Where(x => x.Kind == "inventory-item" && x.Active && x.Rect is not null).ToList();
+        if (items.Count == 0) return steps[0];
+        var area = t.FirstOrDefault(x => x.Kind == "scroll-picker" && x.Rect is not null);
+        var cy = area?.Rect!.Value.Center.Y ?? items.Average(x => x.Rect!.Value.Center.Y);
+        var best = steps.Select(n => (N: n, Item: items.FirstOrDefault(x => x.Id == plan.Steps.Single(p => p.Number == n).ArtifactId)))
+            .Where(x => x.Item is not null)
+            .OrderBy(x => x.Item!.FullyVisible ? 0 : 1).ThenBy(x => Math.Abs(x.Item!.Rect!.Value.Center.Y - cy))
+            .Select(x => (int?)x.N).FirstOrDefault();
+        return best ?? steps[0];
+    }
 
     public string? SaveScreenshot(string folder, string name)
     {
@@ -548,4 +643,15 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
     }
 
     public sealed class StopException(string message) : Exception(message);
+}
+
+/// <summary>A target list walked from the UI tree only when first used.</summary>
+internal sealed class LazyTargets(Func<List<UiTarget>> make) : IReadOnlyList<UiTarget>
+{
+    private List<UiTarget>? _list;
+    private List<UiTarget> List => _list ??= make();
+    public UiTarget this[int index] => List[index];
+    public int Count => List.Count;
+    public IEnumerator<UiTarget> GetEnumerator() => List.GetEnumerator();
+    System.Collections.IEnumerator System.Collections.IEnumerable.GetEnumerator() => GetEnumerator();
 }

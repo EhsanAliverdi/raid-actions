@@ -22,6 +22,10 @@ public sealed class UiStateReader(IGameObjects g)
     private const string SwapContext = "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Overlays.SwapArtifactsOverlayContext";
     private const string ArtifactAvatar = "Client.ViewModel.Contextes.Generic.ArtifactAvatarContext";
     private const string Artifact = "SharedModel.Meta.Artifacts.Artifact";
+    private const string InventoryView = "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.InventoryViewContext";
+    private const string SellArtifacts = "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.SellArtifactsContext";
+    private const string InventoryArtifact = "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Items.InventoryArtifactContext";
+    private const string MessageBoxContext = "Client.ViewModel.Contextes.Generic.MessageBox.MessageBoxContext";
     public const string ViewKeyEnum = "Client.ViewModel.DTO.ViewKey";
     private const string ViewStateEnum = "Client.RaidApp.ViewState";
     private const string VisibilityEnum = "Client.RaidApp.ViewVisibility";
@@ -39,6 +43,8 @@ public sealed class UiStateReader(IGameObjects g)
         var views = new List<OpenView>();
         ChampionScreenState? champion = null;
         SwapDialogState? swap = null;
+        SellState? sell = null;
+        MessageBoxInfo? box = null;
         foreach (var meta in g.RefList(list, MaxViews))
         {
             Expect(meta, ViewMeta, "RaidViewMaster._views[]");
@@ -49,14 +55,21 @@ public sealed class UiStateReader(IGameObjects g)
             var view = new OpenView(key, name, state, visible);
             views.Add(view);
             if (name == UiState.ChampionScreenView && view.IsActive && g.Ref(meta, ViewMeta, "View") is var v and not 0)
+            {
                 champion = ReadChampionScreen(g.Ref(v, BaseView, "Context"));
+                sell = Optional(() => ReadSell(g.Ref(v, BaseView, "Context")));
+            }
             if (name == UiState.SwapView && view.IsActive && g.Ref(meta, ViewMeta, "View") is var sv and not 0 && g.Ref(sv, BaseView, "Context") is var sc and not 0)
                 swap = ReadSwap(Expect(sc, SwapContext, "SwapArtifactsOverlay view's Context"));
+            if (name == UiState.MessageBoxView && view.IsActive && g.Ref(meta, ViewMeta, "View") is var mv and not 0 && g.Ref(mv, BaseView, "Context") is var mc and not 0)
+                box = Optional(() => g.ClassName(mc) == MessageBoxContext
+                    ? new MessageBoxInfo(StringValue(g.Ref(mc, MessageBoxContext, "_titleText")), StringValue(g.Ref(mc, MessageBoxContext, "_mainMessage")))
+                    : null);
         }
 
         var block = g.Ref(app, AppViewModel, "_blockUi");
         var blocking = block == 0 ? 0 : g.Int(Expect(block, BlockUi, "AppViewModel._blockUi"), BlockUi, "_blockingEventsCounter");
-        return new UiState(views, blocking, champion, swap);
+        return new UiState(views, blocking, champion, swap, sell, box);
     }
 
     private ChampionScreenState? ReadChampionScreen(ulong ctx)
@@ -72,6 +85,37 @@ public sealed class UiStateReader(IGameObjects g)
             g.NullableInt(details, HeroDetails, "_inventoryArtifactId"),
             IntValue(g.Ref(details, HeroDetails, "_activeTabIndex")),
             IntValue(g.Ref(ctx, HeroesInfo, "_viewState")));
+    }
+
+    /// <summary>
+    /// The picker's sell mode: HeroesInfoOverlayContext._inventoryContext (InventoryViewContext) → _sellArtifacts (SellArtifactsContext)
+    /// → _sellArtifactsCount and _markedForSell (each an InventoryArtifactContext → Avatar → Artifact.Id).
+    /// </summary>
+    private SellState? ReadSell(ulong ctx)
+    {
+        if (ctx == 0) return null;
+        var inventory = g.Ref(ctx, HeroesInfo, "_inventoryContext");
+        if (inventory == 0) return null;
+        var sell = Expect(g.Ref(Expect(inventory, InventoryView, "_inventoryContext"), InventoryView, "_sellArtifacts"), SellArtifacts, "_sellArtifacts");
+        var count = IntValue(g.Ref(sell, SellArtifacts, "_sellArtifactsCount"));
+        var marked = new List<int>();
+        var list = g.Ref(sell, SellArtifacts, "_markedForSell");
+        if (list != 0)
+            foreach (var item in g.RefList(list, 2000))
+            {
+                if (g.ClassName(item) != InventoryArtifact) { marked.Add(-1); continue; }
+                var avatar = g.Ref(item, InventoryArtifact, "Avatar");
+                var artifact = avatar == 0 ? 0 : g.Ref(Expect(avatar, ArtifactAvatar, "marked item's avatar"), ArtifactAvatar, "Artifact");
+                marked.Add(artifact == 0 ? -1 : g.Int(Expect(artifact, Artifact, "marked item's artifact"), Artifact, "Id"));
+            }
+        return new SellState(count, marked);
+    }
+
+    /// <summary>A part of the state that older offsets do not cover (re-run scripts/gen-ui-offsets.ps1): null instead of a failed read.</summary>
+    private static T? Optional<T>(Func<T?> read) where T : class
+    {
+        try { return read(); }
+        catch (Exception e) when (e is KeyNotFoundException or UiReadException or RaidExtractor.ReadCheckException) { return null; }
     }
 
     private SwapDialogState ReadSwap(ulong ctx) => new(

@@ -22,6 +22,9 @@ public static class Cli
           RaidActions dry-run <plan.json>      navigate and highlight every step, never equip
           RaidActions run <plan.json>          run the plan
           RaidActions sample [<folder>]        write a made-up account and plan to try the app
+          RaidActions sell <sell-plan.json> [--dry-run] [--confirm <code>]
+                                               sell a sell plan's pieces (raid-extractor's Sell review), slot by slot;
+                                               --dry-run ticks them, reads the confirmation and cancels: nothing is sold
 
         Read-only, against the running game (no input, never brings it to the front):
           RaidActions window                   find the game window: size, DPI, state, usable for clicks
@@ -108,6 +111,8 @@ public static class Cli
             var outDir = AppPaths.Resolve(null, outIndex >= 0 && outIndex + 1 < args.Length ? args[outIndex + 1] : null).Output;
             return await GoHomeCommand.RunAsync(args, outDir, output, abortHook);
         }
+        if (args.Length > 0 && args[0].Equals("sell", StringComparison.OrdinalIgnoreCase))
+            return await SellCommand.RunAsync(args, output, input, interactive, abortHook);
         if (args.Length > 0 && args[0].Equals("restart-game", StringComparison.OrdinalIgnoreCase))
         {
             var outIndex = Array.IndexOf(args, "--output");

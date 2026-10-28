@@ -15,9 +15,13 @@ namespace RaidActions.App.Input;
 /// </summary>
 /// <param name="equipSteps">Steps whose Equip may be clicked (a real run, after the go-ahead): each step's Equip once, then locked
 /// again. Empty: Equip is never clicked (dry run).</param>
-public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan? plan, string folder, WindowPolicy policy, Action<string> log,
-    IReadOnlySet<int>? equipSteps = null) : IGameDriver
+/// <param name="sell">The sell command's driver: its sell-mode clicks are allowed too (<see cref="SellOnlyClicks"/>); swap runs never have them.</param>
+public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? plan, string folder, WindowPolicy policy, Action<string> log,
+    IReadOnlySet<int>? equipSteps = null, bool sell = false) : IGameDriver
 {
+    /// <summary>The kinds this driver may click: <see cref="AllowedClicks"/>, plus the sell-mode clicks for the sell command.</summary>
+    private bool IsAllowed(string kind) => AllowedClicks.Contains(kind) || sell && SellOnlyClicks.Contains(kind);
+
     private readonly HashSet<int> _equipUnlocked = equipSteps is null ? [] : [.. equipSteps];
 
     /// <summary>The only kinds this driver may click. Equip, Remove, Sell, PowerUp, Auto-Equip and everything else are refused.</summary>
@@ -321,7 +325,7 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan? plan, stri
     {
         var once = _once == kind;
         _once = null;
-        if (!AllowedClicks.Contains(kind) && !once) throw new StopException($"Refused: {kind} is not an allowed click.");
+        if (!IsAllowed(kind) && !once) throw new StopException($"Refused: {kind} is not an allowed click.");
         await NoBattle(ct, resultScreenOk: view is not null && UiState.IsBattleResultView(view));
         // The window first: rectangles are read at the size the click is sent at.
         var (w, why) = GameWindow.Find();
@@ -337,13 +341,14 @@ public sealed class NavigatingDriver(LiveGame game, UnityUi ui, Plan? plan, stri
             if (s.Top?.Name != view) throw new StopException($"Expected {view} on top; the screen shows {s.Top?.Name}.");
             targets = targets.Where(t => t.View == view).ToList();
         }
-        if (Screen.Covering(s) is { } cover && kind is not ("manage-close" or "dialog-close" or "swap-cancel" or "swap-continue" or "back")) throw new StopException($"Unexpected popup {cover} over the champion screen.");
+        if (Screen.Covering(s) is { } cover && kind is not ("manage-close" or "dialog-close" or "swap-cancel" or "swap-continue" or "back" or "message-button")) throw new StopException($"Unexpected popup {cover} over the champion screen.");
         if (before?.Invoke(s) is { } changed) throw new StopException(changed);
         var (t, problem) = UiTargets.Resolve(targets, kind, id, slot);
         if (t is null) throw new StopException($"{kind}: {problem}");
         if (id is not null && t.Id != id) throw new StopException($"{kind}: id {t.Id}, expected {id}.");
-        if (t.Forbidden || !(AllowedClicks.Contains(t.Kind) || once && t.Kind == kind)) throw new StopException($"Refused: {t.Name} may not be clicked.");
+        if (t.Forbidden || !(IsAllowed(t.Kind) || once && t.Kind == kind)) throw new StopException($"Refused: {t.Name} may not be clicked.");
         if (kind is "swap-cancel" or "swap-continue" && t.View != UiState.SwapView) throw new StopException($"Refused: {t.Path} is not on the swap confirmation.");
+        if (kind == "message-button" && (t.View != UiState.MessageBoxView || s.Top?.Name != UiState.MessageBoxView)) throw new StopException($"Refused: {t.Path} is not on the message box on top.");
         // An offer's close: only its own close element (BTN_Close1), on the popup that is on top; nothing else on an offer.
         if (kind == "dialog-close" && (t.View != s.Top?.Name || !t.Path.EndsWith("/BTN_Close1", StringComparison.Ordinal)))
             throw new StopException($"Refused: the close found ({t.Path} in {t.View}) is not the close of the popup on top ({s.Top?.Name}).");

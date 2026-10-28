@@ -427,6 +427,20 @@
           "field": "_ownerIsCurrentHero",
           "source": "field",
           "status": "direct"
+        },
+        "_withSellMark": {
+          "offset": "0x68",
+          "type": "BoolProperty",
+          "field": "_withSellMark",
+          "source": "field",
+          "status": "direct"
+        },
+        "_hasOwner": {
+          "offset": "0x88",
+          "type": "BoolProperty",
+          "field": "_hasOwner",
+          "source": "field",
+          "status": "direct"
         }
       }
     },
@@ -525,6 +539,72 @@
           "offset": "0x20",
           "type": "ScaleMode",
           "field": "m_UiScaleMode",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.InventoryViewContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_sellArtifacts": {
+          "offset": "0xD8",
+          "type": "SellArtifactsContext",
+          "field": "_sellArtifacts",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.SellArtifactsContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_sellArtifactsCount": {
+          "offset": "0x88",
+          "type": "IntProperty",
+          "field": "_sellArtifactsCount",
+          "source": "field",
+          "status": "direct"
+        },
+        "_markedForSell": {
+          "offset": "0xB0",
+          "type": "List\u003CInventoryItemContext\u003E",
+          "field": "_markedForSell",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.Generic.MessageBox.MessageBoxContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_titleText": {
+          "offset": "0x88",
+          "type": "StringProperty",
+          "field": "_titleText",
+          "source": "field",
+          "status": "direct"
+        },
+        "_mainMessage": {
+          "offset": "0x90",
+          "type": "StringProperty",
+          "field": "_mainMessage",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.ButtonContextBase": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "Text": {
+          "offset": "0x60",
+          "type": "StringProperty",
+          "field": "Text",
           "source": "field",
           "status": "direct"
         }

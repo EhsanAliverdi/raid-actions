@@ -3,15 +3,18 @@ using System.Text.RegularExpressions;
 namespace RaidActions.Game.Memory;
 
 /// <param name="Kind">champion-tile, gear-slot, gear-tab, inventory-item, popup-equip, popup-remove, popup-close, manage-remove,
-/// manage-close, manage-sell, forbidden.</param>
+/// manage-close, sell-mode, sell-cancel, sell-apply, message-button, forbidden.</param>
 /// <param name="Id">What the target stands for: champion id (tile), artifact id (inventory item), tab number; else null.</param>
 /// <param name="Slot">Gear slots: the game's data id for the slot (Weapon … Ring, Cloak, Banner), as in plan files.</param>
 /// <param name="Rect">Where to click (client pixels), from memory.</param>
 /// <param name="FullyVisible">Entirely inside its scroll viewport / mask: only then may it be clicked.</param>
 /// <param name="Forbidden">Never clicked, whatever a step asks.</param>
-/// <param name="Note">Extra state: selected, tab on, the binding path, why it cannot be clicked.</param>
+/// <param name="Note">Extra state: selected, tab on, the binding path, why it cannot be clicked; a message box button: its text.</param>
+/// <param name="SellMarked">Inventory items: ticked for sale (InventoryItemContext._withSellMark); null when not read.</param>
+/// <param name="HasOwner">Inventory items: worn by a champion (InventoryItemContext._hasOwner); null when not read.</param>
 public sealed record UiTarget(string Kind, string Name, int? Id, string View, ClientRect? Rect, bool Active, bool? Interactable,
-    bool FullyVisible, bool Forbidden, string Path, string? Note, string? Slot = null, int? ClientWidth = null, int? ClientHeight = null)
+    bool FullyVisible, bool Forbidden, string Path, string? Note, string? Slot = null, int? ClientWidth = null, int? ClientHeight = null,
+    bool? SellMarked = null, bool? HasOwner = null)
 {
     public bool IsScrollArea => Kind.StartsWith("scroll-", StringComparison.Ordinal);
 
@@ -41,12 +44,16 @@ public static partial class UiTargets
     private const string Artifact = "SharedModel.Meta.Artifacts.Artifact";
     private const string IntProperty = "Client.MVVM.Base.ViewModel.Properties.IntProperty";
     private const string BoolProperty = "Client.MVVM.Base.ViewModel.Properties.BoolProperty";
+    private const string StringProperty = "Client.MVVM.Base.ViewModel.Properties.StringProperty";
+    public const string MessageBoxButtonContext = "Client.ViewModel.Contextes.MessageBoxButtonContext";
+    private const string ButtonContextBase = "Client.ViewModel.Contextes.ButtonContextBase";
 
     /// <summary>
-    /// Element names that are never clicked: Sell (manage-gear dialog), the picker's Sell mode, Auto-Equip (re-gears the champion
-    /// by itself), PowerUp (Upgrade: spends resources).
+    /// Element names that are never clicked: Sell (manage-gear dialog: sells the piece at once), the sell panel's Select all (would tick
+    /// every piece), Auto-Equip (re-gears the champion by itself), PowerUp (Upgrade: spends resources). The picker's Sell mode toggle is
+    /// a target of its own (sell-mode), which only the sell command may click: it is not in the swap runs' allow-list.
     /// </summary>
-    public static readonly IReadOnlySet<string> NeverClick = new HashSet<string> { "Sell_h", "SellMode", "QuickEquipButton", "PowerUpButton" };
+    public static readonly IReadOnlySet<string> NeverClick = new HashSet<string> { "Sell_h", "SelectAll_h", "QuickEquipButton", "PowerUpButton" };
 
     /// <summary>The game's slot ids (ArtifactKindId, as in plan files), in the gear panel's order.</summary>
     public static readonly string[] SlotIds = ["Weapon", "Helmet", "Shield", "Gloves", "Chest", "Boots", "Ring", "Cloak", "Banner"];
@@ -103,7 +110,20 @@ public static partial class UiTargets
                 var notes = new List<string>();
                 if (BoolValue(g, g.Ref(n.Context.Address, InventoryItemContext, "_isSelected")) == true) notes.Add("selected");
                 if (BoolValue(g, g.Ref(n.Context.Address, InventoryItemContext, "_ownerIsCurrentHero")) == true) notes.Add("worn by this champion");
-                targets.Add(Make("inventory-item", $"artifact #{artifactId}", artifactId, n, ClickableIn(i), notes.Count > 0 ? string.Join(", ", notes) : null));
+                var marked = Optional(() => BoolValue(g, g.Ref(n.Context.Address, InventoryItemContext, "_withSellMark")));
+                var owned = Optional(() => BoolValue(g, g.Ref(n.Context.Address, InventoryItemContext, "_hasOwner")));
+                if (marked == true) notes.Add("ticked for sale");
+                if (owned == true) notes.Add("worn");
+                targets.Add(Make("inventory-item", $"artifact #{artifactId}", artifactId, n, ClickableIn(i), notes.Count > 0 ? string.Join(", ", notes) : null)
+                    with { SellMarked = marked, HasOwner = owned });
+                continue;
+            }
+
+            // Message box buttons (MessageBox view): each button's own context holds its text; the id is its place (0, 1, …).
+            if (n.Context?.Class == MessageBoxButtonContext)
+            {
+                var text = Optional(() => g.Ref(n.Context.Address, ButtonContextBase, "Text") is var p and not 0 ? g.String(p, StringProperty, "_value") : null);
+                targets.Add(Make("message-button", $"message box: {text ?? "?"}", int.TryParse(n.Name, out var place) ? place : null, n, ClickableIn(i), text));
                 continue;
             }
 
@@ -156,6 +176,10 @@ public static partial class UiTargets
                 // The confirmation Equip opens when it replaces a worn piece: Cancel (allowed), Continue (only inside a step's Equip).
                 "Cancel" when t.View == UiState.SwapView => ("swap-cancel", "swap dialog: Cancel"),
                 "Continue" when t.View == UiState.SwapView => ("swap-continue", "swap dialog: Continue"),
+                // The picker's sell mode: its toggle, and the sell panel's Cancel and Apply (Apply opens the game's own confirmation).
+                "SellMode" when n.BindingPath?.Contains("SellArtifactsButton", StringComparison.Ordinal) == true => ("sell-mode", "picker: Sell mode"),
+                "Cancel" when n.Path.Contains("/SellArtifactsPanel_h/", StringComparison.Ordinal) => ("sell-cancel", "sell panel: Cancel"),
+                "Apply" when n.Path.Contains("/SellArtifactsPanel_h/", StringComparison.Ordinal) => ("sell-apply", "sell panel: Sell"),
                 // Any other popup's close button (offers and the like): closing only; their other buttons are never targets.
                 "BTN_Close1" when t.View.EndsWith("Overlay", StringComparison.Ordinal) => ("dialog-close", $"{t.View}: close"),
                 // Any other screen's back or close element (by its own name), and a battle result's way back (never Replay or Next).
@@ -163,7 +187,7 @@ public static partial class UiTargets
                 _ when NeverClick.Contains(n.Name) => ("forbidden", n.Name switch
                 {
                     "Sell_h" => "manage gear: Sell",
-                    "SellMode" => "picker: Sell mode",
+                    "SelectAll_h" => "sell panel: Select all",
                     "QuickEquipButton" => "picker: Auto-Equip",
                     _ => "popup: Upgrade (PowerUp)",
                 }),
@@ -217,6 +241,13 @@ public static partial class UiTargets
         if (path.Contains("Clothes", StringComparison.OrdinalIgnoreCase) || path.Contains("Armor", StringComparison.OrdinalIgnoreCase)) return "Chest";
         if (path.Contains("Amulet", StringComparison.OrdinalIgnoreCase) || path.Contains("Pendant", StringComparison.OrdinalIgnoreCase)) return "Cloak";
         return null;
+    }
+
+    /// <summary>A field that older offsets do not have (re-run scripts/gen-ui-offsets.ps1): null instead of a failed read.</summary>
+    private static T? Optional<T>(Func<T?> read)
+    {
+        try { return read(); }
+        catch (KeyNotFoundException) { return default; }
     }
 
     private static int? IntValue(IGameObjects g, ulong property) => property == 0 ? null : g.Int(property, IntProperty, "_value");

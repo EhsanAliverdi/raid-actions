@@ -56,10 +56,30 @@ public sealed record ChampionScreenState(int? HeroId, int? SelectedHeroId, int? 
 /// </summary>
 public sealed record SwapDialogState(int? EquippedArtifactId, int? ArtifactToEquipId, string? Title, string? Warning);
 
-public sealed record UiState(IReadOnlyList<OpenView> Views, int BlockingEvents, ChampionScreenState? ChampionScreen, SwapDialogState? Swap = null)
+/// <summary>
+/// The picker's sell mode (InventoryViewContext._sellArtifacts, a SellArtifactsContext): how many pieces are ticked for sale
+/// (_sellArtifactsCount) and which (the artifact ids of _markedForSell; -1 for an item that is not an artifact).
+/// </summary>
+public sealed record SellState(int? Count, IReadOnlyList<int> Marked)
+{
+    public bool Is(IEnumerable<int> ids)
+    {
+        var want = ids.ToHashSet();
+        return Count == want.Count && Marked.Count == want.Count && Marked.ToHashSet().SetEquals(want);
+    }
+
+    public override string ToString() => $"{Count?.ToString() ?? "?"} ticked [{string.Join(", ", Marked)}]";
+}
+
+/// <summary>A message box (MessageBoxContext): its title and main message.</summary>
+public sealed record MessageBoxInfo(string? Title, string? Message);
+
+public sealed record UiState(IReadOnlyList<OpenView> Views, int BlockingEvents, ChampionScreenState? ChampionScreen, SwapDialogState? Swap = null,
+    SellState? Sell = null, MessageBoxInfo? MessageBox = null)
 {
     public const string ChampionScreenView = "HeroesInfoOverlay";
     public const string SwapView = "SwapArtifactsOverlay";
+    public const string MessageBoxView = "MessageBox";
 
     /// <summary>
     /// Views of a battle being loaded, fought, paused or left (explicit: many other view names contain "Battle", such as the always-open

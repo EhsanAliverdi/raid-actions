@@ -21,12 +21,19 @@ public class UiTargetsTests
         public UiContext Tile(int heroId, bool selected) =>
             new(Add(new() { ["_heroId"] = Prop(heroId), ["_isSelected"] = Prop(selected) }), UiTargets.HeroSlotContext);
 
-        public UiContext Item(int artifactId, bool selected = false, bool worn = false) =>
-            new(Add(new()
+        public UiContext Item(int artifactId, bool selected = false, bool worn = false, bool? sellMarked = null, bool? hasOwner = null)
+        {
+            var f = new Dictionary<string, object>
             {
                 ["Avatar"] = Add(new() { ["Artifact"] = Add(new() { ["Id"] = artifactId }) }),
                 ["_isSelected"] = Prop(selected), ["_ownerIsCurrentHero"] = Prop(worn),
-            }), UiTargets.InventoryArtifactContext);
+            };
+            if (sellMarked is { } m) f["_withSellMark"] = Prop(m);
+            if (hasOwner is { } o) f["_hasOwner"] = Prop(o);
+            return new(Add(f), UiTargets.InventoryArtifactContext);
+        }
+
+        public UiContext Button(string text) => new(Add(new() { ["Text"] = Add(new() { ["_value"] = text }) }), UiTargets.MessageBoxButtonContext);
 
         public ulong Root(string name, string expectedType) => throw new NotSupportedException();
         public string ClassName(ulong obj) => throw new NotSupportedException();
@@ -34,7 +41,7 @@ public class UiTargetsTests
         public ulong Ref(ulong obj, string type, string member) => Fields[obj].TryGetValue(member, out var v) ? (ulong)v : 0;
         public int Int(ulong obj, string type, string member) => (int)Fields[obj][member];
         public bool Bool(ulong obj, string type, string member) => (bool)Fields[obj][member];
-        public string? String(ulong obj, string type, string member) => null;
+        public string? String(ulong obj, string type, string member) => Fields[obj].TryGetValue(member, out var v) ? v as string : null;
         public int? NullableInt(ulong obj, string type, string member) => null;
         public IReadOnlyList<ulong> RefList(ulong list, int max) => throw new NotSupportedException();
         public string? EnumName(string enumType, int value) => null;
@@ -160,7 +167,7 @@ public class UiTargetsTests
     {
         var tree = new UiTree("HeroesInfoOverlay",
         [
-            N("O/Inv/Top/SellMode", R(513, 48, 53, 26), interactable: true, isOn: false),
+            N("O/Inv/Top/SellMode", R(513, 48, 53, 26), interactable: true, isOn: false, binding: "DisplayMode.SellArtifactsButton"),
             N("O/Inv/Top/QuickEquipButton", R(459, 92, 109, 32), interactable: true),
             N("O/Popup/Selected/PowerUpButton", R(10, 406, 93, 31), interactable: true),
             N("O/Popup/Selected/EquipButton_h", R(110, 406, 93, 31), interactable: true),
@@ -168,8 +175,9 @@ public class UiTargetsTests
             N("O/Popup/SelectedItemWindow/Artifact_h/HideButton", R(174, 222, 36, 36), interactable: true),
         ], 1600, 900, null, 0.8333f);
         var t = UiTargets.Find(tree, new Ctx());
-        Assert.Equal(["forbidden", "forbidden", "forbidden", "popup-equip", "popup-remove", "popup-close-selected"], t.Select(x => x.Kind));
-        Assert.All(t.Take(3), x => Assert.Equal("forbidden (never clicked)", x.NotClickable));
+        Assert.Equal(["sell-mode", "forbidden", "forbidden", "popup-equip", "popup-remove", "popup-close-selected"], t.Select(x => x.Kind));
+        Assert.All(t.Skip(1).Take(2), x => Assert.Equal("forbidden (never clicked)", x.NotClickable));
+        Assert.Null(t[0].NotClickable);                                       // the sell command's own toggle (not in swap runs' allow-list)
         Assert.Null(UiTargets.Resolve(t, "popup-equip").Problem);
         Assert.Contains("not on screen", UiTargets.Resolve(t, "manage-remove").Problem);
 
@@ -183,6 +191,55 @@ public class UiTargetsTests
         Assert.Equal(["manage-remove", "forbidden", "manage-close"], m.Select(x => x.Kind));
         Assert.Equal("manage gear: Sell", m[1].Name);
         Assert.True(m[1].Forbidden);
+    }
+
+    [Fact]
+    public void Sell_mode_panel_ticked_items_and_the_confirmation()
+    {
+        var g = new Ctx();
+        var picker = new UiTree("HeroesInfoOverlay",
+        [
+            N("O/Inv/InventoryWindow/Groups/Item", R(300, 200, 50, 50), ctx: g.Item(11, sellMarked: true, hasOwner: false)),
+            N("O/Inv/InventoryWindow/Groups/Item/Button", R(300, 200, 50, 50), interactable: true),
+            N("O/Inv/InventoryWindow/Groups/Item2", R(360, 200, 50, 50), ctx: g.Item(12, hasOwner: true)),
+            N("O/Inv/InventoryWindow/Groups/Item2/Button", R(360, 200, 50, 50), interactable: true),
+            N("O/Inv/InventoryWindow/Groups/Item3", R(420, 200, 50, 50), ctx: g.Item(13)),          // older offsets: not read
+            N("O/Inv/InventoryWindow/Groups/Item3/Button", R(420, 200, 50, 50), interactable: true),
+            N("O/Inv/SellArtifactsPanel_h/Buttons/SelectAll_h", R(646, 290, 179, 27), interactable: true),
+            N("O/Inv/SellArtifactsPanel_h/Buttons/Cancel", R(646, 327, 179, 50), interactable: true),
+            N("O/Inv/SellArtifactsPanel_h/Buttons/Apply", R(646, 387, 179, 50), interactable: true),
+        ], 840, 446, null, 0.413f);
+        var t = UiTargets.Find(picker, g);
+        var items = t.Where(x => x.Kind == "inventory-item").ToList();
+        Assert.Equal(new bool?[] { true, null, null }, items.Select(x => x.SellMarked));
+        Assert.Equal(new bool?[] { false, true, null }, items.Select(x => x.HasOwner));
+        Assert.Equal(["forbidden", "sell-cancel", "sell-apply"], t.Where(x => x.Kind != "inventory-item").Select(x => x.Kind));
+        Assert.Equal("sell panel: Select all", t.Single(x => x.Kind == "forbidden").Name);
+
+        var box = new UiTree("MessageBox",
+        [
+            N("MessageBox/BoxContainer/Box/BTN_Close1_h", R(624, 122, 36, 36), interactable: true),
+            N("MessageBox/BoxContainer/Box/Content/Buttons_h/0", R(245, 222, 168, 53), interactable: true, ctx: g.Button("Cancel")),
+            N("MessageBox/BoxContainer/Box/Content/Buttons_h/1", R(427, 222, 168, 53), interactable: true, ctx: g.Button("<b>Sell</b>")),
+        ], 840, 446, null, 0.413f);
+        var m = UiTargets.Find(box, g);
+        Assert.Equal(["back", "message-button", "message-button"], m.Select(x => x.Kind));
+        Assert.Equal([0, 1], m.Where(x => x.Kind == "message-button").Select(x => x.Id!.Value));
+        var views = new List<OpenView> { new(1, "HeroesInfoOverlay", "Active", true), new(2, "MessageBox", "Active", true) };
+        var s = new UiState(views, 0, null, MessageBox: new MessageBoxInfo("Sell", "Sell the selected artifacts?"));
+        Assert.Null(App.Input.NavigatingDriver.ConfirmationProblem(s, m));
+        Assert.Contains("worn", App.Input.NavigatingDriver.ConfirmationProblem(s with { MessageBox = new("Sell", "Some are equipped by champions. Sell?") }, m));
+        Assert.Contains("on top", App.Input.NavigatingDriver.ConfirmationProblem(s with { Views = [views[0]] }, m));
+        Assert.Contains("say Sell", App.Input.NavigatingDriver.ConfirmationProblem(s, m.Select(x => x.Kind == "message-button" ? x with { Note = "OK" } : x).ToList()));
+        Assert.Contains("buttons", App.Input.NavigatingDriver.ConfirmationProblem(s, m.Take(2).ToList()));
+        Assert.True(App.Input.NavigatingDriver.IsSellText(" SELL "));
+        Assert.False(App.Input.NavigatingDriver.IsSellText("Sell all"));
+
+        var sell = new SellState(2, [11, 12]);
+        Assert.True(sell.Is([12, 11]));
+        Assert.False(sell.Is([11]));
+        Assert.False((sell with { Count = 3 }).Is([11, 12]));
+        Assert.False(new SellState(2, [11, 11]).Is([11, 12]));
     }
 
     [Theory]
@@ -263,8 +320,12 @@ public class NavigationTargetsTests
             Assert.DoesNotContain(never, allowed);
         Assert.Contains("champion-tile", allowed);
         Assert.Contains("inventory-item", allowed);
-        foreach (var name in new[] { "Sell_h", "SellMode", "QuickEquipButton", "PowerUpButton" })
+        foreach (var name in new[] { "Sell_h", "SelectAll_h", "QuickEquipButton", "PowerUpButton" })
             Assert.Contains(name, RaidActions.Game.Memory.UiTargets.NeverClick);
+        // The sell mode's clicks belong to the sell command alone, and nothing clicks the confirmation's Sell without its one-time unlock.
+        foreach (var sellOnly in App.Input.NavigatingDriver.SellOnlyClicks.Append("message-button"))
+            Assert.DoesNotContain(sellOnly, allowed);
+        Assert.DoesNotContain("message-button", App.Input.NavigatingDriver.SellOnlyClicks);
     }
 
     private sealed class NoObjects : IGameObjects

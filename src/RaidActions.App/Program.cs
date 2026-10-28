@@ -20,7 +20,7 @@ public static class Program
         Action? abort = null;
         // Only commands that can run take the system-wide hotkey: a read-only command (e.g. ui-state --watch) must never hold it
         // and keep a run's kill switch from registering.
-        using var kill = args[0].ToLowerInvariant() is "run" or "dry-run" or "go-home" ? new KillSwitch() : null;
+        using var kill = args[0].ToLowerInvariant() is "run" or "dry-run" or "go-home" or "sell" ? new KillSwitch() : null;
         if (kill is not null)
             kill.Pressed += () =>
             {

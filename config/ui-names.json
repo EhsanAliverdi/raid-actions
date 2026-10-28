@@ -3,13 +3,20 @@
     "The game's UI state that raid-actions reads (read-only), in raid-extractor's config/names.json format.",
     "scripts/gen-ui-offsets.ps1 runs raid-extractor's ConfigGen on it in a staging folder and writes config/ui-offsets.json.",
     "Path: AppViewModel (static) -> _overlayManager -> _viewMaster (RaidViewMaster) -> _views (List<ViewMeta>) -> ViewMeta.View",
-    "-> BaseView.Context -> HeroesInfoOverlayContext (the champion screen) -> _heroId, _heroDetailsContext._inventoryArtifactId."
+    "-> BaseView.Context -> HeroesInfoOverlayContext (the champion screen) -> _heroId, _heroDetailsContext._inventoryArtifactId.",
+    "Sell mode (2026-10-28): _inventoryContext._sellArtifacts (_sellArtifactsCount, _markedForSell), items' _withSellMark and _hasOwner; message boxes' title, text and button texts."
   ],
   "roots": {
     "AppViewModel": {
       "typeInfo": "Client.ViewModel.AppViewModel",
-      "classPath": [ "parent" ],
-      "expect": { "class": "AppViewModel", "namespace": "Client.ViewModel", "parentClass": "SingleInstance`1" },
+      "classPath": [
+        "parent"
+      ],
+      "expect": {
+        "class": "AppViewModel",
+        "namespace": "Client.ViewModel",
+        "parentClass": "SingleInstance`1"
+      },
       "staticFieldsStruct": "SingleInstance_1_Client_ViewModel_AppViewModel___StaticFields",
       "staticField": "_instance"
     }
@@ -21,24 +28,104 @@
   ],
   "reviewed": {},
   "types": {
-    "Client.ViewModel.AppViewModel": [ "_overlayManager", "_messageBoxes", "_blockUi", "_routing" ],
-    "Client.ViewModel.OverlayManagerBase": [ "_viewMaster", "Views", "OpenedOverlaysCount" ],
-    "Client.ViewModel.BlockUi": [ "_blockingEventsCounter" ],
-    "Client.RaidApp.RaidViewMaster": [ "_views", "_lastTopView" ],
-    "Client.RaidApp.ViewMeta": [ "Key", "Token", "State", "View", "Visibility" ],
-    "Client.MVVM.Base.View.BaseView": [ "Context" ],
-    "Client.ViewModel.Contextes.HeroesInfoDialog.HeroesInfoOverlayContext": [ "_heroId", "_heroDetailsContext", "_selectedHeroContext", "_viewState", "_inventoryContext", "_heroes" ],
-    "Client.ViewModel.Contextes.HeroesInfoDialog.HeroDetails.HeroDetailsContext": [ "_heroId", "_inventoryArtifactId", "_activeTabIndex" ],
-    "Client.ViewModel.Contextes.HeroesInfoDialog.SelectedHero.SelectedHeroContext": [ "_heroId" ],
-    "UnityEngine.Object": [ "m_CachedPtr" ],
-    "Client.MVVM.Base.View.Bindings.BindingMasterPath": [ "MasterPath" ],
-    "Client.ViewModel.Contextes.HeroesInfoDialog.HeroSlot.HeroSlotContext": [ "_heroId", "_isSelected", "_slotType" ],
-    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Items.InventoryArtifactContext": [ "Avatar" ],
-    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Items.InventoryItemContext": [ "_isSelected", "_isVisible", "_ownerIsCurrentHero" ],
-    "Client.ViewModel.Contextes.Generic.ArtifactAvatarContext": [ "Artifact" ],
-    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Overlays.SwapArtifactsOverlayContext": [ "_warning", "_title", "_equippedArtifactContext", "_artifactToEquipContext" ],
-    "UnityEngine.UI.Selectable": [ "m_Interactable" ],
-    "UnityEngine.UI.Toggle": [ "m_IsOn" ],
-    "UnityEngine.UI.CanvasScaler": [ "m_ScaleFactor", "m_ReferenceResolution", "m_UiScaleMode" ]
+    "Client.ViewModel.AppViewModel": [
+      "_overlayManager",
+      "_messageBoxes",
+      "_blockUi",
+      "_routing"
+    ],
+    "Client.ViewModel.OverlayManagerBase": [
+      "_viewMaster",
+      "Views",
+      "OpenedOverlaysCount"
+    ],
+    "Client.ViewModel.BlockUi": [
+      "_blockingEventsCounter"
+    ],
+    "Client.RaidApp.RaidViewMaster": [
+      "_views",
+      "_lastTopView"
+    ],
+    "Client.RaidApp.ViewMeta": [
+      "Key",
+      "Token",
+      "State",
+      "View",
+      "Visibility"
+    ],
+    "Client.MVVM.Base.View.BaseView": [
+      "Context"
+    ],
+    "Client.ViewModel.Contextes.HeroesInfoDialog.HeroesInfoOverlayContext": [
+      "_heroId",
+      "_heroDetailsContext",
+      "_selectedHeroContext",
+      "_viewState",
+      "_inventoryContext",
+      "_heroes"
+    ],
+    "Client.ViewModel.Contextes.HeroesInfoDialog.HeroDetails.HeroDetailsContext": [
+      "_heroId",
+      "_inventoryArtifactId",
+      "_activeTabIndex"
+    ],
+    "Client.ViewModel.Contextes.HeroesInfoDialog.SelectedHero.SelectedHeroContext": [
+      "_heroId"
+    ],
+    "UnityEngine.Object": [
+      "m_CachedPtr"
+    ],
+    "Client.MVVM.Base.View.Bindings.BindingMasterPath": [
+      "MasterPath"
+    ],
+    "Client.ViewModel.Contextes.HeroesInfoDialog.HeroSlot.HeroSlotContext": [
+      "_heroId",
+      "_isSelected",
+      "_slotType"
+    ],
+    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Items.InventoryArtifactContext": [
+      "Avatar"
+    ],
+    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Items.InventoryItemContext": [
+      "_isSelected",
+      "_isVisible",
+      "_ownerIsCurrentHero",
+      "_withSellMark",
+      "_hasOwner"
+    ],
+    "Client.ViewModel.Contextes.Generic.ArtifactAvatarContext": [
+      "Artifact"
+    ],
+    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Overlays.SwapArtifactsOverlayContext": [
+      "_warning",
+      "_title",
+      "_equippedArtifactContext",
+      "_artifactToEquipContext"
+    ],
+    "UnityEngine.UI.Selectable": [
+      "m_Interactable"
+    ],
+    "UnityEngine.UI.Toggle": [
+      "m_IsOn"
+    ],
+    "UnityEngine.UI.CanvasScaler": [
+      "m_ScaleFactor",
+      "m_ReferenceResolution",
+      "m_UiScaleMode"
+    ],
+    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.InventoryViewContext": [
+      "_sellArtifacts"
+    ],
+    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.SellArtifactsContext": [
+      "_sellArtifactsCount",
+      "_markedForSell"
+    ],
+    "Client.ViewModel.Contextes.Generic.MessageBox.MessageBoxContext": [
+      "_titleText",
+      "_mainMessage"
+    ],
+    "Client.ViewModel.Contextes.ButtonContextBase": [
+      "Text"
+    ]
   }
 }

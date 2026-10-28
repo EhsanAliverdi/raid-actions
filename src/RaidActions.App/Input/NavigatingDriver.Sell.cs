@@ -149,6 +149,7 @@ public sealed partial class NavigatingDriver
         await TurnToTop(a, ct);
         float? perNotch = null;
         string? lastSeen = null;
+        var atEndOnce = false;
         for (var turn = 0; turn < 200 && left.Count > 0; turn++)
         {
             var (s, targets) = await Read(ct);
@@ -170,9 +171,18 @@ public sealed partial class NavigatingDriver
             var (area, problem) = UiTargets.Resolve(targets, "scroll-picker");
             if (area is null) throw new StopException($"scroll-picker: {problem}");
             var ar = area.Rect!.Value;
-            var seenNow = targets.Where(t => t.Kind == "inventory-item" && t.FullyVisible).Select(t => t.Id).OrderBy(x => x).ToList();
-            var seen = string.Join(",", seenNow);
-            if (seen == lastSeen) throw new StopException($"End of the {UiTargets.DisplayName(slot)} list: not found [{string.Join(", ", left.Select(i => $"#{i}"))}] (ticked so far: {ticked.Count}).");
+            var seen = SeenIds(targets);
+            if (seen == lastSeen)
+            {
+                // Nothing moved since the last turn: the end, unless the list was still gliding. One more turn decides.
+                if (atEndOnce)
+                {
+                    if (targets.FirstOrDefault(t => t.Kind == "scroll-picker")?.Rect is { } er) Shot(a, $"sell {slot}: end of the list, not found [{string.Join(", ", left)}]", er);
+                    throw new StopException($"End of the {UiTargets.DisplayName(slot)} list: not found [{string.Join(", ", left.Select(i => $"#{i}"))}] (ticked so far: {ticked.Count}; in view at the end: {seen}).");
+                }
+                atEndOnce = true;
+            }
+            else atEndOnce = false;
             lastSeen = seen;
             var below = targets.Where(t => t.Kind == "inventory-item" && t.Id is { } id && left.Contains(id) && t.Rect is { } r && r.Y > ar.Y)
                 .Select(t => t.Rect!.Value.Center.Y - ar.Center.Y).Where(d => d > 0).DefaultIfEmpty().Min();
@@ -183,39 +193,69 @@ public sealed partial class NavigatingDriver
             if (w is null) throw new StopException(why!);
             await NoBattle(ct);
             var (cx, cy) = ar.Center;
-            if (MouseInput.Wheel(w, cx, cy, -notches) is { } notSent) throw new StopException($"Not scrolled: {notSent}");
-            await Task.Delay(450, ct);
-            // How far one notch moved the list: measured on an item seen before and after the turn.
-            var (_, afterTurn) = await Read(ct);
+            if (MouseInput.Wheel(w, cx, cy, -(atEndOnce ? Math.Max(notches, 6) : notches)) is { } notSent) throw new StopException($"Not scrolled: {notSent}");
+            // How far one notch moved the list: measured on an item seen before and after the turn, once the list stopped gliding.
+            var afterTurn = await Steady(ct);
             if (anchor is not null && afterTurn.FirstOrDefault(t => t.Kind == "inventory-item" && t.Id == anchor.Id && t.Rect is not null) is { } same
                 && anchor.Rect!.Value.Y - same.Rect!.Value.Y is var moved and > 1)
                 perNotch = moved / notches;
-            log($"sell {slot}: turned the picker down {notches} notch{(notches == 1 ? "" : "es")}{(perNotch is { } pn ? $" ({pn:0.#} px each)" : "")}, {left.Count} to find");
+            log($"sell {slot}: turned the picker down {notches} notch{(notches == 1 ? "" : "es")}{(perNotch is { } pn ? $" ({pn:0.#} px each)" : "")}, {left.Count} to find; in view: {SeenIds(afterTurn)}");
         }
         if (left.Count > 0) throw new StopException($"Not found in the {UiTargets.DisplayName(slot)} list: [{string.Join(", ", left.Select(i => $"#{i}"))}].");
     }
 
-    /// <summary>Turns the picker up until the pieces in view stop changing (the top).</summary>
+    /// <summary>
+    /// Turns the picker to the top: one long turn (250 notches, 8 ms apart: about 2 s, more than the longest list measured, ~200
+    /// notches), then a check turn; the top is where a turn no longer changes the pieces in view. (A single wheel event carrying many
+    /// notches counts as one notch in the game, seen 2026-10-28; and the picker keeps pooled items with old rectangles in memory, so
+    /// "nothing above the viewport" cannot be read.)
+    /// </summary>
     private async Task TurnToTop(UiAction a, CancellationToken ct)
     {
-        string? last = null;
-        for (var i = 0; i < 30; i++)
+        var (_, targets) = await Read(ct);
+        var last = SeenIds(targets);
+        for (var i = 0; i < 6; i++)
         {
-            var (_, targets) = await Read(ct);
-            var seen = string.Join(",", targets.Where(t => t.Kind == "inventory-item" && t.FullyVisible).Select(t => t.Id).OrderBy(x => x));
-            if (seen == last) return;
-            last = seen;
             var (area, problem) = UiTargets.Resolve(targets, "scroll-picker");
             if (area is null) throw new StopException($"scroll-picker: {problem}");
-            if (i == 0 && targets.Where(t => t.Kind == "inventory-item" && t.Rect is not null).Select(t => t.Rect!.Value.Y).DefaultIfEmpty(float.MaxValue).Min() >= area.Rect!.Value.Y - 1)
-                return; // nothing above the viewport: already at the top
             var (w, why) = GameWindow.Find();
             if (w is null) throw new StopException(why!);
+            await NoBattle(ct);
             var (cx, cy) = area.Rect!.Value.Center;
-            if (MouseInput.Wheel(w, cx, cy, 30) is { } notSent) throw new StopException($"Not scrolled: {notSent}");
-            log("sell: turned the picker up to the top");
-            await Task.Delay(450, ct);
+            var notches = i == 0 ? 250 : 60;
+            if (MouseInput.Wheel(w, cx, cy, notches, gapMs: 8) is { } notSent) throw new StopException($"Not scrolled: {notSent}");
+            targets = await Steady(ct);
+            var seen = SeenIds(targets);
+            log($"sell: turned the picker up {notches} notches");
+            if (seen == last) return; // nothing moved: the top
+            last = seen;
         }
+        throw new StopException("The picker did not reach the top.");
+    }
+
+    /// <summary>The ids of the pieces fully in view, sorted (to see whether a turn moved the list).</summary>
+    private static string SeenIds(IReadOnlyList<UiTarget> t) =>
+        string.Join(",", t.Where(x => x.Kind == "inventory-item" && x.FullyVisible).Select(x => x.Id).OrderBy(x => x));
+
+    /// <summary>
+    /// Reads until the list has stopped gliding after a wheel turn (Unity's scroll keeps moving for a moment): the pieces in view and
+    /// their places the same in two reads 300 ms apart, at most 4 s.
+    /// </summary>
+    private async Task<List<UiTarget>> Steady(CancellationToken ct)
+    {
+        static string Places(IReadOnlyList<UiTarget> t) =>
+            string.Join(";", t.Where(x => x.Kind == "inventory-item" && x.FullyVisible).OrderBy(x => x.Id).Select(x => $"{x.Id}@{x.Rect?.Y:0}"));
+        await Task.Delay(400, ct);
+        var (_, t) = await Read(ct);
+        var until = DateTime.Now + TimeSpan.FromSeconds(4);
+        while (DateTime.Now < until)
+        {
+            await Task.Delay(300, ct);
+            var (_, t2) = await Read(ct);
+            if (Places(t2) == Places(t)) return t2;
+            t = t2;
+        }
+        return t;
     }
 
     /// <summary>One tick: the piece unequipped and not ticked in memory; after the click the game's list is the pieces so far plus it.</summary>

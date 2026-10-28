@@ -60,7 +60,7 @@ public sealed record WindowPolicy(int MinWidth, int MinHeight, int FloorWidth, i
     public override string ToString() => $"minimum {MinWidth}x{MinHeight} (floor {FloorWidth}x{FloorHeight}, smallest target ≥ {TargetPx} px)";
 }
 
-/// <summary>The planned move: the outer window rect that gives the wanted client area, centred on the monitor's work area.</summary>
+/// <summary>The planned resize: the outer window rect that gives the wanted client area, at the window's own place (inside the work area).</summary>
 public sealed record FitPlan(PixelRect Window, int ClientWidth, int ClientHeight, PixelRect WorkArea, bool Restore);
 
 /// <summary>Where a window was, to put it back after a run: its normal rectangle and whether it was minimized.</summary>
@@ -72,7 +72,7 @@ public sealed record WindowPlacement(PixelRect Normal, bool Minimized, bool Maxi
 /// </summary>
 public static class WindowFit
 {
-    /// <summary>The move that gives a <paramref name="width"/>×<paramref name="height"/> client area, centred in the work area.</summary>
+    /// <summary>The resize that gives a <paramref name="width"/>×<paramref name="height"/> client area, the window staying where it is.</summary>
     public static FitPlan Plan(GameWindowInfo w, int width, int height) => Native.PhysicalPixels(() =>
     {
         var style = (uint)Native.GetWindowLongPtr(w.Handle, Native.GwlStyle).ToInt64();
@@ -82,8 +82,22 @@ public static class WindowFit
         var info = new Native.MONITORINFO { cbSize = Marshal.SizeOf<Native.MONITORINFO>() };
         Native.GetMonitorInfo(Native.MonitorFromWindow(w.Handle, Native.MonitorDefaultToNearest), ref info);
         var work = new PixelRect(info.rcWork.Left, info.rcWork.Top, info.rcWork.Right - info.rcWork.Left, info.rcWork.Bottom - info.rcWork.Top);
-        return Center(work, frame.Right - frame.Left, frame.Bottom - frame.Top, width, height, w.Minimized);
+        // Where the window is now (its normal rectangle, also while minimized): it stays there, only its size changes.
+        var p = new Native.WINDOWPLACEMENT { length = Marshal.SizeOf<Native.WINDOWPLACEMENT>() };
+        Native.GetWindowPlacement(w.Handle, ref p);
+        return Keep(work, p.rcNormalPosition.Left, p.rcNormalPosition.Top, frame.Right - frame.Left, frame.Bottom - frame.Top, width, height, w.Minimized);
     });
+
+    /// <summary>
+    /// The outer size at the window's own top-left corner: the window is not moved, only resized; it is pushed back inside the work
+    /// area only as far as the bigger size needs (never above or left of it).
+    /// </summary>
+    public static FitPlan Keep(PixelRect work, int x, int y, int outerWidth, int outerHeight, int clientWidth, int clientHeight, bool restore)
+    {
+        var nx = Math.Max(work.X, Math.Min(x, work.X + work.Width - outerWidth));
+        var ny = Math.Max(work.Y, Math.Min(y, work.Y + work.Height - outerHeight));
+        return new FitPlan(new PixelRect(nx, ny, outerWidth, outerHeight), clientWidth, clientHeight, work, restore);
+    }
 
     /// <summary>Centres an outer size in the work area (never above or left of it).</summary>
     public static FitPlan Center(PixelRect work, int outerWidth, int outerHeight, int clientWidth, int clientHeight, bool restore)

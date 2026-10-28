@@ -128,7 +128,7 @@ RaidActions probe views | dump <hex> [len] | class <hex>
 **Any size works.** Click targets come from memory rectangles, which scale with the window (checked live at 1600×900 and
 1280×720: every rectangle ×0.8). A click is refused only when the game window is **minimized** (or hidden) or **smaller than the
 minimum client area** in `config/window.json`. In that case the run restores or enlarges the window **itself** (no y/n) to the
-minimum, the smallest size that works, and **puts it back** after the run: same size, position and state, minimized again if it
+minimum, the smallest size that works, **in place** (its top-left corner stays; only pulled back on screen if needed), and **leaves it at that size** after the run (2026-10-28: no putting back, so the next run needs no resize). Before 2026-10-28 it was put back: same size, position and state, minimized again if it
 was (`GetWindowPlacement` / `SetWindowPlacement`, without activating it).
 
 The minimum keeps the smallest click target (a champion tile or a picker item) at least **40 px** at the window's aspect ratio,

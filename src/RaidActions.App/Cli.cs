@@ -22,9 +22,10 @@ public static class Cli
           RaidActions dry-run <plan.json>      navigate and highlight every step, never equip
           RaidActions run <plan.json>          run the plan
           RaidActions sample [<folder>]        write a made-up account and plan to try the app
-          RaidActions sell <sell-plan.json> [--dry-run] [--confirm <code>]
+          RaidActions sell <sell-plan.json> [--dry-run] [--confirm <code>] [--start-game]
                                                sell a sell plan's pieces (raid-extractor's Sell review), slot by slot;
-                                               --dry-run ticks them, reads the confirmation and cancels: nothing is sold
+                                               --dry-run ticks them, reads the confirmation and cancels: nothing is sold;
+                                               --start-game starts Raid through Plarium Play first when it is not running
 
         Read-only, against the running game (no input, never brings it to the front):
           RaidActions window                   find the game window: size, DPI, state, usable for clicks

@@ -82,4 +82,13 @@ public class WindowFitTests : IDisposable
         Assert.Equal((1920, 0), (off.Window.X, off.Window.Y)); // too big: top left of the work area, never above or left of it
         Assert.True(off.Restore);
     }
+
+    [Fact]
+    public void A_resize_keeps_the_window_where_it_is_and_only_pulls_it_back_inside_the_screen()
+    {
+        var work = new PixelRect(0, 0, 1920, 1040);
+        Assert.Equal((100, 50), (WindowFit.Keep(work, 100, 50, 880, 525, 864, 486, false).Window.X, WindowFit.Keep(work, 100, 50, 880, 525, 864, 486, false).Window.Y));
+        Assert.Equal((1040, 515), (WindowFit.Keep(work, 1208, 603, 880, 525, 864, 486, false).Window.X, WindowFit.Keep(work, 1208, 603, 880, 525, 864, 486, false).Window.Y));
+        Assert.Equal((0, 0), (WindowFit.Keep(work, -50, -20, 880, 525, 864, 486, false).Window.X, WindowFit.Keep(work, -50, -20, 880, 525, 864, 486, false).Window.Y));
+    }
 }

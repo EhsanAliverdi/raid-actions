@@ -34,6 +34,17 @@ public static class RestartGameCommand
             p.CloseMainWindow();
             if (!p.WaitForExit(30_000)) { output.WriteLine("Raid did not close in 30 s: ending the process."); p.Kill(); p.WaitForExit(10_000); }
         }
+        return await StartAndWaitAsync(outDir, output, wait) ? Cli.Ok : Cli.Failed;
+    }
+
+    /// <summary>
+    /// Starts Raid through Plarium Play (as its desktop shortcut does) and waits until memory shows the village or an offer over it.
+    /// No click in the game. False when Plarium Play is missing or the wait runs out.
+    /// </summary>
+    public static async Task<bool> StartAndWaitAsync(string outDir, TextWriter output, TimeSpan wait)
+    {
+        var plarium = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "PlariumPlay", "PlariumPlay.exe");
+        if (!File.Exists(plarium)) { output.WriteLine($"Plarium Play not found at {plarium}."); return false; }
         output.WriteLine("Starting Raid through Plarium Play...");
         Process.Start(new ProcessStartInfo(plarium, "-gameid=101 -tray-start") { UseShellExecute = true });
 
@@ -51,13 +62,13 @@ public static class RestartGameCommand
                     last = $"top view {state?.Top?.Name ?? "none"}";
                     if (state is not null && (Input.NavigatingDriver.AtVillage(state) || state.Top?.Name is { } top && top.Contains("Offer", StringComparison.Ordinal)))
                     {
-                        output.WriteLine($"Raid is back ({last}).");
-                        return Cli.Ok;
+                        output.WriteLine($"Raid is up ({last}).");
+                        return true;
                     }
                 }
                 catch (UiReadException e) { last = e.Message; }
         }
         output.WriteLine($"Raid did not reach the village within {wait.TotalSeconds:0} s ({last}).");
-        return Cli.Failed;
+        return false;
     }
 }

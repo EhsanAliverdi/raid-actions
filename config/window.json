@@ -1,5 +1,5 @@
 {
-  "$comment": "Game window sizes raid-actions accepts. Any size works: click targets come from memory rectangles that scale with the window. Refused only when minimized or smaller than minimumClient; then the window is restored / enlarged to minimumClient by itself, and put back after the run. minimumClient keeps the smallest click target (champion tile, picker item) at least targetPx pixels at the game's aspect ratio, never below floorClient. Worked out by  RaidActions window minimum.",
+  "$comment": "Game window sizes raid-actions accepts. Any size works: click targets come from memory rectangles that scale with the window. Refused only when minimized or smaller than minimumClient; then the window is restored / enlarged to minimumClient by itself, in place (not moved), and left at that size after the run. minimumClient keeps the smallest click target (champion tile, picker item) at least targetPx pixels at the game's aspect ratio, never below floorClient. Worked out by  RaidActions window minimum.",
   "minimumClient": {
     "width": 864,
     "height": 486

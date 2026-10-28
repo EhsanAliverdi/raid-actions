@@ -7,7 +7,7 @@ using RaidExtractor.Battle;
 namespace RaidActions.App;
 
 /// <summary>
-/// <c>RaidActions sell &lt;sell-plan.json&gt; [--dry-run] [--confirm &lt;code&gt;]</c>: sells exactly the pieces of a sell plan from
+/// <c>RaidActions sell &lt;sell-plan.json&gt; [--dry-run] [--confirm &lt;code&gt;] [--start-game]</c>: sells exactly the pieces of a sell plan from
 /// raid-extractor's Sell review (output/plans/sell, SCHEMA.md → Sell plans), slot by slot with the picker's sell mode.
 /// Refused unless a fresh read of the game matches the plan (every piece there, unequipped and unchanged; same game version). The
 /// plan's code must be typed (or passed). A real run saves the full account read first and, after, checks that only the planned pieces
@@ -19,17 +19,19 @@ public static class SellCommand
     {
         string? planPath = null, confirm = null, outDir = null;
         var dry = false;
+        var startGame = false;
         for (var i = 1; i < args.Length; i++)
         {
             switch (args[i])
             {
                 case "--dry-run": dry = true; break;
+                case "--start-game": startGame = true; break;
                 case "--confirm" when i + 1 < args.Length: confirm = args[++i]; break;
                 case "--output" when i + 1 < args.Length: outDir = args[++i]; break;
                 default:
                     if (args[i].StartsWith("--", StringComparison.Ordinal) || planPath is not null)
                     {
-                        o.WriteLine($"Unexpected argument {args[i]}. Usage: RaidActions sell <sell-plan.json> [--dry-run] [--confirm <code>]");
+                        o.WriteLine($"Unexpected argument {args[i]}. Usage: RaidActions sell <sell-plan.json> [--dry-run] [--confirm <code>] [--start-game]");
                         return Cli.Usage;
                     }
                     planPath = args[i];
@@ -63,6 +65,12 @@ public static class SellCommand
         }
 
         var output = AppPaths.Resolve(null, outDir).Output;
+        if (startGame && System.Diagnostics.Process.GetProcessesByName("Raid").Length == 0)
+        {
+            o.WriteLine("Raid is not running: starting it.");
+            if (!await RestartGameCommand.StartAndWaitAsync(output, o, TimeSpan.FromMinutes(5))) return Cli.Failed;
+            await Task.Delay(TimeSpan.FromSeconds(5)); // offers that queue up after the village appear
+        }
         var (game, problem) = LiveGame.Open(GameCommands.LivePaths(output));
         if (game is null)
         {

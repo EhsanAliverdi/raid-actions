@@ -104,13 +104,21 @@ public static class MouseInput
     /// Mouse-wheel notches at client point (x, y): negative scrolls down (towards later items). Sent as one event per notch: the game's
     /// scroll lists move one step per wheel event, whatever the event's delta.
     /// </summary>
-    public static string? Wheel(GameWindowInfo w, float x, float y, int notches)
+    /// <param name="single">One wheel event carrying all the notches (one big turn, as a fast flick of the wheel) instead of one
+    /// event per notch.</param>
+    /// <param name="gapMs">Pause between two notches (35 ms: a hand turning the wheel; less for a long turn).</param>
+    public static string? Wheel(GameWindowInfo w, float x, float y, int notches, bool single = false, int gapMs = 35)
     {
         if (Prepare(w, x, y) is { } problem) return problem;
+        if (single)
+        {
+            mouse_event(WheelFlag, 0, 0, Math.Clamp(notches, -250, 250) * 120, IntPtr.Zero);
+            return null;
+        }
         for (var i = 0; i < Math.Abs(notches); i++)
         {
             mouse_event(WheelFlag, 0, 0, Math.Sign(notches) * 120, IntPtr.Zero);
-            Thread.Sleep(35);
+            Thread.Sleep(gapMs);
         }
         return null;
     }

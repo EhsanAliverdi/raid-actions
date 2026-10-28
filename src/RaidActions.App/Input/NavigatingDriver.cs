@@ -502,18 +502,16 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
         log($"window fit: {(w.Minimized ? "minimized" : $"{w.Client.Width}x{w.Client.Height}")} → {after.Client.Width}x{after.Client.Height} (the minimum)");
     }
 
-    /// <summary>After the run: the window back to the size, position and state it had before this driver resized it.</summary>
+    /// <summary>
+    /// After the run: the window is left at the size this driver gave it (Ehsan, 2026-10-28: no putting back, so the next run needs
+    /// no resize). Only says what changed; null when nothing was resized.
+    /// </summary>
     public string? RestoreWindow()
     {
         if (_before is null) return null;
-        var (w, why) = GameWindow.Find();
-        if (w is null) return "window not restored: " + why;
-        var problem = WindowFit.Restore(w, _before);
         var before = _before;
-        if (problem is null) _before = null;
-        return problem is null
-            ? $"window restored to {before.Normal.Width}x{before.Normal.Height} at ({before.Normal.X},{before.Normal.Y}){(before.Minimized ? ", minimized" : "")}"
-            : "window not restored: " + problem;
+        _before = null;
+        return $"window left at the minimum size (it was {before.Normal.Width}x{before.Normal.Height}{(before.Minimized ? ", minimized" : "")})";
     }
 
     private async Task<(UiState State, List<UiTarget> Targets)> Read(CancellationToken ct)

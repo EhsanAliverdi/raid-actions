@@ -59,6 +59,8 @@ public sealed partial class NavigatingDriver
             if (after == After.List) await Withdraw(a, ids, real: true, ct);
             else if (after == After.Master) await ReserveToMaster(a, ids, champions, ct);
         }
+        else if (after != After.Reserve && ids.Where(i => champions[i].InBathhouse).ToList() is { Count: > 0 } inReserve)
+            await ShowReserveMove(a, inReserve, after, ct);
         var (_, t3) = await Read(ct);
         if (VaultsOpen(t3)) await Click(a, "vault-close", null, null, (_, t4) => !VaultsOpen(t4), "the Vaults panel closes", ct, view: UiState.ChampionScreenView);
         return [.. ids];
@@ -103,7 +105,7 @@ public sealed partial class NavigatingDriver
         foreach (var id in ids)
         {
             var tile = await FindInVault(a, id, ct);
-            if (tile.Note?.Contains("selected") != true) { await TapInVault(a, id, ct); tapped.Add(id); }
+            if (!Marked(tile)) { await TapInVault(a, id, ct); tapped.Add(id); }
             log($"remove-gear: {champions[id].Name} (#{id}) ticked in the Master Vault");
         }
         var (_, tt) = await Read(ct);
@@ -116,7 +118,7 @@ public sealed partial class NavigatingDriver
             return;
         }
         await Click(a, toReserve.Kind, null, null, (s2, t2) => s2.Top?.Name is UiState.MessageBoxView or GearRemovalView || !t2.Any(x => x.Kind == "champion-tile" && x.Id is { } i && ids.Contains(i)
-            && x.Path.Contains("/StorageWindow/", StringComparison.Ordinal)), "the champions leave the Master Vault (or the game asks)", ct, view: UiState.ChampionScreenView);
+            && x.Active && x.Path.Contains("/StorageWindow/", StringComparison.Ordinal)), "the champions leave the Master Vault (or the game asks)", ct, view: UiState.ChampionScreenView);
         await RemoveAllGearPrompt(a, ct);
         await ConfirmGearPrompt(a, ct);
         await InReserveWithoutGear(ids, champions, "the Master Vault", ct);
@@ -140,17 +142,37 @@ public sealed partial class NavigatingDriver
         foreach (var id in ids)
         {
             var tile = await FindInVault(a, id, ct);
-            if (tile.Note?.Contains("selected") != true) await TapInVault(a, id, ct);
+            if (!Marked(tile)) await TapInVault(a, id, ct);
         }
         var (_, t) = await Read(ct);
         var toMaster = MoveButton(t, "AddToVaultText_h", "Master Vault");
-        await Click(a, toMaster.Kind, null, null, (_, t2) => !t2.Any(x => x.Kind == "champion-tile" && x.Id is { } i && ids.Contains(i) && x.Path.Contains("/StorageWindow/", StringComparison.Ordinal)),
+        await Click(a, toMaster.Kind, null, null, (s2, t2) => s2.Top?.Name is UiState.MessageBoxView || !t2.Any(x => x.Kind == "champion-tile" && x.Active && x.Id is { } i && ids.Contains(i) && x.Path.Contains("/StorageWindow/", StringComparison.Ordinal)),
             "the champions leave the Reserve Vault", ct, view: UiState.ChampionScreenView);
         await ConfirmGearPrompt(a, ct);
         var now = (await game.Account.ReadAsync(ct)).Champions.ToDictionary(c => c.Id);
         var wrong = ids.Where(i => !now.TryGetValue(i, out var c) || !c.InVault || c.InBathhouse).ToList();
         if (wrong.Count > 0) throw new StopException($"After the move the account does not show in the Master Vault: {string.Join(", ", wrong.Select(i => $"#{i}"))}.");
         foreach (var id in ids) log($"remove-gear: {champions[id].Name} (#{id}) is in the Master Vault");
+    }
+
+    /// <summary>
+    /// Dry run of the second leg for champions already in the Reserve Vault: ticked in the Reserve grid, the button to the Master Vault
+    /// (or back to the list) shown, not pressed, unticked.
+    /// </summary>
+    private async Task ShowReserveMove(UiAction a, List<int> ids, After after, CancellationToken ct)
+    {
+        await VaultTab(a, reserve: true, ct);
+        var tapped = new List<int>();
+        foreach (var id in ids)
+        {
+            var tile = await FindInVault(a, id, ct);
+            if (!Marked(tile)) { await TapInVault(a, id, ct); tapped.Add(id); }
+        }
+        var (_, t) = await Read(ct);
+        var move = after == After.Master ? MoveButton(t, "AddToVaultText_h", "Master Vault") : MoveButton(t, "MoveToInventoryText_h", "champion list");
+        Shot(a, $"remove-gear: WOULD CLICK {move.Name} ({move.Note}) at {move.Rect} (dry run: NOT pressed)", move.Rect!.Value);
+        Clicks.Add((0, $"vaults: Reserve Vault to the {(after == After.Master ? "Master Vault" : "list")} ({ids.Count}) (not pressed)", move.Rect!.Value, false, "-"));
+        foreach (var id in tapped) await TapInVault(a, id, ct);   // untick again
     }
 
     /// <summary>

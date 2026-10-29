@@ -113,15 +113,15 @@ public sealed partial class NavigatingDriver
             foreach (var id in list)
             {
                 var before = await FindInVault(a, id, ct);
-                if (before.Note?.Contains("selected") == true) { log($"vault: #{id} {champions[id].Name} was already ticked"); continue; }
+                if (Marked(before)) { log($"vault: #{id} {champions[id].Name} was already ticked"); continue; }
                 var tile = await TapInVault(a, id, ct);
-                if (tile?.Note?.Contains("selected") != true) throw new StopException($"#{id} ({champions[id].Name}) does not show ticked after the tap.");
+                if (tile is null || !Marked(tile)) throw new StopException($"#{id} ({champions[id].Name}) does not show ticked after the tap.");
                 tickedHere.Add(id);
                 log($"vault: #{id} {champions[id].Name} ticked in the {(reserve ? "Reserve" : "Master")} Vault");
             }
             // Exactly these must be ticked in this grid (a tick left from before would move a champion nobody asked for).
             var (_, tt) = await Read(ct);
-            var extra = tt.Where(x => x.Kind == "champion-tile" && x.Path.Contains("/StorageWindow/", StringComparison.Ordinal) && x.Note?.Contains("selected") == true
+            var extra = tt.Where(x => x.Kind == "champion-tile" && x.Path.Contains("/StorageWindow/", StringComparison.Ordinal) && Marked(x)
                 && x.Id is { } xi && !list.Contains(xi)).Select(x => x.Id).ToList();
             if (extra.Count > 0) throw new StopException($"Other champions are ticked in the vault too ({string.Join(", ", extra.Select(i => $"#{i}"))}); nothing moved.");
             var (_, t) = await Read(ct);

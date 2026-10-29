@@ -17,6 +17,12 @@ public interface ICursedCityGame
 
     /// <summary>One battle of the level with its team (the team screen set to exactly those champions); a dry run shows Start.</summary>
     Task<BattleOutcome> FightAsync(CcLevel level, bool dryRun, CancellationToken ct);
+
+    /// <summary>
+    /// The level's team set on its team screen without fighting (vault members taken out for real first): NotStarted when the game took
+    /// every member, Retry when some cannot join (the plan is made again). So no champion gets gear for a team the game will not take.
+    /// </summary>
+    Task<BattleOutcome> CheckTeamAsync(CcLevel level, CancellationToken ct) => Task.FromResult(new BattleOutcome(BattleResult.NotStarted, "not checked"));
 }
 
 /// <summary>
@@ -80,6 +86,17 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
         if (!playable) return "";
 
         var gearNow = s.GearUnused ? level!.Team.Members.Where(m => m.GetsGear && !_geared.Contains(m.Id)).Select(m => m.Id).ToList() : [];
+        if (gearNow.Count > 0 && !ctx.DryRun)
+        {
+            // The team on the team screen first: the game may refuse members (used in the city, the criterion); gear only a team it takes.
+            var check = await game.CheckTeamAsync(level!, ct);
+            if (check.Result == BattleResult.Retry)
+            {
+                ctx.Event(AreaId, "team", $"{CursedCityPlanner.Where(level!.Stage)}: {check.Text}");
+                _planAt = DateTime.MinValue;
+                return "";
+            }
+        }
         if (gearNow.Count > 0)
         {
             await ctx.ThinkAsync(ct);

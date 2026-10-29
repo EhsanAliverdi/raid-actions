@@ -101,13 +101,18 @@ public sealed partial class LivePlayGame : ICursedCityGame
 
     Task<string> ICursedCityGame.RemoveGearAsync(IReadOnlyList<int> ids, bool dryRun, CancellationToken ct) => RemoveGearAsync(ids, dryRun, ct, cursedCity: true);
 
-    public async Task<BattleOutcome> FightAsync(CcLevel level, bool dryRun, CancellationToken ct)
+    public Task<BattleOutcome> CheckTeamAsync(CcLevel level, CancellationToken ct) => FightAsync(level, dryRun: true, ct, check: true);
+
+    public Task<BattleOutcome> FightAsync(CcLevel level, bool dryRun, CancellationToken ct) => FightAsync(level, dryRun, ct, check: false);
+
+    /// <param name="check">Set the team and stop (CheckTeamAsync): vault members are taken out for real, nothing else is spent.</param>
+    private async Task<BattleOutcome> FightAsync(CcLevel level, bool dryRun, CancellationToken ct, bool check)
     {
         var started = DateTime.UtcNow;
         // The criterion's members first: the game locks champions that would leave its criterion impossible to meet with the slots left.
         var team = level.Team.Members.OrderByDescending(m => m.MatchesCriterion).Select(m => m.Id).ToList();
         var inVault = level.Team.Members.Where(m => m.InVault).Select(m => m.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
-        if (inVault.Count > 0) await RunCommand(["vault-withdraw", .. inVault, .. (dryRun ? new[] { "--dry-run" } : [])], ct);
+        if (inVault.Count > 0) await RunCommand(["vault-withdraw", .. inVault, .. (dryRun && !check ? new[] { "--dry-run" } : [])], ct);
 
         var where = CursedCityPlanner.Where(level.Stage);
         var map = await OpenCursedCity(level, ct);
@@ -136,6 +141,11 @@ public sealed partial class LivePlayGame : ICursedCityGame
             log($"autoplay: not pickable for this level with the slots emptied: {string.Join(", ", e.Shown.Append((e.HeroId, e.State)).Distinct().Select(x => $"#{x.Item1}:{x.Item2}"))}");
             await Back(PlayTargets.CcTeamView, ct);
             return new BattleOutcome(BattleResult.Retry, $"{disabled.Count - before} champion(s) cannot join this level: planning it again without them");
+        }
+        if (check)
+        {
+            await Back(PlayTargets.CcTeamView, ct);
+            return new BattleOutcome(BattleResult.NotStarted, "the game takes the whole team");
         }
         if (dryRun)
         {

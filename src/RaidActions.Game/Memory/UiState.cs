@@ -29,6 +29,9 @@ public interface IGameObjects
 
     /// <summary>The game's name for an enum value, or null when it is not a member.</summary>
     string? EnumName(string enumType, int value);
+
+    /// <summary>A 64-bit integer field (arena opponents' user ids).</summary>
+    long Long(ulong obj, string type, string member) => throw new NotSupportedException("64-bit reads are not available here.");
 }
 
 /// <param name="Key">The game's ViewKey value; <see cref="Name"/> its name.</param>

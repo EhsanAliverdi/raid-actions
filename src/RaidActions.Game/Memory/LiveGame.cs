@@ -216,6 +216,7 @@ internal sealed class CoreObjects(GameSession session, OffsetConfig offsets) : I
     }
     public ulong Ref(ulong obj, string type, string member) => R.ReadPointerOrNull(obj + (ulong)offsets.Field(type, member).Offset, $"{type}.{member}");
     public int Int(ulong obj, string type, string member) => R.ReadInt32(obj + (ulong)offsets.Field(type, member).Offset, $"{type}.{member}");
+    public long Long(ulong obj, string type, string member) => R.ReadInt64(obj + (ulong)offsets.Field(type, member).Offset, $"{type}.{member}");
     public int? NullableInt(ulong obj, string type, string member) => R.ReadNullableInt32(obj + (ulong)offsets.Field(type, member).Offset, $"{type}.{member}");
     public IReadOnlyList<ulong> RefList(ulong list, int max) => R.ReadReferenceList(list, max, "list");
     public string? EnumName(string enumType, int value) => offsets.Enum(enumType).TryGetValue(value, out var n) ? n : null;

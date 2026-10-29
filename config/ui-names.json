@@ -1,132 +1,179 @@
-{
-  "$comment": [
-    "The game's UI state that raid-actions reads (read-only), in raid-extractor's config/names.json format.",
-    "scripts/gen-ui-offsets.ps1 runs raid-extractor's ConfigGen on it in a staging folder and writes config/ui-offsets.json.",
-    "Path: AppViewModel (static) -> _overlayManager -> _viewMaster (RaidViewMaster) -> _views (List<ViewMeta>) -> ViewMeta.View",
-    "-> BaseView.Context -> HeroesInfoOverlayContext (the champion screen) -> _heroId, _heroDetailsContext._inventoryArtifactId.",
-    "Sell mode (2026-10-28): _inventoryContext._sellArtifacts (_sellArtifactsCount, _markedForSell), items' _withSellMark and _hasOwner; message boxes' title, text and button texts."
-  ],
-  "roots": {
-    "AppViewModel": {
-      "typeInfo": "Client.ViewModel.AppViewModel",
-      "classPath": [
-        "parent"
-      ],
-      "expect": {
-        "class": "AppViewModel",
-        "namespace": "Client.ViewModel",
-        "parentClass": "SingleInstance`1"
-      },
-      "staticFieldsStruct": "SingleInstance_1_Client_ViewModel_AppViewModel___StaticFields",
-      "staticField": "_instance"
-    }
-  },
-  "enums": [
-    "Client.ViewModel.DTO.ViewKey",
-    "Client.RaidApp.ViewVisibility",
-    "Client.RaidApp.ViewState"
-  ],
-  "reviewed": {},
-  "types": {
-    "Client.ViewModel.AppViewModel": [
-      "_overlayManager",
-      "_messageBoxes",
-      "_blockUi",
-      "_routing"
-    ],
-    "Client.ViewModel.OverlayManagerBase": [
-      "_viewMaster",
-      "Views",
-      "OpenedOverlaysCount"
-    ],
-    "Client.ViewModel.BlockUi": [
-      "_blockingEventsCounter"
-    ],
-    "Client.RaidApp.RaidViewMaster": [
-      "_views",
-      "_lastTopView"
-    ],
-    "Client.RaidApp.ViewMeta": [
-      "Key",
-      "Token",
-      "State",
-      "View",
-      "Visibility"
-    ],
-    "Client.MVVM.Base.View.BaseView": [
-      "Context"
-    ],
-    "Client.ViewModel.Contextes.HeroesInfoDialog.HeroesInfoOverlayContext": [
-      "_heroId",
-      "_heroDetailsContext",
-      "_selectedHeroContext",
-      "_viewState",
-      "_inventoryContext",
-      "_heroes"
-    ],
-    "Client.ViewModel.Contextes.HeroesInfoDialog.HeroDetails.HeroDetailsContext": [
-      "_heroId",
-      "_inventoryArtifactId",
-      "_activeTabIndex"
-    ],
-    "Client.ViewModel.Contextes.HeroesInfoDialog.SelectedHero.SelectedHeroContext": [
-      "_heroId"
-    ],
-    "UnityEngine.Object": [
-      "m_CachedPtr"
-    ],
-    "Client.MVVM.Base.View.Bindings.BindingMasterPath": [
-      "MasterPath"
-    ],
-    "Client.ViewModel.Contextes.HeroesInfoDialog.HeroSlot.HeroSlotContext": [
-      "_heroId",
-      "_isSelected",
-      "_isMarked",
-      "_slotType"
-    ],
-    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Items.InventoryArtifactContext": [
-      "Avatar"
-    ],
-    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Items.InventoryItemContext": [
-      "_isSelected",
-      "_isVisible",
-      "_ownerIsCurrentHero",
-      "_withSellMark",
-      "_hasOwner"
-    ],
-    "Client.ViewModel.Contextes.Generic.ArtifactAvatarContext": [
-      "Artifact"
-    ],
-    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Overlays.SwapArtifactsOverlayContext": [
-      "_warning",
-      "_title",
-      "_equippedArtifactContext",
-      "_artifactToEquipContext"
-    ],
-    "UnityEngine.UI.Selectable": [
-      "m_Interactable"
-    ],
-    "UnityEngine.UI.Toggle": [
-      "m_IsOn"
-    ],
-    "UnityEngine.UI.CanvasScaler": [
-      "m_ScaleFactor",
-      "m_ReferenceResolution",
-      "m_UiScaleMode"
-    ],
-    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.InventoryViewContext": [
-      "_sellArtifacts"
-    ],
-    "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.SellArtifactsContext": [
-      "_sellArtifactsCount",
-      "_markedForSell"
-    ],
-    "Client.ViewModel.Contextes.Generic.MessageBox.MessageBoxContext": [
-      "_titleText",
-      "_mainMessage"
-    ],
-    "Client.ViewModel.Contextes.ButtonContextBase": [
-      "Text"
-    ]
-  }
+﻿{
+    "$comment":  [
+                     "The game\u0027s UI state that raid-actions reads (read-only), in raid-extractor\u0027s config/names.json format.",
+                     "scripts/gen-ui-offsets.ps1 runs raid-extractor\u0027s ConfigGen on it in a staging folder and writes config/ui-offsets.json.",
+                     "Path: AppViewModel (static) -\u003e _overlayManager -\u003e _viewMaster (RaidViewMaster) -\u003e _views (List\u003cViewMeta\u003e) -\u003e ViewMeta.View",
+                     "-\u003e BaseView.Context -\u003e HeroesInfoOverlayContext (the champion screen) -\u003e _heroId, _heroDetailsContext._inventoryArtifactId.",
+                     "Sell mode (2026-10-28): _inventoryContext._sellArtifacts (_sellArtifactsCount, _markedForSell), items\u0027 _withSellMark and _hasOwner; message boxes\u0027 title, text and button texts.",
+                     "Auto play (2026-10-29): classic arena (ArenaMap, ArenaDialog battle tab and opponent rows, ArenaOpponent), battle HUD auto flag, arena result, resource HUD counters and timers, inbox items. Found offline in the dump; verify live."
+                 ],
+    "roots":  {
+                  "AppViewModel":  {
+                                       "typeInfo":  "Client.ViewModel.AppViewModel",
+                                       "classPath":  [
+                                                         "parent"
+                                                     ],
+                                       "expect":  {
+                                                      "class":  "AppViewModel",
+                                                      "namespace":  "Client.ViewModel",
+                                                      "parentClass":  "SingleInstance`1"
+                                                  },
+                                       "staticFieldsStruct":  "SingleInstance_1_Client_ViewModel_AppViewModel___StaticFields",
+                                       "staticField":  "_instance"
+                                   }
+              },
+    "enums":  [
+                  "Client.ViewModel.DTO.ViewKey",
+                  "Client.RaidApp.ViewVisibility",
+                  "Client.RaidApp.ViewState",
+                  "SharedModel.Meta.Account.ResourceTypeId",
+                  "SharedModel.Meta.Battle.Arena.ArenaOpponentStatus"
+              ],
+    "reviewed":  {
+
+                 },
+    "types":  {
+                  "Client.ViewModel.AppViewModel":  [
+                                                        "_overlayManager",
+                                                        "_messageBoxes",
+                                                        "_blockUi",
+                                                        "_routing"
+                                                    ],
+                  "Client.ViewModel.OverlayManagerBase":  [
+                                                              "_viewMaster",
+                                                              "Views",
+                                                              "OpenedOverlaysCount"
+                                                          ],
+                  "Client.ViewModel.BlockUi":  [
+                                                   "_blockingEventsCounter"
+                                               ],
+                  "Client.RaidApp.RaidViewMaster":  [
+                                                        "_views",
+                                                        "_lastTopView"
+                                                    ],
+                  "Client.RaidApp.ViewMeta":  [
+                                                  "Key",
+                                                  "Token",
+                                                  "State",
+                                                  "View",
+                                                  "Visibility"
+                                              ],
+                  "Client.MVVM.Base.View.BaseView":  [
+                                                         "Context"
+                                                     ],
+                  "Client.ViewModel.Contextes.HeroesInfoDialog.HeroesInfoOverlayContext":  [
+                                                                                               "_heroId",
+                                                                                               "_heroDetailsContext",
+                                                                                               "_selectedHeroContext",
+                                                                                               "_viewState",
+                                                                                               "_inventoryContext",
+                                                                                               "_heroes"
+                                                                                           ],
+                  "Client.ViewModel.Contextes.HeroesInfoDialog.HeroDetails.HeroDetailsContext":  [
+                                                                                                     "_heroId",
+                                                                                                     "_inventoryArtifactId",
+                                                                                                     "_activeTabIndex"
+                                                                                                 ],
+                  "Client.ViewModel.Contextes.HeroesInfoDialog.SelectedHero.SelectedHeroContext":  [
+                                                                                                       "_heroId"
+                                                                                                   ],
+                  "UnityEngine.Object":  [
+                                             "m_CachedPtr"
+                                         ],
+                  "Client.MVVM.Base.View.Bindings.BindingMasterPath":  [
+                                                                           "MasterPath"
+                                                                       ],
+                  "Client.ViewModel.Contextes.HeroesInfoDialog.HeroSlot.HeroSlotContext":  [
+                                                                                               "_heroId",
+                                                                                               "_isSelected",
+                                                                                               "_isMarked",
+                                                                                               "_slotType"
+                                                                                           ],
+                  "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Items.InventoryArtifactContext":  [
+                                                                                                               "Avatar"
+                                                                                                           ],
+                  "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Items.InventoryItemContext":  [
+                                                                                                           "_isSelected",
+                                                                                                           "_isVisible",
+                                                                                                           "_ownerIsCurrentHero",
+                                                                                                           "_withSellMark",
+                                                                                                           "_hasOwner"
+                                                                                                       ],
+                  "Client.ViewModel.Contextes.Generic.ArtifactAvatarContext":  [
+                                                                                   "Artifact"
+                                                                               ],
+                  "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Overlays.SwapArtifactsOverlayContext":  [
+                                                                                                                     "_warning",
+                                                                                                                     "_title",
+                                                                                                                     "_equippedArtifactContext",
+                                                                                                                     "_artifactToEquipContext"
+                                                                                                                 ],
+                  "UnityEngine.UI.Selectable":  [
+                                                    "m_Interactable"
+                                                ],
+                  "UnityEngine.UI.Toggle":  [
+                                                "m_IsOn"
+                                            ],
+                  "UnityEngine.UI.CanvasScaler":  [
+                                                      "m_ScaleFactor",
+                                                      "m_ReferenceResolution",
+                                                      "m_UiScaleMode"
+                                                  ],
+                  "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.InventoryViewContext":  [
+                                                                                                     "_sellArtifacts"
+                                                                                                 ],
+                  "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.SellArtifactsContext":  [
+                                                                                                     "_sellArtifactsCount",
+                                                                                                     "_markedForSell"
+                                                                                                 ],
+                  "Client.ViewModel.Contextes.Generic.MessageBox.MessageBoxContext":  [
+                                                                                          "_titleText",
+                                                                                          "_mainMessage"
+                                                                                      ],
+                  "Client.ViewModel.Contextes.ButtonContextBase":  [
+                                                                       "Text"
+                                                                   ],
+                  "Client.ViewModel.Contextes.ArenaDialogContext":  [
+                                                                        "_tabIndex"
+                                                                    ],
+                  "Client.ViewModel.Contextes.ArenaMap.ArenaMapContext":  [
+                                                                              "_arena1x1"
+                                                                          ],
+                  "Client.ViewModel.Contextes.ArenaDialog.ArenaBattleTabContext":  [
+                                                                                       "_freeRefreshAvailable",
+                                                                                       "_isLoading",
+                                                                                       "_freeRefreshTimeLeft"
+                                                                                   ],
+                  "Client.ViewModel.Contextes.ArenaDialog.CurrentOpponentContext":  [
+                                                                                        "_playable",
+                                                                                        "_onQuarantine",
+                                                                                        "_teamPower",
+                                                                                        "_opponent"
+                                                                                    ],
+                  "SharedModel.Meta.Battle.Arena.ArenaOpponent":  [
+                                                                      "UserId",
+                                                                      "Status",
+                                                                      "TotalPower",
+                                                                      "Name"
+                                                                  ],
+                  "ECS.ViewModel.BattleHUDContext":  [
+                                                         "_isAutoEnabled"
+                                                     ],
+                  "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishArenaDialogContext":  [
+                                                                                                       "_battleResultType",
+                                                                                                       "_enemyCombatPower",
+                                                                                                       "_enemyUserName"
+                                                                                                   ],
+                  "Client.ViewModel.Contextes.Generic.UserResources.UserResourceContext":  [
+                                                                                               "_resource",
+                                                                                               "_value",
+                                                                                               "_incrementStatusText"
+                                                                                           ],
+                  "Client.ViewModel.Contextes.InboxDialog.Contexts.InboxItemContext":  [
+                                                                                           "_title",
+                                                                                           "_message",
+                                                                                           "_iconUrl",
+                                                                                           "_isValid"
+                                                                                       ]
+              }
 }

@@ -22,9 +22,10 @@ public sealed partial class NavigatingDriver
     public enum After { Reserve, Master, List }
 
     /// <summary>
-    /// Moves champions <paramref name="ids"/> (in the champion list) into the Reserve Vault, which takes their gear off, then on to
-    /// <paramref name="after"/>. A dry run ticks them, shows the move it would click (and every move button it sees), unticks them.
-    /// Returns the champions whose gear is off.
+    /// Takes all the gear off champions <paramref name="ids"/>, wherever they are (Ehsan, 2026-10-29): from the champion list or the Master
+    /// Vault they are moved into the Reserve Vault (the game takes all their gear off at once); ones already in the Reserve Vault wear
+    /// nothing. Then all of them go on to <paramref name="after"/>. A dry run ticks them, shows the move it would click (and every
+    /// move button it sees), unticks them. Returns the champions whose gear is off.
     /// </summary>
     public async Task<List<int>> RemoveGearByVault(UiAction a, IReadOnlyCollection<int> ids, After after, bool real, CancellationToken ct)
     {
@@ -33,9 +34,11 @@ public sealed partial class NavigatingDriver
         var champions = account.Champions.ToDictionary(c => c.Id);
         var missing = ids.Where(i => !champions.ContainsKey(i)).ToList();
         if (missing.Count > 0) throw new StopException($"Not on the account: {string.Join(", ", missing.Select(i => $"#{i}"))}.");
-        var inVault = ids.Where(i => champions[i].InVault || champions[i].InBathhouse).ToList();
-        if (inVault.Count > 0) throw new StopException($"Already in a vault (their gear is off): {string.Join(", ", inVault.Select(i => $"{champions[i].Name} #{i}"))}.");
-        foreach (var id in ids) log($"remove-gear: {champions[id].Name} (#{id}) wears {champions[id].Artifacts.Count} piece(s)");
+        var inList = ids.Where(i => !champions[i].InVault && !champions[i].InBathhouse).ToList();
+        var inMaster = ids.Where(i => champions[i].InVault && !champions[i].InBathhouse).ToList();
+        foreach (var id in ids)
+            log($"remove-gear: {champions[id].Name} (#{id}) wears {champions[id].Artifacts.Count} piece(s), "
+                + (inList.Contains(id) ? "in the champion list" : inMaster.Contains(id) ? "in the Master Vault" : "in the Reserve Vault"));
 
         await NoBattle(ct);
         FitWindow();
@@ -44,51 +47,90 @@ public sealed partial class NavigatingDriver
         await ClosePiecePanels(a, ct);
         var (_, t0) = await Read(ct);
         if (!VaultsOpen(t0)) await OpenVaults(a, ct);
-        await VaultTab(a, reserve: true, ct);
 
-        // Tick each champion in the champion list (not the vault grid); memory must show it ticked.
-        var ticked = new List<int>();
+        if (inList.Count > 0) await ListToReserve(a, inList, champions, real, ct);
+        if (inMaster.Count > 0) await MasterToReserve(a, inMaster, champions, real, ct);
+        if (real)
+        {
+            // Everyone is in the Reserve Vault now, wearing nothing.
+            var now = (await game.Account.ReadAsync(ct)).Champions.ToDictionary(c => c.Id);
+            var wrong = ids.Where(i => !now.TryGetValue(i, out var c) || !c.InBathhouse || c.Artifacts.Count > 0).ToList();
+            if (wrong.Count > 0) throw new StopException($"Not in the Reserve Vault without gear: {string.Join(", ", wrong.Select(i => $"{champions[i].Name} #{i}"))}.");
+            if (after == After.List) await Withdraw(a, ids, real: true, ct);
+            else if (after == After.Master) await ReserveToMaster(a, ids, champions, ct);
+        }
+        var (_, t3) = await Read(ct);
+        if (VaultsOpen(t3)) await Click(a, "vault-close", null, null, (_, t4) => !VaultsOpen(t4), "the Vaults panel closes", ct, view: UiState.ChampionScreenView);
+        return [.. ids];
+    }
+
+    /// <summary>Champion list → Reserve Vault: each ticked in the list (memory: marked), the button showing "to the Reserve Vault", the game's gear prompt.</summary>
+    private async Task ListToReserve(UiAction a, List<int> ids, Dictionary<int, RaidExtractor.ChampionOut> champions, bool real, CancellationToken ct)
+    {
+        await VaultTab(a, reserve: true, ct);
         foreach (var id in ids)
         {
             var tile = await ListTile(a, id, ct);
             if (!Marked(tile))
-            {
                 await Click(a, "champion-tile", id, null, (_, t) => t.Any(x => IsListTile(x, id) && Marked(x)), $"{champions[id].Name} is ticked", ct,
                     view: UiState.ChampionScreenView);
-                ticked.Add(id);
-            }
             log($"remove-gear: {champions[id].Name} (#{id}) ticked in the champion list");
         }
         var (_, tt) = await Read(ct);
         var extra = tt.Where(x => x.Kind == "champion-tile" && !x.Path.Contains("/StorageWindow/", StringComparison.Ordinal) && Marked(x)
             && x.Id is { } xi && !ids.Contains(xi)).Select(x => x.Id).ToList();
         if (extra.Count > 0) throw new StopException($"Other champions are ticked too ({string.Join(", ", extra.Select(i => $"#{i}"))}); nothing moved.");
-
         var toReserve = MoveButton(tt, "AddToBathhouseText_h", "Reserve Vault");
         if (!real)
         {
             Shot(a, $"remove-gear: WOULD CLICK {toReserve.Name} ({toReserve.Note}) at {toReserve.Rect} (dry run: NOT pressed)", toReserve.Rect!.Value);
-            Clicks.Add((0, $"vaults: to the Reserve Vault ({ids.Count}) (not pressed)", toReserve.Rect!.Value, false, "-"));
+            Clicks.Add((0, $"vaults: list to the Reserve Vault ({ids.Count}) (not pressed)", toReserve.Rect!.Value, false, "-"));
             await Untick(a, ids, ct);
-            return [.. ids];
+            return;
         }
-
         await Click(a, toReserve.Kind, null, null, (s2, t2) => s2.Top?.Name is UiState.MessageBoxView or GearRemovalView || !t2.Any(x => x.Kind == "champion-tile" && x.Id is { } i && ids.Contains(i)
             && !x.Path.Contains("/StorageWindow/", StringComparison.Ordinal)), "the champions leave the list (or the game asks)", ct, view: UiState.ChampionScreenView);
         await RemoveAllGearPrompt(a, ct);
         await ConfirmGearPrompt(a, ct);
-        var afterMove = (await game.Account.ReadAsync(ct)).Champions.ToDictionary(c => c.Id);
-        var notMoved = ids.Where(i => !afterMove.TryGetValue(i, out var c) || !c.InBathhouse).ToList();
-        if (notMoved.Count > 0) throw new StopException($"After the move the account does not show in the Reserve Vault: {string.Join(", ", notMoved.Select(i => $"#{i}"))}.");
-        var stillGeared = ids.Where(i => afterMove[i].Artifacts.Count > 0).ToList();
-        if (stillGeared.Count > 0) throw new StopException($"In the Reserve Vault but still wearing gear: {string.Join(", ", stillGeared.Select(i => $"{afterMove[i].Name} #{i}"))}.");
-        foreach (var id in ids) log($"remove-gear: {champions[id].Name} (#{id}) is in the Reserve Vault, its gear in the inventory");
+        await InReserveWithoutGear(ids, champions, "the champion list", ct);
+    }
 
-        if (after == After.List) await Withdraw(a, ids, real: true, ct);
-        else if (after == After.Master) await ReserveToMaster(a, ids, champions, ct);
-        var (_, t3) = await Read(ct);
-        if (VaultsOpen(t3)) await Click(a, "vault-close", null, null, (_, t4) => !VaultsOpen(t4), "the Vaults panel closes", ct, view: UiState.ChampionScreenView);
-        return [.. ids];
+    /// <summary>Master Vault → Reserve Vault: each ticked in the Master grid, the button showing "to the Reserve Vault", the game's gear prompt.</summary>
+    private async Task MasterToReserve(UiAction a, List<int> ids, Dictionary<int, RaidExtractor.ChampionOut> champions, bool real, CancellationToken ct)
+    {
+        await VaultTab(a, reserve: false, ct);
+        var tapped = new List<int>();
+        foreach (var id in ids)
+        {
+            var tile = await FindInVault(a, id, ct);
+            if (tile.Note?.Contains("selected") != true) { await TapInVault(a, id, ct); tapped.Add(id); }
+            log($"remove-gear: {champions[id].Name} (#{id}) ticked in the Master Vault");
+        }
+        var (_, tt) = await Read(ct);
+        var toReserve = MoveButton(tt, "AddToBathhouseText_h", "Reserve Vault");
+        if (!real)
+        {
+            Shot(a, $"remove-gear: WOULD CLICK {toReserve.Name} ({toReserve.Note}) at {toReserve.Rect} (dry run: NOT pressed)", toReserve.Rect!.Value);
+            Clicks.Add((0, $"vaults: Master to the Reserve Vault ({ids.Count}) (not pressed)", toReserve.Rect!.Value, false, "-"));
+            foreach (var id in tapped) await TapInVault(a, id, ct);   // untick again
+            return;
+        }
+        await Click(a, toReserve.Kind, null, null, (s2, t2) => s2.Top?.Name is UiState.MessageBoxView or GearRemovalView || !t2.Any(x => x.Kind == "champion-tile" && x.Id is { } i && ids.Contains(i)
+            && x.Path.Contains("/StorageWindow/", StringComparison.Ordinal)), "the champions leave the Master Vault (or the game asks)", ct, view: UiState.ChampionScreenView);
+        await RemoveAllGearPrompt(a, ct);
+        await ConfirmGearPrompt(a, ct);
+        await InReserveWithoutGear(ids, champions, "the Master Vault", ct);
+    }
+
+    /// <summary>The account shows every one of <paramref name="ids"/> in the Reserve Vault, wearing nothing; else stops.</summary>
+    private async Task InReserveWithoutGear(List<int> ids, Dictionary<int, RaidExtractor.ChampionOut> champions, string from, CancellationToken ct)
+    {
+        var now = (await game.Account.ReadAsync(ct)).Champions.ToDictionary(c => c.Id);
+        var notMoved = ids.Where(i => !now.TryGetValue(i, out var c) || !c.InBathhouse).ToList();
+        if (notMoved.Count > 0) throw new StopException($"After the move from {from} the account does not show in the Reserve Vault: {string.Join(", ", notMoved.Select(i => $"#{i}"))}.");
+        var stillGeared = ids.Where(i => now[i].Artifacts.Count > 0).ToList();
+        if (stillGeared.Count > 0) throw new StopException($"In the Reserve Vault but still wearing gear: {string.Join(", ", stillGeared.Select(i => $"{now[i].Name} #{i}"))}.");
+        foreach (var id in ids) log($"remove-gear: {champions[id].Name} (#{id}) is in the Reserve Vault (from {from}), its gear in the inventory");
     }
 
     /// <summary>Reserve Vault → Master Vault: each ticked in the Reserve grid, then the move button whose binding names the storage.</summary>

@@ -276,6 +276,8 @@ public sealed partial class LivePlayGame : ICursedCityGame
         var emptied = 0;
         var down = true;
         string? lastShown = null;
+        var looking = 0;
+        float? lastDist = null;
         for (var round = 0; round < 90; round++)
         {
             var (_, targets, play) = await Read(ct);
@@ -288,6 +290,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
                 continue;
             }
             var missing = team.FirstOrDefault(id => !inSlots.Contains(id));
+            looking = missing;
             if (missing == 0)
             {
                 log($"autoplay: team set: {string.Join(", ", team.Select(i => $"#{i}"))}");
@@ -300,7 +303,9 @@ public sealed partial class LivePlayGame : ICursedCityGame
                 {
                     // The champions in the slots may be what locks it (the criterion must stay possible): empty every slot once, then pick again.
                     // A lock only counts with every slot empty (the criterion locks nobody then); else empty them and pick again.
-                    if (inSlots.Count > 0 && emptied < 4)
+                    // Still locked after one emptying, with the earlier members back in: out for this level (not a rotation lock: state 2).
+                    if (inSlots.Count > 0 && emptied >= 1) throw new LockedHeroException(missing, 2, []);
+                    if (inSlots.Count > 0)
                     {
                         emptied++;
                         foreach (var id in inSlots)
@@ -321,14 +326,25 @@ public sealed partial class LivePlayGame : ICursedCityGame
             if (w is null) throw new PlayStopException(why!);
             // The same champions shown as last time: an end of the list, so turn around.
             var now = string.Join(",", (play.Picks ?? []).Where(p => p.Pick is { FullyVisible: true }).Select(p => p.HeroId));
-            if (now == lastShown) down = !down;
+            // The list runs sideways and builds only part of it (seen 2026-10-30: the wanted champion built at x -39, off the window):
+            // when the wanted one is built, scroll so it comes nearer the middle, and turn around when it went further away.
+            if (pick?.Pick?.Rect is { } off)
+            {
+                var dist = Math.Abs(off.Center.X - w.Client.Width / 2f);
+                if (lastDist is { } before && dist >= before) down = !down;
+                lastDist = dist;
+            }
+            else
+            {
+                lastDist = null;
+                if (now == lastShown) down = !down;
+            }
             lastShown = now;
             if (MouseInput.Wheel(w, shown.Average(r => r.Center.X), shown.Average(r => r.Center.Y), down ? -3 : 3) is { } notSent) throw new PlayStopException("Not scrolled: " + notSent);
             await Task.Delay(350, ct);
         }
         // A champion the list never showed (scrolled both ways): not on offer for this level; the level is planned again without it.
-        var (_, _, last) = await Read(ct);
-        var notShown = team.FirstOrDefault(id => !(last.TeamIds ?? []).Contains(id));
+        var notShown = looking;
         log($"autoplay: #{notShown} not found in the team list; screen dump: {DumpScreen("team member not in the list")}");
         throw new LockedHeroException(notShown, 99, []);
     }

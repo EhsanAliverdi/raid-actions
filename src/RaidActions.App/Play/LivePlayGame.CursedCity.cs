@@ -71,6 +71,9 @@ public sealed partial class LivePlayGame : ICursedCityGame
         public IReadOnlyList<(int Id, int State)> Shown => shown;
     }
 
+    /// <summary>Per champion, the levels whose team screen showed it locked with every slot empty.</summary>
+    private readonly Dictionary<int, HashSet<int>> _ccLockedOn = [];
+
     /// <summary>Champions disabled on one level's team screen (state 2: not for this level), by the map's level id; not kept for other levels.</summary>
     private readonly Dictionary<int, HashSet<int>> _ccDisabled = [];
 
@@ -135,8 +138,13 @@ public sealed partial class LivePlayGame : ICursedCityGame
             var before = disabled.Count;
             disabled.Add(e.HeroId);
             foreach (var (id, _) in e.Shown) disabled.Add(id);
-            // Locked with the slots empty = used in the city this rotation (seen 2026-10-30: the champions of earlier battles): for every level.
-            foreach (var (id, st) in e.Shown.Append((e.HeroId, e.State)).Where(x => x.Item2 >= 3)) _ccLocked.Add(id);
+            // Locked with every slot empty on two different levels: used in the city this rotation (seen 2026-10-30): out for every level.
+            foreach (var (id, st) in e.Shown.Append((e.HeroId, e.State)).Where(x => x.Item2 >= 3))
+            {
+                var seen = _ccLockedOn.TryGetValue(id, out var levels) ? levels : _ccLockedOn[id] = [];
+                seen.Add(level.Stage.Id);
+                if (seen.Count >= 2) _ccLocked.Add(id);
+            }
             SaveLocked();
             log($"autoplay: not pickable for this level with the slots emptied: {string.Join(", ", e.Shown.Append((e.HeroId, e.State)).Distinct().Select(x => $"#{x.Item1}:{x.Item2}"))}");
             await Back(PlayTargets.CcTeamView, ct);
@@ -265,7 +273,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
     private async Task SetTeam(IReadOnlyList<int> team, CancellationToken ct)
     {
         var wanted = team.ToHashSet();
-        var emptied = false;
+        var emptied = 0;
         var down = true;
         string? lastShown = null;
         for (var round = 0; round < 90; round++)
@@ -291,9 +299,10 @@ public sealed partial class LivePlayGame : ICursedCityGame
                 if (pick.State is >= 2 and not 7)
                 {
                     // The champions in the slots may be what locks it (the criterion must stay possible): empty every slot once, then pick again.
-                    if (!emptied && inSlots.Count > 0)
+                    // A lock only counts with every slot empty (the criterion locks nobody then); else empty them and pick again.
+                    if (inSlots.Count > 0 && emptied < 4)
                     {
-                        emptied = true;
+                        emptied++;
                         foreach (var id in inSlots)
                             await Click("team-slot", x => x.Id == id && x.View == PlayTargets.CcTeamView, (_, lazy) => !(lazy().TeamIds ?? []).Contains(id), $"#{id} leaves the team", ct);
                         log("autoplay: emptied the team slots (a champion was locked by the criterion with the slots as they were)");

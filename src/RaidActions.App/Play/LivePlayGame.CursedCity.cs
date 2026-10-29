@@ -139,7 +139,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
             disabled.Add(e.HeroId);
             foreach (var (id, _) in e.Shown) disabled.Add(id);
             // Locked with every slot empty on two different levels: used in the city this rotation (seen 2026-10-30): out for every level.
-            foreach (var (id, st) in e.Shown.Append((e.HeroId, e.State)).Where(x => x.Item2 >= 3))
+            foreach (var (id, st) in e.Shown.Append((e.HeroId, e.State)).Where(x => x.Item2 is >= 3 and < 99))
             {
                 var seen = _ccLockedOn.TryGetValue(id, out var levels) ? levels : _ccLockedOn[id] = [];
                 seen.Add(level.Stage.Id);
@@ -326,6 +326,10 @@ public sealed partial class LivePlayGame : ICursedCityGame
             if (MouseInput.Wheel(w, shown.Average(r => r.Center.X), shown.Average(r => r.Center.Y), down ? -3 : 3) is { } notSent) throw new PlayStopException("Not scrolled: " + notSent);
             await Task.Delay(350, ct);
         }
-        throw new PlayStopException($"Could not set the team ({string.Join(", ", team.Select(i => $"#{i}"))}). Screen dump: {DumpScreen("team not set")}");
+        // A champion the list never showed (scrolled both ways): not on offer for this level; the level is planned again without it.
+        var (_, _, last) = await Read(ct);
+        var notShown = team.FirstOrDefault(id => !(last.TeamIds ?? []).Contains(id));
+        log($"autoplay: #{notShown} not found in the team list; screen dump: {DumpScreen("team member not in the list")}");
+        throw new LockedHeroException(notShown, 99, []);
     }
 }

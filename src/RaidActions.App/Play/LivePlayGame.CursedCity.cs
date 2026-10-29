@@ -307,7 +307,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
                     // Disabled (2) is not the criterion (seen 2026-10-30: champions that fought in this rotation's earlier battles): every
                     // disabled champion shown is out for this level at once, and for the rotation when disabled on two levels.
                     if (inSlots.Count > 0 && emptied >= 1)
-                        throw new LockedHeroException(missing, pick.State.Value, [.. (play.Picks ?? []).Where(p => p.State is 2).Select(p => (p.HeroId, 2))]);
+                        throw new LockedHeroException(missing, pick.State.Value, [.. (play.Picks ?? []).Where(p => p.State is >= 2 and not 7).Select(p => (p.HeroId, p.State!.Value))]);
                     if (inSlots.Count > 0)
                     {
                         emptied++;

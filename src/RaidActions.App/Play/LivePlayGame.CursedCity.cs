@@ -22,11 +22,11 @@ public sealed partial class LivePlayGame : ICursedCityGame
     {
         var (data, _, ratings, locks) = await Account(ct);
         LoadLocked(data.Progress?.CursedCity?.RotationUpdatedUtc);
-        var plan = CursedCityPlanner.Plan(data, locks, ratings, lossesToSkip, skip, _ccLocked);
+        var plan = CursedCityPlanner.Plan(data, locks, ratings, lossesToSkip, skip);
         // The chosen level's own disabled champions: its team built again without them.
         if (plan.Next is { } next && _ccDisabled.TryGetValue(next.Stage.Id, out var off) && off.Count > 0)
         {
-            var team = CursedCityPlanner.BuildTeam(next.Stage, [.. data.Champions.Where(c => (c.Level > 1 || c.Rank > 1) && !_ccLocked.Contains(c.Id) && !off.Contains(c.Id))], locks, ratings);
+            var team = CursedCityPlanner.BuildTeam(next.Stage, [.. data.Champions.Where(c => (c.Level > 1 || c.Rank > 1) && !off.Contains(c.Id))], locks, ratings);
             plan = plan with { Next = next with { Team = team } };
         }
         return plan;
@@ -104,7 +104,8 @@ public sealed partial class LivePlayGame : ICursedCityGame
     public async Task<BattleOutcome> FightAsync(CcLevel level, bool dryRun, CancellationToken ct)
     {
         var started = DateTime.UtcNow;
-        var team = level.Team.Members.Select(m => m.Id).ToList();
+        // The criterion's members first: the game locks champions that would leave its criterion impossible to meet with the slots left.
+        var team = level.Team.Members.OrderByDescending(m => m.MatchesCriterion).Select(m => m.Id).ToList();
         var inVault = level.Team.Members.Where(m => m.InVault).Select(m => m.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
         if (inVault.Count > 0) await RunCommand(["vault-withdraw", .. inVault, .. (dryRun ? new[] { "--dry-run" } : [])], ct);
 
@@ -122,16 +123,13 @@ public sealed partial class LivePlayGame : ICursedCityGame
         try { await SetTeam(team, ct); }
         catch (LockedHeroException e)
         {
-            // State 3 and up (Locked, LockedByFraction, ...): locked in the city for the rotation. State 2 (Disabled): only on this level.
-            var before = _ccLocked.Count;
-            var all = e.Shown.Append((e.HeroId, e.State)).Distinct().ToList();
-            foreach (var (id, st) in all.Where(x => x.Item2 >= 3)) _ccLocked.Add(id);
+            // Locked with the slots emptied and the criterion's members placed first: really not for this level (kept for this level only;
+            // the game's locks follow the level's criterion and the slots, so nothing is kept for the rotation).
             var disabled = _ccDisabled.TryGetValue(level.Stage.Id, out var d) ? d : _ccDisabled[level.Stage.Id] = [];
-            foreach (var (id, st) in all.Where(x => x.Item2 == 2)) disabled.Add(id);
-            SaveLocked();
-            log($"autoplay: not pickable on this level: {string.Join(", ", all.Select(x => $"#{x.Item1}:{x.Item2}"))}");
+            disabled.Add(e.HeroId);
+            log($"autoplay: #{e.HeroId} cannot be picked for this level even with the slots emptied (state {e.State})");
             await Back(PlayTargets.CcTeamView, ct);
-            return new BattleOutcome(BattleResult.Retry, $"{_ccLocked.Count - before} more champion(s) locked in the city, {disabled.Count} disabled on this level: planning again without them");
+            return new BattleOutcome(BattleResult.Retry, $"#{e.HeroId} cannot join this level (state {e.State}): planning the level again without it");
         }
         if (dryRun)
         {
@@ -251,6 +249,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
     private async Task SetTeam(IReadOnlyList<int> team, CancellationToken ct)
     {
         var wanted = team.ToHashSet();
+        var emptied = false;
         for (var round = 0; round < 40; round++)
         {
             var (_, targets, play) = await Read(ct);
@@ -262,7 +261,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
                     $"#{extra} leaves the team", ct);
                 continue;
             }
-            var missing = wanted.Except(inSlots).FirstOrDefault();
+            var missing = team.FirstOrDefault(id => !inSlots.Contains(id));
             if (missing == 0)
             {
                 log($"autoplay: team set: {string.Join(", ", team.Select(i => $"#{i}"))}");
@@ -272,7 +271,18 @@ public sealed partial class LivePlayGame : ICursedCityGame
             if (pick?.Pick is { } t && t.NotClickable is null)
             {
                 if (pick.State is >= 2 and not 7)
+                {
+                    // The champions in the slots may be what locks it (the criterion must stay possible): empty every slot once, then pick again.
+                    if (!emptied && inSlots.Count > 0)
+                    {
+                        emptied = true;
+                        foreach (var id in inSlots)
+                            await Click("team-slot", x => x.Id == id && x.View == PlayTargets.CcTeamView, (_, lazy) => !(lazy().TeamIds ?? []).Contains(id), $"#{id} leaves the team", ct);
+                        log("autoplay: emptied the team slots (a champion was locked by the criterion with the slots as they were)");
+                        continue;
+                    }
                     throw new LockedHeroException(missing, pick.State.Value, [.. (play.Picks ?? []).Where(p => p.State is >= 2 and not 7).Select(p => (p.HeroId, p.State!.Value))]);
+                }
                 await Click("team-pick", x => x.Id == missing && x.View == PlayTargets.CcTeamView, (_, lazy) => (lazy().TeamIds ?? []).Contains(missing),
                     $"#{missing} joins the team", ct);
                 continue;

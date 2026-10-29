@@ -15,10 +15,22 @@ namespace RaidActions.App.Play;
 /// </summary>
 public sealed partial class LivePlayGame : ICursedCityGame
 {
+    /// <summary>Champions the team screen showed locked for Cursed City (used elsewhere in the city this rotation): left out of every plan.</summary>
+    private readonly HashSet<int> _ccLocked = [];
+
     public async Task<CursedCityPlan> PlanAsync(int lossesToSkip, IReadOnlySet<int> skip, CancellationToken ct)
     {
         var (data, _, ratings, locks) = await Account(ct);
-        return CursedCityPlanner.Plan(data, locks, ratings, lossesToSkip, skip);
+        return CursedCityPlanner.Plan(data, locks, ratings, lossesToSkip, skip, _ccLocked);
+    }
+
+    /// <summary>A planned champion the team screen will not take: the team is built again without it.</summary>
+    private sealed class LockedHeroException(int heroId, IReadOnlyList<int> alsoLocked) : Exception($"#{heroId} is locked here")
+    {
+        public int HeroId => heroId;
+
+        /// <summary>Every champion the list shows locked at the same time (learnt in one go, not one per try).</summary>
+        public IReadOnlyList<int> AlsoLocked => alsoLocked;
     }
 
     public async Task<string> GearAsync(CcLevel level, IReadOnlyList<int> ids, bool dryRun, CancellationToken ct)
@@ -30,6 +42,8 @@ public sealed partial class LivePlayGame : ICursedCityGame
         if (picked.Count == 0) return "nothing to equip from the inventory";
         var (commands, _, problem) = Prepare.BotCommands(data, gd, fight, picked, ExtractorOutput, dryRun);
         if (commands is null) return problem ?? "nothing to equip";
+        // A dry run does not take champions out of a vault, so the gear walk cannot find them in the list: only the vault step is shown.
+        if (dryRun && picked.Any(m => m.InVault)) commands = commands.Where(c => c[0] == "vault-withdraw").ToList();
         foreach (var args in commands) await RunCommand(args, ct);
         var pieces = picked.Sum(m => m.Moves.Count);
         return $"{pieces} piece{(pieces == 1 ? "" : "s")}" + (dryRun ? " (dry run)" : "");
@@ -56,12 +70,35 @@ public sealed partial class LivePlayGame : ICursedCityGame
         var where = CursedCityPlanner.Where(level.Stage);
         var map = await OpenCursedCity(level, ct);
         if (map.State is 0) return new BattleOutcome(BattleResult.NotStarted, "closed on the map (not reachable yet)");
-        await Click("cc-level", t => t.Id == level.Stage.Id, (s2, _) => s2.Top?.Name is PlayTargets.CcTeamView or UiState.MessageBoxView || s2.Active.Any(v => v.Name == PlayTargets.CcTeamView),
+        var mapId = MapId(level.Stage);
+        await Click("cc-level", t => t.Id == mapId, (s2, _) => s2.Top?.Name is PlayTargets.CcTeamView or UiState.MessageBoxView || s2.Active.Any(v => v.Name == PlayTargets.CcTeamView),
             $"the team screen for {where}", ct);
         var after = await Settled(ct);
         if (Top(after) != PlayTargets.CcTeamView) await Refuse(after, where, ct);
 
-        await SetTeam(team, ct);
+        // The game locks some champions in Cursed City (used elsewhere this rotation): the team is built again without them.
+        for (var attempt = 0; ; attempt++)
+        {
+            try
+            {
+                await SetTeam(team, ct);
+                break;
+            }
+            catch (LockedHeroException e) when (attempt < 8)
+            {
+                _ccLocked.Add(e.HeroId);
+                foreach (var id in e.AlsoLocked) _ccLocked.Add(id);
+                var (data, _, ratings, locks) = await Account(ct);
+                var rebuilt = CursedCityPlanner.BuildTeam(level.Stage, data.Champions.Where(c => (c.Level > 1 || c.Rank > 1) && !_ccLocked.Contains(c.Id)).ToList(), locks, ratings);
+                if (!rebuilt.Feasible)
+                {
+                    await Back(PlayTargets.CcTeamView, ct);
+                    return new BattleOutcome(BattleResult.NotStarted, $"no team without the locked champions ({string.Join(", ", _ccLocked.Select(i => $"#{i}"))}): {rebuilt.Why}");
+                }
+                team = rebuilt.Members.Select(m => m.Id).ToList();
+                log($"autoplay: #{e.HeroId} is locked in Cursed City; team built again: {string.Join(", ", rebuilt.Members.Select(m => m.Name))}");
+            }
+        }
         if (dryRun)
         {
             var (_, targets, _) = await Read(ct);
@@ -100,7 +137,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
             if (Has(s, PlayTargets.CcMapView))
             {
                 var (_, targets, play) = await Read(ct);
-                var mine = (play.CcLevels ?? []).FirstOrDefault(x => x.StageId == level.Stage.Id);
+                var mine = (play.CcLevels ?? []).FirstOrDefault(x => x.StageId == MapId(level.Stage));
                 if (mine?.Open is { } t && t.NotClickable is null) return mine;
                 // Off screen (or not built yet): drag the map towards it, by the shown levels' numbers (a district's levels run in order).
                 var shown = (play.CcLevels ?? []).Where(x => x.Open is { Rect: not null, Active: true }).ToList();
@@ -134,6 +171,8 @@ public sealed partial class LivePlayGame : ICursedCityGame
             }
             if (Top(s) == PlayTargets.BattleMenuView)
             {
+                // The battle menu's cards run sideways past the window (seen 2026-10-29: Cursed City at x 1263 of 864): drag it into view.
+                await DragIntoView("mode-cc", ct);
                 await Click("mode-cc", null, (s2, _) => Has(s2, PlayTargets.CcMapView), "the Cursed City map opens", ct, within: TimeSpan.FromSeconds(15));
                 continue;
             }
@@ -141,6 +180,34 @@ public sealed partial class LivePlayGame : ICursedCityGame
             await Click("village-battle", null, (s2, _) => Has(s2, PlayTargets.BattleMenuView), "the battle menu opens", ct);
         }
         throw new PlayStopException($"Could not bring {CursedCityPlanner.Where(level.Stage)} into view in 16 steps. Screen dump: {DumpScreen("cc level not reached")}");
+    }
+
+    /// <summary>
+    /// The id the map gives a level (seen 2026-10-29: district × 1000 + number, e.g. Cobblemarket 21 = 1021; the difficulty is the map's own).
+    /// </summary>
+    private static int MapId(CcStage s) =>
+        (int.TryParse(System.Text.RegularExpressions.Regex.Match(s.District, @"\d+$").Value, out var d) ? d : 0) * 1000 + s.Number;
+
+    /// <summary>A target whose middle is outside the window (a list that runs past it): the view dragged until it is inside (at most 4 drags).</summary>
+    private async Task DragIntoView(string kind, CancellationToken ct)
+    {
+        for (var i = 0; i < 4; i++)
+        {
+            var (_, targets, _) = await Read(ct);
+            var t = targets.FirstOrDefault(x => x.Kind == kind && x.Rect is not null);
+            var (w, why) = Game.Window.GameWindow.Find();
+            if (w is null) throw new PlayStopException(why!);
+            if (t?.Rect is not { } r) return;
+            var (cx, cy) = r.Center;
+            var inside = cx > w.Client.Width * 0.08 && cx < w.Client.Width * 0.92 && cy > w.Client.Height * 0.1 && cy < w.Client.Height * 0.9;
+            if (inside) return;
+            var dx = Math.Clamp(w.Client.Width / 2f - cx, -w.Client.Width * 0.6f, w.Client.Width * 0.6f);
+            var dy = Math.Clamp(w.Client.Height / 2f - cy, -w.Client.Height * 0.5f, w.Client.Height * 0.5f);
+            var (x1, y1) = (w.Client.Width / 2f - dx / 2, w.Client.Height / 2f - dy / 2);
+            if (MouseInput.Drag(w, x1, y1, x1 + dx, y1 + dy) is { } notSent) throw new PlayStopException("Not dragged: " + notSent);
+            log($"autoplay: dragged the view {dx:0},{dy:0} to bring {t.Name} into view");
+            await Task.Delay(700, ct);
+        }
     }
 
     /// <summary>
@@ -170,7 +237,8 @@ public sealed partial class LivePlayGame : ICursedCityGame
             var pick = (play.Picks ?? []).FirstOrDefault(p => p.HeroId == missing);
             if (pick?.Pick is { } t && t.NotClickable is null)
             {
-                if (pick.State is >= 2 and not 7) throw new PlayStopException($"#{missing} cannot be picked here (state {pick.State}: disabled or locked by the level's criterion). Screen dump: {DumpScreen("team pick locked")}");
+                if (pick.State is >= 2 and not 7)
+                    throw new LockedHeroException(missing, [.. (play.Picks ?? []).Where(p => p.State is >= 2 and not 7).Select(p => p.HeroId)]);
                 await Click("team-pick", x => x.Id == missing && x.View == PlayTargets.CcTeamView, (_, lazy) => (lazy().TeamIds ?? []).Contains(missing),
                     $"#{missing} joins the team", ct);
                 continue;

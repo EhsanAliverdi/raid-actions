@@ -13,6 +13,9 @@ namespace RaidActions.App.Play;
 /// </summary>
 public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watchPerson, Func<AutoplaySettings, AutoplaySettings>? overrideSettings = null) : IAutoplayHost
 {
+    /// <summary>A check of the game itself (LivePlayGame.SessionTaken): why it cannot be played now, or null.</summary>
+    public Func<string?>? GameBlocked { get; set; }
+
     private static readonly JsonSerializerOptions OneLine = new(AutoplayJson.Options) { WriteIndented = false };
 
     public DateTime UtcNow => DateTime.UtcNow;
@@ -65,6 +68,7 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
         }
         var (w, why) = Game.Window.GameWindow.Find();
         if (w is null) return why;
+        if (GameBlocked?.Invoke() is { } game) return game;
         if (w.Minimized || MouseInput.OffScreen(w) is null) return null;
         var (after, problem) = Game.Window.WindowFit.Apply(w, Game.Window.WindowFit.Plan(w, w.Client.Width, w.Client.Height));
         if (after is null) return "the game window is off the screen and could not be moved: " + problem;

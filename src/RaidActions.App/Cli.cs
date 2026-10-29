@@ -13,6 +13,9 @@ public static class Cli
 {
     public const int Ok = 0, Refused = 1, Failed = 2, Aborted = 3, Usage = 4, NotConfirmed = 5;
 
+    /// <summary>Set by Auto Play in its own process: the gear commands it runs (Faction Wars: gear team, remove gear) are its own clicks.</summary>
+    public static bool InsideAutoplay { get; set; }
+
     public const string Help = """
         RaidActions: executes raid-extractor gear plans. Phase 1: FAKE EXECUTOR ONLY, no game input.
 
@@ -128,9 +131,9 @@ public static class Cli
             var outDir = AppPaths.Resolve(null, outIndex >= 0 && outIndex + 1 < args.Length ? args[outIndex + 1] : null).Output;
             return await AutoplayCommand.RunAsync(args, outDir, output, abortHook);
         }
-        // One bot at a time: while Auto Play plays, the commands that click the game refuse.
+        // One bot at a time: while Auto Play plays, the commands that click the game refuse (except when Auto Play itself runs them).
         if (args.Length > 0 && args[0].ToLowerInvariant() is "run" or "dry-run" or "go-home" or "sell" or "upgrade" or "vault-open" or "vault-withdraw"
-            or "remove-gear" or "unequip" or "restart-game" && Play.BotLock.AutoplayRunning())
+            or "remove-gear" or "unequip" or "restart-game" && !InsideAutoplay && Play.BotLock.AutoplayRunning())
         {
             output.WriteLine("Auto Play is running: stop it first (the app's Auto Play page, or Ctrl+Alt+Esc). One bot at a time.");
             return Refused;

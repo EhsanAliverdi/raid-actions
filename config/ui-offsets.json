@@ -838,6 +838,176 @@
           "status": "direct"
         }
       }
+    },
+    "Client.ViewModel.Contextes.FractionWars.FractionWarsMapContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_isHardDifficulty": {
+          "offset": "0x60",
+          "type": "BoolProperty",
+          "field": "_isHardDifficulty",
+          "source": "field",
+          "status": "direct"
+        },
+        "_openedFactionId": {
+          "offset": "0x68",
+          "type": "IntProperty",
+          "field": "_openedFactionId",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.FractionWars.FractionWarsRegionItemContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_id": {
+          "offset": "0x60",
+          "type": "IntProperty",
+          "field": "_id",
+          "source": "field",
+          "status": "direct"
+        },
+        "_regionState": {
+          "offset": "0x68",
+          "type": "IntProperty",
+          "field": "_regionState",
+          "source": "field",
+          "status": "direct"
+        },
+        "_name": {
+          "offset": "0x78",
+          "type": "StringProperty",
+          "field": "_name",
+          "source": "field",
+          "status": "direct"
+        },
+        "_openInfo": {
+          "offset": "0x80",
+          "type": "StringProperty",
+          "field": "_openInfo",
+          "source": "field",
+          "status": "direct"
+        },
+        "_resourceCount": {
+          "offset": "0x88",
+          "type": "StringProperty",
+          "field": "_resourceCount",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.RegionDialog.StageContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_state": {
+          "offset": "0x70",
+          "type": "IntProperty",
+          "field": "_state",
+          "source": "field",
+          "status": "direct"
+        },
+        "_id": {
+          "offset": "0x78",
+          "type": "IntProperty",
+          "field": "_id",
+          "source": "field",
+          "status": "direct"
+        },
+        "_buttonState": {
+          "offset": "0x90",
+          "type": "IntProperty",
+          "field": "_buttonState",
+          "source": "field",
+          "status": "direct"
+        },
+        "_showButton": {
+          "offset": "0xD8",
+          "type": "BoolProperty",
+          "field": "_showButton",
+          "source": "field",
+          "status": "direct"
+        },
+        "_name": {
+          "offset": "0xE0",
+          "type": "StringProperty",
+          "field": "_name",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishPveDialogContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_battleResultType": {
+          "offset": "0xA8",
+          "type": "IntProperty",
+          "field": "_battleResultType",
+          "source": "field",
+          "status": "direct"
+        },
+        "_stars": {
+          "offset": "0x98",
+          "type": "IntProperty",
+          "field": "_stars",
+          "source": "field",
+          "status": "direct"
+        },
+        "_stageName": {
+          "offset": "0xC8",
+          "type": "StringProperty",
+          "field": "_stageName",
+          "source": "field",
+          "status": "direct"
+        },
+        "_regionName": {
+          "offset": "0xD0",
+          "type": "StringProperty",
+          "field": "_regionName",
+          "source": "field",
+          "status": "direct"
+        },
+        "_nextStageAvailable": {
+          "offset": "0x78",
+          "type": "BoolProperty",
+          "field": "_nextStageAvailable",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.Generic.HeroAvatarContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_name": {
+          "offset": "0xF0",
+          "type": "StringProperty",
+          "field": "_name",
+          "source": "field",
+          "status": "direct"
+        },
+        "_typeId": {
+          "offset": "0xC0",
+          "type": "IntProperty",
+          "field": "_typeId",
+          "source": "field",
+          "status": "direct"
+        },
+        "_EntityId_k__BackingField": {
+          "offset": "0x118",
+          "type": "int",
+          "field": "_EntityId_k__BackingField",
+          "source": "field",
+          "status": "direct"
+        }
+      }
     }
   },
   "enums": {

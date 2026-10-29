@@ -5,7 +5,8 @@
                      "Path: AppViewModel (static) -\u003e _overlayManager -\u003e _viewMaster (RaidViewMaster) -\u003e _views (List\u003cViewMeta\u003e) -\u003e ViewMeta.View",
                      "-\u003e BaseView.Context -\u003e HeroesInfoOverlayContext (the champion screen) -\u003e _heroId, _heroDetailsContext._inventoryArtifactId.",
                      "Sell mode (2026-10-28): _inventoryContext._sellArtifacts (_sellArtifactsCount, _markedForSell), items\u0027 _withSellMark and _hasOwner; message boxes\u0027 title, text and button texts.",
-                     "Auto play (2026-10-29): classic arena (ArenaMap, ArenaDialog battle tab and opponent rows, ArenaOpponent), battle HUD auto flag, arena result, resource HUD counters and timers, inbox items. Found offline in the dump; verify live."
+                     "Auto play (2026-10-29): classic arena (ArenaMap, ArenaDialog battle tab and opponent rows, ArenaOpponent), battle HUD auto flag, arena result, resource HUD counters and timers, inbox items. Found offline in the dump; verify live.",
+                     "Auto Play Faction Wars (2026-10-29): map crypt items, stage list, PvE result, team slot avatars (hero id)."
                  ],
     "roots":  {
                   "AppViewModel":  {
@@ -173,6 +174,36 @@
                                                                                            "_message",
                                                                                            "_iconUrl",
                                                                                            "_isValid"
-                                                                                       ]
+                                                                                       ],
+                  "Client.ViewModel.Contextes.FractionWars.FractionWarsMapContext":  [
+                                                                                         "_isHardDifficulty",
+                                                                                         "_openedFactionId"
+                                                                                     ],
+                  "Client.ViewModel.Contextes.FractionWars.FractionWarsRegionItemContext":  [
+                                                                                                "_id",
+                                                                                                "_regionState",
+                                                                                                "_name",
+                                                                                                "_openInfo",
+                                                                                                "_resourceCount"
+                                                                                            ],
+                  "Client.ViewModel.Contextes.RegionDialog.StageContext":  [
+                                                                               "_state",
+                                                                               "_id",
+                                                                               "_buttonState",
+                                                                               "_showButton",
+                                                                               "_name"
+                                                                           ],
+                  "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishPveDialogContext":  [
+                                                                                                     "_battleResultType",
+                                                                                                     "_stars",
+                                                                                                     "_stageName",
+                                                                                                     "_regionName",
+                                                                                                     "_nextStageAvailable"
+                                                                                                 ],
+                  "Client.ViewModel.Contextes.Generic.HeroAvatarContext":  [
+                                                                               "_name",
+                                                                               "_typeId",
+                                                                               "_EntityId_k__BackingField"
+                                                                           ]
               }
 }

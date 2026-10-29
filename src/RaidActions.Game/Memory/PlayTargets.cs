@@ -18,14 +18,25 @@ public sealed record HudResource(string? Resource, string? Value, string? Timer)
 /// <summary>An inbox entry (InboxItemContext) and its collect button.</summary>
 public sealed record InboxEntry(string? Title, string? Message, string? Icon, bool? Valid, UiTarget? Collect);
 
+/// <summary>A crypt on the Faction Wars map (FractionWarsRegionItemContext): the faction (HeroFraction id), its name, state and key count text.</summary>
+public sealed record CryptRead(int FactionId, string? Name, int? State, string? Keys, string? OpenInfo, UiTarget? Open);
+
+/// <summary>A stage in a crypt's list (StageContext): its game id, name ("Stage 11"), state and its button.</summary>
+public sealed record StageRead(int Id, string? Name, int? State, int? ButtonState, UiTarget? Start);
+
+/// <summary>A PvE result screen (BattleFinishPveDialogContext): 1 victory, 2 defeat, 3 draw; stars; the stage.</summary>
+public sealed record PveResultRead(int? ResultType, int? Stars, string? StageName, bool? NextStageAvailable);
+
 /// <summary>What Auto Play reads on the screens it plays: click targets and the facts next to them.</summary>
 public sealed record PlayScan(List<UiTarget> Targets, ArenaBoardRead? Arena, bool? AutoOn, ArenaResultRead? Result, List<HudResource> Hud,
-    List<InboxEntry> Inbox, List<string> Notes)
+    List<InboxEntry> Inbox, List<string> Notes, List<CryptRead>? Crypts = null, List<StageRead>? Stages = null, List<int>? TeamIds = null,
+    PveResultRead? Pve = null)
 {
     public static PlayScan Empty => new([], null, null, null, [], [], []);
 
     public PlayScan Merge(PlayScan o) => new([.. Targets, .. o.Targets], Arena ?? o.Arena, AutoOn ?? o.AutoOn, Result ?? o.Result, [.. Hud, .. o.Hud],
-        [.. Inbox, .. o.Inbox], [.. Notes, .. o.Notes]);
+        [.. Inbox, .. o.Inbox], [.. Notes, .. o.Notes], [.. Crypts ?? [], .. o.Crypts ?? []], [.. Stages ?? [], .. o.Stages ?? []],
+        [.. TeamIds ?? [], .. o.TeamIds ?? []], Pve ?? o.Pve);
 }
 
 /// <summary>
@@ -41,7 +52,8 @@ public static partial class PlayTargets
 {
     public const string ArenaDialogView = "ArenaDialog", ArenaMapView = "ArenaMap", ArenaHudView = "ArenaHUD", TeamView = "HeroesSelectionDialogToArena",
         BattleHudView = "BattleHUD", ArenaResultView = "BattleFinishArenaDialog", InboxView = "InboxDialog", BattleMenuView = "BattleModeSelectionDialog",
-        VillageHudView = "VillageHUD", RefillView = "ResourceRefillOverlay";
+        VillageHudView = "VillageHUD", RefillView = "ResourceRefillOverlay", FwMapView = "FractionWarsMap", FwDialogView = "FractionWarsDialog",
+        FwTeamView = "HeroesSelectionDialogToFractionWars", FwResultView = "BattleFinishFractionWarsDialog";
 
     private const string BattleMapButton = "Client.ViewModel.Contextes.Village.HUD.BattleMapButtonContext";
     private const string InboxButton = "Client.ViewModel.Contextes.InboxButtonContext";
@@ -57,6 +69,12 @@ public static partial class PlayTargets
     private const string UserResource = "Client.ViewModel.Contextes.Generic.UserResources.UserResourceContext";
     private const string InboxItem = "Client.ViewModel.Contextes.InboxDialog.Contexts.InboxItemContext";
     private const string ResourceEnum = "SharedModel.Meta.Account.ResourceTypeId";
+    private const string FwRegionItem = "Client.ViewModel.Contextes.FractionWars.FractionWarsRegionItemContext";
+    private const string FwStage = "Client.ViewModel.Contextes.FractionWars.FactionWarsStageContext";
+    private const string StageCtx = "Client.ViewModel.Contextes.RegionDialog.StageContext";
+    private const string FwResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishFractionWarsDialogContext";
+    private const string PveResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishPveDialogContext";
+    private const string HeroAvatar = "Client.ViewModel.Contextes.Generic.HeroAvatarContext";
     private const string IntProperty = "Client.MVVM.Base.ViewModel.Properties.IntProperty";
     private const string BoolProperty = "Client.MVVM.Base.ViewModel.Properties.BoolProperty";
     private const string StringProperty = "Client.MVVM.Base.ViewModel.Properties.StringProperty";
@@ -65,7 +83,7 @@ public static partial class PlayTargets
     public static readonly IReadOnlySet<string> Kinds = new HashSet<string>
     {
         "village-battle", "village-inbox", "mode-arena", "arena-classic", "arena-tab", "arena-opponent", "arena-refresh", "team-start",
-        "battle-auto", "inbox-collect", "result-close",
+        "battle-auto", "inbox-collect", "result-close", "mode-fw", "fw-crypt", "fw-stage",
     };
 
     [GeneratedRegex(@"Battle|Start|Fight|Attack", RegexOptions.IgnoreCase)] private static partial Regex FightName();
@@ -85,12 +103,29 @@ public static partial class PlayTargets
         ArenaResultRead? result = null;
         var hud = new List<HudResource>();
         var inbox = new List<InboxEntry>();
+        List<CryptRead>? crypts = null;
+        List<StageRead>? stages = null;
+        List<int>? team = null;
+        PveResultRead? pve = null;
 
         IEnumerable<UiNode> Below(int i)
         {
             for (var k = i + 1; k < nodes.Count && nodes[k].Depth > nodes[i].Depth; k++) yield return nodes[k];
         }
         IEnumerable<UiNode> SelfAndBelow(int i) => new[] { nodes[i] }.Concat(Below(i));
+
+        // Whether an ancestor of nodes[i] is bound to this path (the nodes before i that are shallower, nearest first).
+        bool UnderBinding(int i, string binding)
+        {
+            var depth = nodes[i].Depth;
+            for (var k = i - 1; k >= 0 && depth > 0; k--)
+                if (nodes[k].Depth < depth)
+                {
+                    if (nodes[k].BindingPath == binding) return true;
+                    depth = nodes[k].Depth;
+                }
+            return false;
+        }
 
         // The one clickable element of a context (its own Button, else the first below), as the gear targets take it.
         UiNode? Own(int i) => SelfAndBelow(i).FirstOrDefault(c => c.Interactable is not null && c.ActiveInHierarchy) ?? SelfAndBelow(i).FirstOrDefault(c => c.Interactable is not null);
@@ -182,6 +217,47 @@ public static partial class PlayTargets
                     rows.Add(new ArenaRow(id, name, power, status, playable, quarantine, teamText, target));
                     break;
                 }
+                case FwRegionItem:
+                {
+                    var id = Try(() => IntValue(g, g.Ref(c.Address, FwRegionItem, "_id")), null, notes, "FractionWarsRegionItemContext._id");
+                    if (id is not { } fid) break;
+                    var name = Try(() => StringValue(g, g.Ref(c.Address, FwRegionItem, "_name")), null, notes, "FractionWarsRegionItemContext._name");
+                    var state = Try(() => IntValue(g, g.Ref(c.Address, FwRegionItem, "_regionState")), null, notes, "FractionWarsRegionItemContext._regionState");
+                    var keys = Try(() => StringValue(g, g.Ref(c.Address, FwRegionItem, "_resourceCount")), null, notes, "FractionWarsRegionItemContext._resourceCount");
+                    var info = Try(() => StringValue(g, g.Ref(c.Address, FwRegionItem, "_openInfo")), null, notes, "FractionWarsRegionItemContext._openInfo");
+                    var target = Make("fw-crypt", $"faction wars map: {name ?? fid.ToString(System.Globalization.CultureInfo.InvariantCulture)}", n, Own(i),
+                        $"faction {fid} ({g.EnumName("SharedModel.Meta.Heroes.HeroFraction", fid)}), state {state}, keys \"{keys}\", \"{info}\"", id: fid);
+                    targets.Add(target);
+                    (crypts ??= []).Add(new CryptRead(fid, name, state, keys, info, target));
+                    break;
+                }
+                case FwStage:
+                {
+                    var id = Try(() => IntValue(g, g.Ref(c.Address, StageCtx, "_id")), null, notes, "StageContext._id");
+                    if (id is not { } sid || sid <= 0) break;
+                    var name = Try(() => StringValue(g, g.Ref(c.Address, StageCtx, "_name")), null, notes, "StageContext._name");
+                    var state = Try(() => IntValue(g, g.Ref(c.Address, StageCtx, "_state")), null, notes, "StageContext._state");
+                    var buttonState = Try(() => IntValue(g, g.Ref(c.Address, StageCtx, "_buttonState")), null, notes, "StageContext._buttonState");
+                    var (button, why) = Named(i, FightName(), NotFightName());
+                    var target = Make("fw-stage", $"crypt: {name ?? $"stage {sid}"}", n, button, $"stage id {sid}, state {state}, button state {buttonState}" + (why is null ? "" : "; " + why), id: sid);
+                    targets.Add(target);
+                    (stages ??= []).Add(new StageRead(sid, name, state, buttonState, target));
+                    break;
+                }
+                case FwResult:
+                    pve = new PveResultRead(
+                        Try(() => IntValue(g, g.Ref(c.Address, PveResult, "_battleResultType")), null, notes, "BattleFinishPveDialogContext._battleResultType"),
+                        Try(() => IntValue(g, g.Ref(c.Address, PveResult, "_stars")), null, notes, "BattleFinishPveDialogContext._stars"),
+                        Try(() => StringValue(g, g.Ref(c.Address, PveResult, "_stageName")), null, notes, "BattleFinishPveDialogContext._stageName"),
+                        Try(() => BoolValue(g, g.Ref(c.Address, PveResult, "_nextStageAvailable")), null, notes, "BattleFinishPveDialogContext._nextStageAvailable"));
+                    break;
+                case UiTargets.HeroSlotContext when t.View.StartsWith("HeroesSelectionDialog", StringComparison.Ordinal) && UnderBinding(i, "MySquad"):
+                {
+                    // Our team's slots (seen 2026-10-29: HeroSlotContext items under the group bound to MySquad; the enemy's under EnemySquad).
+                    var hero = Try(() => IntValue(g, g.Ref(c.Address, UiTargets.HeroSlotContext, "_heroId")), null, notes, "HeroSlotContext._heroId");
+                    if (hero is > 0 && n.ActiveInHierarchy) (team ??= []).Add(hero.Value);
+                    break;
+                }
                 case BattleHud:
                 {
                     auto = Try(() => BoolValue(g, g.Ref(c.Address, BattleHud, "_isAutoEnabled")), null, notes, "BattleHUDContext._isAutoEnabled");
@@ -230,6 +306,9 @@ public static partial class PlayTargets
                 (VillageHudView, "Inbox") => ("village-inbox", "village: Inbox"),
                 // The battle menu's Arena card (seen 2026-10-29: "Arena" bound to Arenas, its clickable Panel below).
                 (BattleMenuView, "Arenas") => ("mode-arena", "battle menu: Arena"),
+                // The battle menu's Faction Wars card: bound like the Arena card (name to confirm live: Fraction/Faction).
+                (BattleMenuView, var b) when b.Contains("Fraction", StringComparison.OrdinalIgnoreCase) || b.Contains("FactionWars", StringComparison.OrdinalIgnoreCase)
+                    => ("mode-fw", "battle menu: Faction Wars"),
                 // The arena map's buildings: labels that follow the 3D scene (a canvas inside the view); Arena1x1 is the Classic Arena.
                 (ArenaMapView, "Arena1x1") => ("arena-classic", "arena map: Classic Arena"),
                 _ => ((string?)null, (string?)null),
@@ -241,7 +320,7 @@ public static partial class PlayTargets
 
         // The arena result closes on a tap (seen 2026-10-29: "CloseBlock", a click area with no button, over the lower part of the
         // screen with the champion avatars on it): the target is a strip at its bottom, clear of the avatars.
-        if (t.View == ArenaResultView)
+        if (t.View is ArenaResultView or FwResultView)
             foreach (var cb in nodes.Where(x => x.Name == "CloseBlock" && x.ActiveInHierarchy && x.Screen is not null).Take(1))
             {
                 // Its "Content" child is the RETURN TO ARENA bar (seen 2026-10-29): the middle of that bar.
@@ -252,7 +331,7 @@ public static partial class PlayTargets
             }
 
         // The team selection's Start (seen 2026-10-29: "Default_h", the big button bottom right; its Checkbox_h above is left alone).
-        if (t.View == TeamView)
+        if (t.View == TeamView || t.View == FwTeamView)
         {
             var start = nodes.Where(x => x.Name == "Default_h" && x.Interactable is not null && x.ActiveInHierarchy).ToList();
             if (start.Count >= 1)
@@ -269,7 +348,7 @@ public static partial class PlayTargets
         }
 
         if (rows is not null || free is not null || tab is not null) arena = new ArenaBoardRead(rows ?? [], free, freeText, loading, tab);
-        return new PlayScan(targets, arena, auto, result, hud, inbox, notes.Distinct().ToList());
+        return new PlayScan(targets, arena, auto, result, hud, inbox, notes.Distinct().ToList(), crypts, stages, team?.Distinct().ToList(), pve);
     }
 
     /// <summary>An inbox entry that holds Classic Arena tokens (not Tag/Live arena tokens or auto-battle tickets), by its text and icon.</summary>

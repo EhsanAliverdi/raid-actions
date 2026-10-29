@@ -30,9 +30,10 @@ public static class AutoplayCommand
         var fake = args.Contains("--fake");
         // --enable: play the Classic Arena whatever the settings say; --no-yield: keep playing while the person uses the PC (a watched test).
         var enable = args.Contains("--enable");
+        var enableFw = args.Contains("--enable-fw");
         var noYield = args.Contains("--no-yield");
-        Func<AutoplaySettings, AutoplaySettings>? force = enable || noYield
-            ? s => (enable ? s with { Enabled = true, ClassicArena = s.ClassicArena with { Enabled = true } } : s) is var e && noYield
+        Func<AutoplaySettings, AutoplaySettings>? force = enable || enableFw || noYield
+            ? s => (enable ? s with { Enabled = true, ClassicArena = s.ClassicArena with { Enabled = true } } : s) is var a && (enableFw ? a with { Enabled = true, FactionWars = a.FactionWars with { Enabled = true } } : a) is var e && noYield
                 ? e with { Pacing = e.Pacing with { YieldToPersonMinutes = 0 } } : e
             : null;
 
@@ -49,13 +50,15 @@ public static class AutoplayCommand
         var host = new LiveAutoplayHost(dir, Print, watchPerson: !fake, force);
         var arena = new ClassicArenaActivity();
         arena.Restore(LiveAutoplayHost.Today(dir), DateOnly.FromDateTime(DateTime.Now));
-        IActivity[] activities = [arena];
+
 
         if (fake)
         {
             var game = new FakeArenaGame(() => DateTime.UtcNow) { Delay = (d, ct) => Task.Delay(d, ct), Tokens = 6, InboxTokens = 3 };
-            Print($"Auto Play on the FAKE arena (no game). Files: {dir}");
-            var why = await new AutoplayEngine(activities, game, host, dry).RunAsync(once, abort.Token);
+            var fw = new FakeFactionWarsGame(() => DateTime.UtcNow) { Delay = (d, ct) => Task.Delay(d, ct) };
+            fw.Open.Add(new FakeFactionWarsGame.Crypt { Faction = "SacredOrder", Keys = 4, HighestPassed = 10, Team = [1, 2, 3, 4, 5], WinsUpTo = 12 });
+            Print($"Auto Play on the FAKE arena and crypts (no game). Files: {dir}");
+            var why = await new AutoplayEngine([new FactionWarsActivity(fw), arena], game, host, dry).RunAsync(once, abort.Token);
             Print("Stopped: " + why);
             return Cli.Ok;
         }
@@ -79,7 +82,10 @@ public static class AutoplayCommand
             var folder = Path.Combine(outDir, "autoplay", DateTime.Now.ToString("yyyyMMdd-HHmmss"));
             Directory.CreateDirectory(folder);
             var policy = Game.Window.WindowPolicy.Load(GameCommands.WindowConfig);
-            var game = new LivePlayGame(live, ui, folder, policy, l => Print($"{DateTime.Now:HH:mm:ss} {l}"));
+            var game = new LivePlayGame(live, ui, folder, policy, l => Print($"{DateTime.Now:HH:mm:ss} {l}"), GameCommands.LivePaths(outDir).RaidExtractorRoot, outDir);
+            // Faction Wars first: its keys are for today only and its gear comes off the same day; the arena's tokens wait.
+            IActivity[] activities = [new FactionWarsActivity(game), arena];
+            host.GameBlocked = game.SessionTaken;
             Print($"Auto Play{(dry ? " (DRY RUN: nothing that spends is pressed)" : "")}. Settings and status: {dir}\\autoplay. Overlays: {folder}. Stop: the app, or Ctrl+Alt+Esc.");
             var engine = new AutoplayEngine(activities, game, host, dry);
             var why = await engine.RunAsync(once, abort.Token);

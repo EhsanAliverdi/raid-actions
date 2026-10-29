@@ -50,6 +50,23 @@ from memory with the offsets in `config/ui-offsets.json` (names in `config/ui-na
 | `inbox-collect` | InboxDialog | InboxItemContext (`_title`, `_message`, `_iconUrl`), its Collect/Claim button; tokens by text (`IsArenaTokens`) |
 | HUD counters | any | UserResourceContext (`_resource`, `_value` "7/10", `_incrementStatusText` "05:12") |
 
+Seen live 2026-10-29 (the dump's guesses corrected): many buttons have no context of their own and are bound **by path** instead:
+the village's Battle (`BattleMap`) and Inbox (`Inbox`), the battle menu's Arena card (`Arenas`; its clickable `Panel` below) and Faction
+Wars card (a binding with "Fraction"), the arena map's Classic Arena (`Arena1x1`: a label over the 3D scene, under a canvas inside the
+view, which `UnityUi` now reads). The opponent's team power is the row's text ("198.04K", `_teamPower`); `ArenaOpponent.TotalPower` is the
+whole account. The free refresh is `RefreshBlock/FreeResfreshAvailable_h/BTN_1` (the paid one under `FreeResfreshNotAvailable_h` is
+forbidden). The team screens' Start is `Default_h`; our slots are `HeroSlotContext` under `MySquad`. The arena result closes with its
+RETURN TO ARENA bar (`CloseBlock/Content`, no button component). A target that finds nothing writes a screen dump (every active
+element: name, binding, context, rectangle) next to the run's overlays.
+
+| Faction Wars | View | Found by |
+| --- | --- | --- |
+| `mode-fw` | BattleModeSelectionDialog | binding containing "Fraction" |
+| `fw-crypt` (Id = HeroFraction) | FractionWarsMap | FractionWarsRegionItemContext (`_id`, `_name`, `_resourceCount`) |
+| `fw-stage` (Id = stage id) | FractionWarsDialog | FactionWarsStageContext (StageContext `_id`, `_name` "Stage 11"); the row's Battle button |
+| team | HeroesSelectionDialogToFractionWars | slots `HeroSlotContext._heroId` under `MySquad`; Start `Default_h` |
+| result | BattleFinishFractionWarsDialog | BattleFinishPveDialogContext (`_battleResultType`, `_stars`) |
+
 Where a context holds several buttons, the one whose name or binding says what it does is taken; when that is not exactly one the
 target is left unclickable with a note listing the candidates. **`RaidActions autoplay-explore`** (read only) prints every target,
 whether it may be clicked and why, the board, the HUD counters and the inbox: run it on each screen in the first live session and

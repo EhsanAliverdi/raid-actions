@@ -15,7 +15,7 @@ namespace RaidActions.App.Play;
 /// home). Never a gem: a refresh only when the game says it is free, and any purchase or refill window is closed. A dry run shows
 /// the clicks that would spend something (overlay pictures) and presses none of them.
 /// </summary>
-public sealed class LivePlayGame(LiveGame game, UnityUi ui, string folder, WindowPolicy policy, Action<string> log) : IPlayGame
+public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folder, WindowPolicy policy, Action<string> log, string extractorRoot = "", string outDir = "") : IPlayGame
 {
     private readonly NavigatingDriver _nav = new(game, ui, null, folder, policy, log);
     private readonly Random _random = new();
@@ -115,7 +115,7 @@ public sealed class LivePlayGame(LiveGame game, UnityUi ui, string folder, Windo
         if (!inBattle.Active.Any(v => BattleViews.Contains(v.Name))) await Refuse(inBattle, $"Start vs {who}", ct);
         log($"autoplay: battle vs {who} started");
 
-        var result = await WaitBattle(ct);
+        var result = (await WaitBattle(ct))?.Result;
         await LeaveResult(ct);
         var took = DateTime.UtcNow - started;
         var outcome = result?.ResultType switch { 1 => BattleResult.Victory, 2 => BattleResult.Defeat, 3 => BattleResult.Draw, _ => BattleResult.Unknown };
@@ -265,8 +265,8 @@ public sealed class LivePlayGame(LiveGame game, UnityUi ui, string folder, Windo
         throw new PlayStopException($"Opponent {userId} not reachable by scrolling.");
     }
 
-    /// <summary>Waits for the battle to end (no input but the Auto button, once, when auto is off); the result read, if any.</summary>
-    private async Task<ArenaResultRead?> WaitBattle(CancellationToken ct)
+    /// <summary>Waits for the battle to end (no input but the Auto button, once, when auto is off); the result screen's read, if any.</summary>
+    private async Task<PlayScan?> WaitBattle(CancellationToken ct, string resultView = PlayTargets.ArenaResultView)
     {
         var until = DateTime.UtcNow + TimeSpan.FromMinutes(12);
         var autoTried = false;
@@ -274,11 +274,11 @@ public sealed class LivePlayGame(LiveGame game, UnityUi ui, string folder, Windo
         {
             await Task.Delay(1500, ct);
             var s = await ReadState(ct);
-            if (Has(s, PlayTargets.ArenaResultView))
+            if (Has(s, resultView))
             {
                 await Task.Delay(1200, ct); // the result's numbers fill in
                 var (_, _, play) = await Read(ct);
-                return play.Result;
+                return play;
             }
             if (!s.InBattle) return null; // the battle ended somewhere else (the game moved on)
             if (!autoTried && Has(s, PlayTargets.BattleHudView) && !s.UiBlocked)
@@ -296,15 +296,17 @@ public sealed class LivePlayGame(LiveGame game, UnityUi ui, string folder, Windo
         throw new PlayStopException("The battle did not end in 12 minutes.");
     }
 
-    /// <summary>The arena result screen left by its way back (never Replay or Next), until the battle flow is closed.</summary>
-    private async Task LeaveResult(CancellationToken ct)
+    /// <summary>A result screen left by its way back (the arena's tap bar; else its back/return element, never Replay or Next).</summary>
+    private async Task LeaveResult(CancellationToken ct, string view = PlayTargets.ArenaResultView)
     {
+        var (_, now, _) = await Read(ct);
+        var kind = now.Any(x => x.Kind == "result-close" && x.View == view) ? "result-close" : "back";
         // Up to three taps, a little longer apart each time (a tap during the result's animations can be ignored).
         for (var attempt = 1; ; attempt++)
         {
             try
             {
-                await Click("result-close", null, (s2, _) => !Has(s2, PlayTargets.ArenaResultView), "the result screen closes", ct, view: PlayTargets.ArenaResultView,
+                await Click(kind, null, (s2, _) => !Has(s2, view), "the result screen closes", ct, view: view,
                     within: TimeSpan.FromSeconds(6));
                 break;
             }

@@ -22,11 +22,11 @@ public sealed partial class LivePlayGame : ICursedCityGame
     {
         var (data, _, ratings, locks) = await Account(ct);
         LoadLocked(data.Progress?.CursedCity?.RotationUpdatedUtc);
-        var plan = CursedCityPlanner.Plan(data, locks, ratings, lossesToSkip, skip);
+        var plan = CursedCityPlanner.Plan(data, locks, ratings, lossesToSkip, skip, _ccLocked);
         // The chosen level's own disabled champions: its team built again without them.
         if (plan.Next is { } next && _ccDisabled.TryGetValue(next.Stage.Id, out var off) && off.Count > 0)
         {
-            var team = CursedCityPlanner.BuildTeam(next.Stage, [.. data.Champions.Where(c => (c.Level > 1 || c.Rank > 1) && !off.Contains(c.Id))], locks, ratings);
+            var team = CursedCityPlanner.BuildTeam(next.Stage, [.. data.Champions.Where(c => (c.Level > 1 || c.Rank > 1) && !_ccLocked.Contains(c.Id) && !off.Contains(c.Id))], locks, ratings);
             plan = plan with { Next = next with { Team = team } };
         }
         return plan;
@@ -125,11 +125,17 @@ public sealed partial class LivePlayGame : ICursedCityGame
         {
             // Locked with the slots emptied and the criterion's members placed first: really not for this level (kept for this level only;
             // the game's locks follow the level's criterion and the slots, so nothing is kept for the rotation).
+            // With the slots emptied the criterion locks nobody: every champion the list shows locked then is out for this level (all at once).
             var disabled = _ccDisabled.TryGetValue(level.Stage.Id, out var d) ? d : _ccDisabled[level.Stage.Id] = [];
+            var before = disabled.Count;
             disabled.Add(e.HeroId);
-            log($"autoplay: #{e.HeroId} cannot be picked for this level even with the slots emptied (state {e.State})");
+            foreach (var (id, _) in e.Shown) disabled.Add(id);
+            // Locked with the slots empty = used in the city this rotation (seen 2026-10-30: the champions of earlier battles): for every level.
+            foreach (var (id, st) in e.Shown.Append((e.HeroId, e.State)).Where(x => x.Item2 >= 3)) _ccLocked.Add(id);
+            SaveLocked();
+            log($"autoplay: not pickable for this level with the slots emptied: {string.Join(", ", e.Shown.Append((e.HeroId, e.State)).Distinct().Select(x => $"#{x.Item1}:{x.Item2}"))}");
             await Back(PlayTargets.CcTeamView, ct);
-            return new BattleOutcome(BattleResult.Retry, $"#{e.HeroId} cannot join this level (state {e.State}): planning the level again without it");
+            return new BattleOutcome(BattleResult.Retry, $"{disabled.Count - before} champion(s) cannot join this level: planning it again without them");
         }
         if (dryRun)
         {

@@ -256,7 +256,9 @@ public sealed partial class LivePlayGame : ICursedCityGame
     {
         var wanted = team.ToHashSet();
         var emptied = false;
-        for (var round = 0; round < 40; round++)
+        var down = true;
+        string? lastShown = null;
+        for (var round = 0; round < 90; round++)
         {
             var (_, targets, play) = await Read(ct);
             var inSlots = (play.TeamIds ?? []).ToHashSet();
@@ -298,7 +300,10 @@ public sealed partial class LivePlayGame : ICursedCityGame
             if (shown.Count == 0) throw new PlayStopException($"The team screen shows no champion list. Screen dump: {DumpScreen("team list empty")}");
             var (w, why) = Game.Window.GameWindow.Find();
             if (w is null) throw new PlayStopException(why!);
-            var down = round < 20;
+            // The same champions shown as last time: an end of the list, so turn around.
+            var now = string.Join(",", (play.Picks ?? []).Where(p => p.Pick is { FullyVisible: true }).Select(p => p.HeroId));
+            if (now == lastShown) down = !down;
+            lastShown = now;
             if (MouseInput.Wheel(w, shown.Average(r => r.Center.X), shown.Average(r => r.Center.Y), down ? -3 : 3) is { } notSent) throw new PlayStopException("Not scrolled: " + notSent);
             await Task.Delay(350, ct);
         }

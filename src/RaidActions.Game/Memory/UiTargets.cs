@@ -179,7 +179,8 @@ public static partial class UiTargets
                 "HideButton" when n.Path.Contains("/StorageWindow/", StringComparison.Ordinal) => ("vault-close", "vaults: close"),
                 // With champions ticked in a vault's grid: left "To Collection" (the champion list), right "To <the other vault>".
                 "SingleOrLeftButton" when n.Path.Contains("/StorageWindow/", StringComparison.Ordinal) => ("vault-move-left", "vaults: left button (To Collection when champions are ticked)"),
-                "RightButton_h" when n.Path.Contains("/StorageWindow/", StringComparison.Ordinal) => ("forbidden", "vaults: right button (to the other vault; never)"),
+                // The right one moves to a vault (with vault champions ticked: the other vault); only the deposit command may click it.
+                "RightButton_h" when n.Path.Contains("/StorageWindow/", StringComparison.Ordinal) => ("vault-move-right", "vaults: right button (to a vault)"),
                 "HideButton" when n.Path.Contains("/SelectedItemWindow/", StringComparison.Ordinal) => ("popup-close-selected", "popup (selected piece): close"),
                 "HideButton" when n.Path.Contains("/EquipedItemWindow/", StringComparison.Ordinal) => ("popup-close-worn", "popup (worn piece): close"),
                 // The artifact popup's actions: never clicked by navigation (Equip only in a real run, after the go-ahead).
@@ -216,12 +217,22 @@ public static partial class UiTargets
                 }),
                 _ => ((string?)null, (string?)null),
             };
-            if (named.Item1 is { } kind) targets.Add(Make(kind, named.Item2!, null, n, n, null, forbidden: kind == "forbidden"));
+            // The vaults' move buttons carry their binding path: it says where they move the ticked champions (Bathhouse = Reserve Vault).
+            var note = named.Item1 is "vault-move-left" or "vault-move-right" ? MoveBinding(n, t) : null;
+            if (named.Item1 is { } kind) targets.Add(Make(kind, named.Item2!, null, n, n, note, forbidden: kind == "forbidden"));
         }
         // Scroll areas are not clickable elements: they are kept with their rectangles for the wheel.
         // One element found twice (an inventory item carries its context on two nested elements, both leading to the same button)
         // is one target. Different elements claiming one id stay separate, and Resolve refuses them.
         return targets.DistinctBy(t => (t.Kind, t.Id, t.Slot, t.Path, t.Rect)).ToList();
+    }
+
+    /// <summary>The binding paths on a button and the elements under it ("binding 'A', 'B'"), or null when there are none.</summary>
+    private static string? MoveBinding(UiNode button, UiTree tree)
+    {
+        var paths = tree.Nodes.Where(x => x == button || x.Path.StartsWith(button.Path + "/", StringComparison.Ordinal))
+            .Select(x => x.BindingPath).OfType<string>().Distinct().ToList();
+        return paths.Count == 0 ? null : "binding " + string.Join(", ", paths.Select(p => $"'{p}'"));
     }
 
     /// <summary>

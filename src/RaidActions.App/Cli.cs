@@ -22,6 +22,9 @@ public static class Cli
           RaidActions dry-run <plan.json>      navigate and highlight every step, never equip
           RaidActions run <plan.json>          run the plan
           RaidActions sample [<folder>]        write a made-up account and plan to try the app
+          RaidActions remove-gear <champion id>... [--then reserve|master|list] [--dry-run]
+                                               all gear off at once by moving them into the Reserve Vault, then
+                                               leave them there (default), on to the Master Vault, or back to the list
           RaidActions unequip <champion id>... [--dry-run]
                                                take off every piece these champions wear (back to the inventory),
                                                each removal checked in the account; --dry-run shows each Remove, presses none
@@ -128,6 +131,12 @@ public static class Cli
             var outIndex = Array.IndexOf(args, "--output");
             var outDir = AppPaths.Resolve(null, outIndex >= 0 && outIndex + 1 < args.Length ? args[outIndex + 1] : null).Output;
             return await VaultCommand.RunAsync(args, outDir, output, abortHook);
+        }
+        if (args.Length > 0 && args[0].Equals("remove-gear", StringComparison.OrdinalIgnoreCase))
+        {
+            var outIndex = Array.IndexOf(args, "--output");
+            var outDir = AppPaths.Resolve(null, outIndex >= 0 && outIndex + 1 < args.Length ? args[outIndex + 1] : null).Output;
+            return await RemoveGearCommand.RunAsync(args, outDir, output, abortHook);
         }
         if (args.Length > 0 && args[0].Equals("unequip", StringComparison.OrdinalIgnoreCase))
         {

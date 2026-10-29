@@ -19,11 +19,11 @@ namespace RaidActions.App.Input;
 /// <param name="upgrade">The upgrade command's driver: the popup's Upgrade and the upgrade screen's one-level Upgrade are allowed too
 /// (<see cref="UpgradeOnlyClicks"/>); swap and sell runs never have them.</param>
 public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? plan, string folder, WindowPolicy policy, Action<string> log,
-    IReadOnlySet<int>? equipSteps = null, bool sell = false, bool upgrade = false, bool vault = false, bool unequip = false) : IGameDriver, IStepPicker
+    IReadOnlySet<int>? equipSteps = null, bool sell = false, bool upgrade = false, bool vault = false, bool unequip = false, bool deposit = false) : IGameDriver, IStepPicker
 {
     /// <summary>The kinds this driver may click: <see cref="AllowedClicks"/>, plus the sell-mode clicks for the sell command.</summary>
     private bool IsAllowed(string kind) => AllowedClicks.Contains(kind) || sell && SellOnlyClicks.Contains(kind) || upgrade && UpgradeOnlyClicks.Contains(kind)
-        || vault && VaultOnlyClicks.Contains(kind);
+        || vault && VaultOnlyClicks.Contains(kind) || deposit && DepositOnlyClicks.Contains(kind);
 
     private readonly HashSet<int> _equipUnlocked = equipSteps is null ? [] : [.. equipSteps];
     private int _equipUsed;

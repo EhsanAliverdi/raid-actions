@@ -194,7 +194,12 @@ public sealed partial class LivePlayGame : ICursedCityGame
             {
                 var (_, targets, play) = await Read(ct);
                 var mine = (play.CcLevels ?? []).FirstOrDefault(x => x.StageId == MapId(level.Stage));
-                if (mine?.Open is { } t && t.NotClickable is null) return mine;
+                var (gw, gwhy) = Game.Window.GameWindow.Find();
+                if (gw is null) throw new PlayStopException(gwhy!);
+                // Clickable but under the HUD at an edge (seen 2026-10-30: level 5 at y 39 of 486, the click hit the HUD): dragged in first.
+                if (mine?.Open is { } t && t.NotClickable is null && t.Rect is { } tr
+                    && tr.Center.X > gw.Client.Width * 0.1 && tr.Center.X < gw.Client.Width * 0.9
+                    && tr.Center.Y > gw.Client.Height * 0.15 && tr.Center.Y < gw.Client.Height * 0.85) return mine;
                 // Off screen (or not built yet): drag the map towards it, by the shown levels' numbers (a district's levels run in order).
                 var shown = (play.CcLevels ?? []).Where(x => x.Open is { Rect: not null, Active: true }).ToList();
                 if (shown.Count == 0) throw new PlayStopException($"No Cursed City level is shown on the map. Screen dump: {DumpScreen("cc map empty")}");

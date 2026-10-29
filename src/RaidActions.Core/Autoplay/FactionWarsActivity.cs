@@ -108,6 +108,9 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
             {
                 var done = await game.GearTeamAsync(step.Crypt!, ctx.DryRun, ct);
                 _geared.Add(step.Crypt!.Name);
+                _removed.Remove(step.Crypt!.Name);
+                _farmAt.Remove(step.Crypt!.Name); // defeats before (gear) do not count against it
+                _defeatsInARow[step.Crypt!.Name] = 0;
                 ctx.Event(AreaId, "gear", $"{step.Crypt.Name}: {string.Join(", ", step.Crypt.TeamNames)}. {done}");
                 return $"{step.Crypt.Name} team geared";
             }
@@ -172,7 +175,8 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
             return new("strip", null, $"freeing yesterday's gear: {_day.Strip.Count} champion(s) to the Reserve Vault");
         foreach (var c in playable)
         {
-            if (s.GearTeam && !_geared.Contains(c.Name)) return new("gear", c, $"{c.Name}: gearing the team");
+            // Not geared yet, or its gear came off earlier and keys came back (they regenerate): gear it (again).
+            if (s.GearTeam && (!_geared.Contains(c.Name) || _removed.Contains(c.Name))) return new("gear", c, $"{c.Name}: gearing the team");
             return new("fight", c, $"{c.Name}: stage {Stage(c, s)} ({c.Keys} keys)");
         }
         if (s.RemoveGearAfter && !dryRun)

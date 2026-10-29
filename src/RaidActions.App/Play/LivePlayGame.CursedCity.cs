@@ -139,7 +139,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
             disabled.Add(e.HeroId);
             foreach (var (id, _) in e.Shown) disabled.Add(id);
             // Locked with every slot empty on two different levels: used in the city this rotation (seen 2026-10-30): out for every level.
-            foreach (var (id, st) in e.Shown.Append((e.HeroId, e.State)).Where(x => x.Item2 is >= 3 and < 99))
+            foreach (var (id, st) in e.Shown.Append((e.HeroId, e.State)).Where(x => x.Item2 is >= 2 and < 99 and not 7))
             {
                 var seen = _ccLockedOn.TryGetValue(id, out var levels) ? levels : _ccLockedOn[id] = [];
                 seen.Add(level.Stage.Id);
@@ -304,7 +304,10 @@ public sealed partial class LivePlayGame : ICursedCityGame
                     // The champions in the slots may be what locks it (the criterion must stay possible): empty every slot once, then pick again.
                     // A lock only counts with every slot empty (the criterion locks nobody then); else empty them and pick again.
                     // Still locked after one emptying, with the earlier members back in: out for this level (not a rotation lock: state 2).
-                    if (inSlots.Count > 0 && emptied >= 1) throw new LockedHeroException(missing, 2, []);
+                    // Disabled (2) is not the criterion (seen 2026-10-30: champions that fought in this rotation's earlier battles): every
+                    // disabled champion shown is out for this level at once, and for the rotation when disabled on two levels.
+                    if (inSlots.Count > 0 && emptied >= 1)
+                        throw new LockedHeroException(missing, pick.State.Value, [.. (play.Picks ?? []).Where(p => p.State is 2).Select(p => (p.HeroId, 2))]);
                     if (inSlots.Count > 0)
                     {
                         emptied++;

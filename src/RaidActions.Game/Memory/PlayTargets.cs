@@ -75,6 +75,7 @@ public static partial class PlayTargets
     private const string FwResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishFractionWarsDialogContext";
     private const string PveResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishPveDialogContext";
     private const string HeroAvatar = "Client.ViewModel.Contextes.Generic.HeroAvatarContext";
+    private const string SelectionSlot = "Client.ViewModel.Contextes.HeroesSelectionDialog.HeroSlotContext";
     private const string IntProperty = "Client.MVVM.Base.ViewModel.Properties.IntProperty";
     private const string BoolProperty = "Client.MVVM.Base.ViewModel.Properties.BoolProperty";
     private const string StringProperty = "Client.MVVM.Base.ViewModel.Properties.StringProperty";
@@ -251,11 +252,14 @@ public static partial class PlayTargets
                         Try(() => StringValue(g, g.Ref(c.Address, PveResult, "_stageName")), null, notes, "BattleFinishPveDialogContext._stageName"),
                         Try(() => BoolValue(g, g.Ref(c.Address, PveResult, "_nextStageAvailable")), null, notes, "BattleFinishPveDialogContext._nextStageAvailable"));
                     break;
-                case UiTargets.HeroSlotContext when t.View.StartsWith("HeroesSelectionDialog", StringComparison.Ordinal) && UnderBinding(i, "MySquad"):
+                case SelectionSlot when UnderBinding(i, "MySquad"):
                 {
-                    // Our team's slots (seen 2026-10-29: HeroSlotContext items under the group bound to MySquad; the enemy's under EnemySquad).
-                    var hero = Try(() => IntValue(g, g.Ref(c.Address, UiTargets.HeroSlotContext, "_heroId")), null, notes, "HeroSlotContext._heroId");
-                    if (hero is > 0 && n.ActiveInHierarchy) (team ??= []).Add(hero.Value);
+                    // Our team's slots (seen 2026-10-29: the team screen's own HeroSlotContext under the group bound to MySquad; the enemy's
+                    // under EnemySquad): the champion is the slot's Hero avatar's entity id; an empty slot is not filled.
+                    var filled = Try(() => BoolValue(g, g.Ref(c.Address, SelectionSlot, "_filled")), null, notes, "HeroSlotContext._filled");
+                    var avatar = Try(() => g.Ref(c.Address, SelectionSlot, "Hero"), 0UL, notes, "HeroSlotContext.Hero");
+                    var hero = avatar == 0 ? null : Try(() => (int?)g.Int(avatar, HeroAvatar, "_EntityId_k__BackingField"), null, notes, "HeroAvatarContext._EntityId");
+                    if (filled != false && hero is > 0 && n.ActiveInHierarchy) (team ??= []).Add(hero.Value);
                     break;
                 }
                 case BattleHud:

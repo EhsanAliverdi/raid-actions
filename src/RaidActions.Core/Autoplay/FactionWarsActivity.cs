@@ -37,11 +37,46 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
     private DateTime _dayAt;
     private DateOnly _date;
     private bool _stripped;
-    private readonly HashSet<string> _geared = [], _removed = [], _farming = [], _dryShown = [];
+    private readonly HashSet<string> _geared = [], _removed = [], _dryShown = [];
+    /// <summary>After a defeat: the stage to play for the rest of the day (one below the lost one; lower again after each defeat).</summary>
+    private readonly Dictionary<string, int> _farmAt = [];
     private readonly Dictionary<string, int> _defeatsInARow = [];
     private int _battles, _wins, _losses;
 
     public bool IsEnabled(AutoplaySettings settings) => settings.FactionWars.Enabled;
+
+    /// <summary>
+    /// Today's state from the events already logged today (a restarted bot keeps the day: who is geared, stripped, the stage after a
+    /// defeat, the counters). Crypts are keyed by their shown name, as in the events.
+    /// </summary>
+    public void Restore(IEnumerable<AutoplayEvent> today, DateOnly utcDay)
+    {
+        _date = utcDay;
+        foreach (var e in today.Where(e => e.Area == AreaId && DateOnly.FromDateTime(e.Utc) == utcDay))
+        {
+            var name = e.Text.Split(':')[0];
+            switch (e.Kind)
+            {
+                case "strip": _stripped = true; break;
+                case "gear": _geared.Add(name); break;
+                case "remove": _removed.Add(name); break;
+                case "battle" when System.Text.RegularExpressions.Regex.Match(e.Text, @"^(\w+) vs (.+) stage (\d+)") is { Success: true } m:
+                {
+                    var crypt = m.Groups[2].Value;
+                    var stage = int.Parse(m.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture);
+                    _battles++;
+                    if (m.Groups[1].Value == "Victory") { _wins++; _defeatsInARow[crypt] = 0; }
+                    else
+                    {
+                        _losses++;
+                        _defeatsInARow[crypt] = _defeatsInARow.GetValueOrDefault(crypt) + 1;
+                        _farmAt[crypt] = Math.Max(1, stage - 1);
+                    }
+                    break;
+                }
+            }
+        }
+    }
 
     public Decision Decide(PlayContext ctx)
     {
@@ -72,7 +107,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
             case "gear":
             {
                 var done = await game.GearTeamAsync(step.Crypt!, ctx.DryRun, ct);
-                _geared.Add(step.Crypt!.Faction);
+                _geared.Add(step.Crypt!.Name);
                 ctx.Event(AreaId, "gear", $"{step.Crypt.Name}: {string.Join(", ", step.Crypt.TeamNames)}. {done}");
                 return $"{step.Crypt.Name} team geared";
             }
@@ -80,7 +115,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
             {
                 var c = step.Crypt!;
                 var done = c.Removable.Count == 0 ? "every member is locked: gear kept" : await game.RemoveGearAsync(c.Removable, ctx.DryRun, ct);
-                _removed.Add(c.Faction);
+                _removed.Add(c.Name);
                 ctx.Event(AreaId, "remove", $"{c.Name}: keys used; the team's gear off, into the Reserve Vault. {done}");
                 return $"{c.Name}: gear removed";
             }
@@ -92,18 +127,19 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
                 if (outcome.Result == BattleResult.NotStarted)
                 {
                     // A dry run's shown Start, or (real) not enough keys for the stage: the crypt is done for today either way.
-                    _dryShown.Add(c.Faction);
+                    _dryShown.Add(c.Name);
                     ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "keys", ctx.DryRun ? $"would fight {c.Name} stage {stage}: {outcome.Text}" : $"{c.Name} stage {stage}: {outcome.Text}");
                     return "";
                 }
                 _battles++;
-                if (outcome.Result == BattleResult.Victory) { _wins++; _defeatsInARow[c.Faction] = 0; }
+                if (outcome.Result == BattleResult.Victory) { _wins++; _defeatsInARow[c.Name] = 0; }
                 else
                 {
                     _losses++;
-                    _defeatsInARow[c.Faction] = _defeatsInARow.GetValueOrDefault(c.Faction) + 1;
-                    // A defeat at the next unbeaten stage: farm the highest beaten one for the rest of the day (Ehsan's choice).
-                    if (stage > c.HighestPassed && c.HighestPassed > 0) _farming.Add(c.Faction);
+                    _defeatsInARow[c.Name] = _defeatsInARow.GetValueOrDefault(c.Name) + 1;
+                    // A defeat (it costs no key, seen 2026-10-29): one stage lower for the rest of the day (Ehsan: after a defeat at the next
+                    // stage, farm the highest beaten one; it can still lose, so each defeat steps down again until one is won).
+                    _farmAt[c.Name] = Math.Max(1, Math.Min(stage - 1, Math.Max(1, c.HighestPassed)));
                 }
                 ctx.Event(AreaId, "battle", $"{outcome.Result} vs {c.Name} stage {stage}. {outcome.Text}");
                 return $"{outcome.Result}: {c.Name} stage {stage}";
@@ -130,23 +166,23 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
     private Step? Next(FactionWarsSettings s, bool dryRun)
     {
         if (_day is null) return null;
-        var playable = _day.Open.Where(c => c.Keys > s.KeepKeys && c.Team.Count > 0 && !_dryShown.Contains(c.Faction)
-            && _defeatsInARow.GetValueOrDefault(c.Faction) < 3).ToList();
+        var playable = _day.Open.Where(c => c.Keys > s.KeepKeys && c.Team.Count > 0 && !_dryShown.Contains(c.Name)
+            && _defeatsInARow.GetValueOrDefault(c.Name) < 6).ToList();
         if (s.StripYesterdaysTeams && !_stripped && _day.Strip.Count > 0 && playable.Count > 0)
             return new("strip", null, $"freeing yesterday's gear: {_day.Strip.Count} champion(s) to the Reserve Vault");
         foreach (var c in playable)
         {
-            if (s.GearTeam && !_geared.Contains(c.Faction)) return new("gear", c, $"{c.Name}: gearing the team");
+            if (s.GearTeam && !_geared.Contains(c.Name)) return new("gear", c, $"{c.Name}: gearing the team");
             return new("fight", c, $"{c.Name}: stage {Stage(c, s)} ({c.Keys} keys)");
         }
         if (s.RemoveGearAfter && !dryRun)
-            foreach (var c in _day.Open.Where(c => _geared.Contains(c.Faction) && !_removed.Contains(c.Faction) && (c.Keys <= s.KeepKeys || _dryShown.Contains(c.Faction))))
+            foreach (var c in _day.Open.Where(c => _geared.Contains(c.Name) && !_removed.Contains(c.Name) && (c.Keys <= s.KeepKeys || _dryShown.Contains(c.Name))))
                 return new("remove", c, $"{c.Name}: keys used, removing the team's gear");
         return null;
     }
 
     private int Stage(CryptPlan c, FactionWarsSettings s) =>
-        s.Stage == CryptStage.FarmHighest || _farming.Contains(c.Faction) ? Math.Max(1, c.HighestPassed) : c.NextStage;
+        _farmAt.TryGetValue(c.Name, out var farm) ? farm : s.Stage == CryptStage.FarmHighest ? Math.Max(1, c.HighestPassed) : c.NextStage;
 
     private void NewDay(PlayContext ctx)
     {
@@ -154,7 +190,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
         if (today == _date) return;
         _date = today;
         _stripped = false;
-        _geared.Clear(); _removed.Clear(); _farming.Clear(); _dryShown.Clear(); _defeatsInARow.Clear();
+        _geared.Clear(); _removed.Clear(); _farmAt.Clear(); _dryShown.Clear(); _defeatsInARow.Clear();
         _battles = _wins = _losses = 0;
         _day = null;
     }

@@ -1008,6 +1008,33 @@
           "status": "direct"
         }
       }
+    },
+    "Client.ViewModel.Contextes.HeroesSelectionDialog.HeroSlotContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "Hero": {
+          "offset": "0x50",
+          "type": "HeroAvatarContext",
+          "field": "Hero",
+          "source": "field",
+          "status": "direct"
+        },
+        "_filled": {
+          "offset": "0x80",
+          "type": "BoolProperty",
+          "field": "_filled",
+          "source": "field",
+          "status": "direct"
+        },
+        "IsEnemy": {
+          "offset": "0x58",
+          "type": "BoolProperty",
+          "field": "IsEnemy",
+          "source": "field",
+          "status": "direct"
+        }
+      }
     }
   },
   "enums": {

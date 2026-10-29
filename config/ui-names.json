@@ -204,6 +204,11 @@
                                                                                "_name",
                                                                                "_typeId",
                                                                                "_EntityId_k__BackingField"
-                                                                           ]
+                                                                           ],
+                  "Client.ViewModel.Contextes.HeroesSelectionDialog.HeroSlotContext":  [
+                                                                                           "Hero",
+                                                                                           "_filled",
+                                                                                           "IsEnemy"
+                                                                                       ]
               }
 }

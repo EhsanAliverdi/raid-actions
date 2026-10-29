@@ -84,7 +84,9 @@ public static class AutoplayCommand
             var policy = Game.Window.WindowPolicy.Load(GameCommands.WindowConfig);
             var game = new LivePlayGame(live, ui, folder, policy, l => Print($"{DateTime.Now:HH:mm:ss} {l}"), GameCommands.LivePaths(outDir).RaidExtractorRoot, outDir);
             // Faction Wars first: its keys are for today only and its gear comes off the same day; the arena's tokens wait.
-            IActivity[] activities = [new FactionWarsActivity(game), arena];
+            var fwActivity = new FactionWarsActivity(game);
+            fwActivity.Restore(LiveAutoplayHost.Today(dir), DateOnly.FromDateTime(DateTime.UtcNow));
+            IActivity[] activities = [fwActivity, arena];
             host.GameBlocked = game.SessionTaken;
             Print($"Auto Play{(dry ? " (DRY RUN: nothing that spends is pressed)" : "")}. Settings and status: {dir}\\autoplay. Overlays: {folder}. Stop: the app, or Ctrl+Alt+Esc.");
             var engine = new AutoplayEngine(activities, game, host, dry);

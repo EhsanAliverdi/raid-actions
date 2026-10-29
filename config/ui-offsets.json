@@ -1035,6 +1035,94 @@
           "status": "direct"
         }
       }
+    },
+    "Client.ViewModel.Contextes.HeroesSelectionDialog.SelectableHeroAvatarContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "Avatar": {
+          "offset": "0x50",
+          "type": "HeroAvatarContext",
+          "field": "Avatar",
+          "source": "field",
+          "status": "direct"
+        },
+        "_avatarState": {
+          "offset": "0x58",
+          "type": "IntProperty",
+          "field": "_avatarState",
+          "source": "field",
+          "status": "direct"
+        },
+        "_lockType": {
+          "offset": "0x60",
+          "type": "IntProperty",
+          "field": "_lockType",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.CursedCity.Map.Items.CursedCityMapItemContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_id": {
+          "offset": "0x58",
+          "type": "IntProperty",
+          "field": "_id",
+          "source": "field",
+          "status": "direct"
+        },
+        "_type": {
+          "offset": "0x60",
+          "type": "IntProperty",
+          "field": "_type",
+          "source": "field",
+          "status": "direct"
+        },
+        "_state": {
+          "offset": "0x68",
+          "type": "IntProperty",
+          "field": "_state",
+          "source": "field",
+          "status": "direct"
+        },
+        "_districtId": {
+          "offset": "0x78",
+          "type": "IntProperty",
+          "field": "_districtId",
+          "source": "field",
+          "status": "direct"
+        },
+        "_label": {
+          "offset": "0x88",
+          "type": "StringProperty",
+          "field": "_label",
+          "source": "field",
+          "status": "direct"
+        },
+        "_stageId": {
+          "offset": "0x90",
+          "type": "StringProperty",
+          "field": "_stageId",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.CursedCity.Map.CursedCityMapContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_currentDifficultly": {
+          "offset": "0x98",
+          "type": "DifficultyId?",
+          "field": "_currentDifficultly",
+          "source": "field",
+          "status": "direct"
+        }
+      }
     }
   },
   "enums": {

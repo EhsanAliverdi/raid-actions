@@ -24,19 +24,25 @@ public sealed record CryptRead(int FactionId, string? Name, int? State, string? 
 /// <summary>A stage in a crypt's list (StageContext): its game id, name ("Stage 11"), state and its button.</summary>
 public sealed record StageRead(int Id, string? Name, int? State, int? ButtonState, UiTarget? Start);
 
+/// <summary>A Cursed City level on the map (CursedCityMapItemContext): stage id, state (0 closed, 1 opened, 2 completed), type (0 common, 2 boss, 4 main boss).</summary>
+public sealed record CcMapRead(int StageId, int? State, int? Type, int? District, string? Label, UiTarget? Open);
+
+/// <summary>A champion in a team screen's list (SelectableHeroAvatarContext): its id, its state (0 idle, 1 selected, 2 disabled, 3+ locked), the target that picks it.</summary>
+public sealed record TeamPickRead(int HeroId, int? State, UiTarget? Pick);
+
 /// <summary>A PvE result screen (BattleFinishPveDialogContext): 1 victory, 2 defeat, 3 draw; stars; the stage.</summary>
 public sealed record PveResultRead(int? ResultType, int? Stars, string? StageName, bool? NextStageAvailable);
 
 /// <summary>What Auto Play reads on the screens it plays: click targets and the facts next to them.</summary>
 public sealed record PlayScan(List<UiTarget> Targets, ArenaBoardRead? Arena, bool? AutoOn, ArenaResultRead? Result, List<HudResource> Hud,
     List<InboxEntry> Inbox, List<string> Notes, List<CryptRead>? Crypts = null, List<StageRead>? Stages = null, List<int>? TeamIds = null,
-    PveResultRead? Pve = null)
+    PveResultRead? Pve = null, List<CcMapRead>? CcLevels = null, List<TeamPickRead>? Picks = null)
 {
     public static PlayScan Empty => new([], null, null, null, [], [], []);
 
     public PlayScan Merge(PlayScan o) => new([.. Targets, .. o.Targets], Arena ?? o.Arena, AutoOn ?? o.AutoOn, Result ?? o.Result, [.. Hud, .. o.Hud],
         [.. Inbox, .. o.Inbox], [.. Notes, .. o.Notes], [.. Crypts ?? [], .. o.Crypts ?? []], [.. Stages ?? [], .. o.Stages ?? []],
-        [.. TeamIds ?? [], .. o.TeamIds ?? []], Pve ?? o.Pve);
+        [.. TeamIds ?? [], .. o.TeamIds ?? []], Pve ?? o.Pve, [.. CcLevels ?? [], .. o.CcLevels ?? []], [.. Picks ?? [], .. o.Picks ?? []]);
 }
 
 /// <summary>
@@ -53,7 +59,11 @@ public static partial class PlayTargets
     public const string ArenaDialogView = "ArenaDialog", ArenaMapView = "ArenaMap", ArenaHudView = "ArenaHUD", TeamView = "HeroesSelectionDialogToArena",
         BattleHudView = "BattleHUD", ArenaResultView = "BattleFinishArenaDialog", InboxView = "InboxDialog", BattleMenuView = "BattleModeSelectionDialog",
         VillageHudView = "VillageHUD", RefillView = "ResourceRefillOverlay", FwMapView = "FractionWarsMap", FwDialogView = "FractionWarsDialog",
-        FwTeamView = "HeroesSelectionDialogToFractionWars", FwResultView = "BattleFinishFractionWarsDialog";
+        FwTeamView = "HeroesSelectionDialogToFractionWars", FwResultView = "BattleFinishFractionWarsDialog",
+        CcMapView = "CursedCityMap", CcTeamView = "CursedCityHeroesSelectionDialog", CcResultView = "BattleFinishCursedCityDialog";
+
+    /// <summary>A team screen (the views where a squad is picked before a battle).</summary>
+    public static bool IsTeamView(string view) => view.StartsWith("HeroesSelectionDialog", StringComparison.Ordinal) || view.EndsWith("HeroesSelectionDialog", StringComparison.Ordinal);
 
     private const string BattleMapButton = "Client.ViewModel.Contextes.Village.HUD.BattleMapButtonContext";
     private const string InboxButton = "Client.ViewModel.Contextes.InboxButtonContext";
@@ -76,6 +86,9 @@ public static partial class PlayTargets
     private const string PveResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishPveDialogContext";
     private const string HeroAvatar = "Client.ViewModel.Contextes.Generic.HeroAvatarContext";
     private const string SelectionSlot = "Client.ViewModel.Contextes.HeroesSelectionDialog.HeroSlotContext";
+    private const string SelectableAvatar = "Client.ViewModel.Contextes.HeroesSelectionDialog.SelectableHeroAvatarContext";
+    private const string CcMapItem = "Client.ViewModel.Contextes.CursedCity.Map.Items.CursedCityMapItemContext";
+    private const string CcResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishCursedCityDialogContext";
     private const string IntProperty = "Client.MVVM.Base.ViewModel.Properties.IntProperty";
     private const string BoolProperty = "Client.MVVM.Base.ViewModel.Properties.BoolProperty";
     private const string StringProperty = "Client.MVVM.Base.ViewModel.Properties.StringProperty";
@@ -84,7 +97,7 @@ public static partial class PlayTargets
     public static readonly IReadOnlySet<string> Kinds = new HashSet<string>
     {
         "village-battle", "village-inbox", "mode-arena", "arena-classic", "arena-tab", "arena-opponent", "arena-refresh", "team-start",
-        "battle-auto", "inbox-collect", "result-close", "mode-fw", "fw-crypt", "fw-stage",
+        "battle-auto", "inbox-collect", "result-close", "mode-fw", "fw-crypt", "fw-stage", "mode-cc", "cc-level", "team-pick", "team-slot",
     };
 
     [GeneratedRegex(@"Battle|Start|Fight|Attack", RegexOptions.IgnoreCase)] private static partial Regex FightName();
@@ -107,6 +120,8 @@ public static partial class PlayTargets
         List<CryptRead>? crypts = null;
         List<StageRead>? stages = null;
         List<int>? team = null;
+        List<CcMapRead>? ccLevels = null;
+        List<TeamPickRead>? picks = null;
         PveResultRead? pve = null;
 
         IEnumerable<UiNode> Below(int i)
@@ -245,21 +260,53 @@ public static partial class PlayTargets
                     (stages ??= []).Add(new StageRead(sid, name, state, buttonState, target));
                     break;
                 }
-                case FwResult:
+                case FwResult or CcResult:
                     pve = new PveResultRead(
                         Try(() => IntValue(g, g.Ref(c.Address, PveResult, "_battleResultType")), null, notes, "BattleFinishPveDialogContext._battleResultType"),
                         Try(() => IntValue(g, g.Ref(c.Address, PveResult, "_stars")), null, notes, "BattleFinishPveDialogContext._stars"),
                         Try(() => StringValue(g, g.Ref(c.Address, PveResult, "_stageName")), null, notes, "BattleFinishPveDialogContext._stageName"),
                         Try(() => BoolValue(g, g.Ref(c.Address, PveResult, "_nextStageAvailable")), null, notes, "BattleFinishPveDialogContext._nextStageAvailable"));
                     break;
-                case SelectionSlot when UnderBinding(i, "MySquad"):
+                case var slotClass when (slotClass == SelectionSlot || slotClass.EndsWith(".SelectableHeroSlotContext", StringComparison.Ordinal))
+                    && IsTeamView(t.View) && UnderBinding(i, "MySquad"):
                 {
                     // Our team's slots (seen 2026-10-29: the team screen's own HeroSlotContext under the group bound to MySquad; the enemy's
                     // under EnemySquad): the champion is the slot's Hero avatar's entity id; an empty slot is not filled.
                     var filled = Try(() => BoolValue(g, g.Ref(c.Address, SelectionSlot, "_filled")), null, notes, "HeroSlotContext._filled");
                     var avatar = Try(() => g.Ref(c.Address, SelectionSlot, "Hero"), 0UL, notes, "HeroSlotContext.Hero");
                     var hero = avatar == 0 ? null : Try(() => (int?)g.Int(avatar, HeroAvatar, "_EntityId_k__BackingField"), null, notes, "HeroAvatarContext._EntityId");
-                    if (filled != false && hero is > 0 && n.ActiveInHierarchy) (team ??= []).Add(hero.Value);
+                    if (filled != false && hero is > 0 && n.ActiveInHierarchy)
+                    {
+                        (team ??= []).Add(hero.Value);
+                        // A filled slot: clicking it takes the champion out of the team (Cursed City sets its own team per level).
+                        targets.Add(Make("team-slot", $"team slot: #{hero}", n, Own(i), null, id: hero));
+                    }
+                    break;
+                }
+                case SelectableAvatar when IsTeamView(t.View):
+                {
+                    // A champion in the team screen's list: clicking it puts it in the first free slot.
+                    var avatar = Try(() => g.Ref(c.Address, SelectableAvatar, "Avatar"), 0UL, notes, "SelectableHeroAvatarContext.Avatar");
+                    var hero = avatar == 0 ? null : Try(() => (int?)g.Int(avatar, HeroAvatar, "_EntityId_k__BackingField"), null, notes, "HeroAvatarContext._EntityId");
+                    if (hero is not > 0) break;
+                    var state = Try(() => IntValue(g, g.Ref(c.Address, SelectableAvatar, "_avatarState")), null, notes, "SelectableHeroAvatarContext._avatarState");
+                    var target = Make("team-pick", $"team list: #{hero}", n, Own(i), $"state {state}", id: hero);
+                    targets.Add(target);
+                    (picks ??= []).Add(new TeamPickRead(hero.Value, state, target));
+                    break;
+                }
+                case CcMapItem:
+                {
+                    var stageText = Try(() => StringValue(g, g.Ref(c.Address, CcMapItem, "_stageId")), null, notes, "CursedCityMapItemContext._stageId");
+                    var id = int.TryParse(stageText, out var sid) ? sid : Try(() => IntValue(g, g.Ref(c.Address, CcMapItem, "_id")), null, notes, "CursedCityMapItemContext._id") ?? 0;
+                    if (id <= 0) break;
+                    var state = Try(() => IntValue(g, g.Ref(c.Address, CcMapItem, "_state")), null, notes, "CursedCityMapItemContext._state");
+                    var type = Try(() => IntValue(g, g.Ref(c.Address, CcMapItem, "_type")), null, notes, "CursedCityMapItemContext._type");
+                    var district = Try(() => IntValue(g, g.Ref(c.Address, CcMapItem, "_districtId")), null, notes, "CursedCityMapItemContext._districtId");
+                    var label = Try(() => StringValue(g, g.Ref(c.Address, CcMapItem, "_label")), null, notes, "CursedCityMapItemContext._label");
+                    var target = Make("cc-level", $"cursed city: level {id % 1000} ({label})", n, Own(i), $"stage {id}, state {state}, type {type}, district {district}", id: id);
+                    targets.Add(target);
+                    (ccLevels ??= []).Add(new CcMapRead(id, state, type, district, label, target));
                     break;
                 }
                 case BattleHud:
@@ -313,6 +360,7 @@ public static partial class PlayTargets
                 // The battle menu's Faction Wars card: bound like the Arena card (name to confirm live: Fraction/Faction).
                 (BattleMenuView, var b) when b.Contains("Fraction", StringComparison.OrdinalIgnoreCase) || b.Contains("FactionWars", StringComparison.OrdinalIgnoreCase)
                     => ("mode-fw", "battle menu: Faction Wars"),
+                (BattleMenuView, var b) when b.Contains("CursedCity", StringComparison.OrdinalIgnoreCase) => ("mode-cc", "battle menu: Cursed City"),
                 // The arena map's buildings: labels that follow the 3D scene (a canvas inside the view); Arena1x1 is the Classic Arena.
                 (ArenaMapView, "Arena1x1") => ("arena-classic", "arena map: Classic Arena"),
                 _ => ((string?)null, (string?)null),
@@ -335,7 +383,7 @@ public static partial class PlayTargets
             }
 
         // The team selection's Start (seen 2026-10-29: "Default_h", the big button bottom right; its Checkbox_h above is left alone).
-        if (t.View == TeamView || t.View == FwTeamView)
+        if (IsTeamView(t.View))
         {
             var start = nodes.Where(x => x.Name == "Default_h" && x.Interactable is not null && x.ActiveInHierarchy).ToList();
             if (start.Count >= 1)
@@ -352,7 +400,7 @@ public static partial class PlayTargets
         }
 
         if (rows is not null || free is not null || tab is not null) arena = new ArenaBoardRead(rows ?? [], free, freeText, loading, tab);
-        return new PlayScan(targets, arena, auto, result, hud, inbox, notes.Distinct().ToList(), crypts, stages, team?.Distinct().ToList(), pve);
+        return new PlayScan(targets, arena, auto, result, hud, inbox, notes.Distinct().ToList(), crypts, stages, team?.Distinct().ToList(), pve, ccLevels, picks);
     }
 
     /// <summary>An inbox entry that holds Classic Arena tokens (not Tag/Live arena tokens or auto-battle tickets), by its text and icon.</summary>

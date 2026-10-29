@@ -209,6 +209,22 @@
                                                                                            "Hero",
                                                                                            "_filled",
                                                                                            "IsEnemy"
-                                                                                       ]
+                                                                                       ],
+                  "Client.ViewModel.Contextes.HeroesSelectionDialog.SelectableHeroAvatarContext":  [
+                                                                                                       "Avatar",
+                                                                                                       "_avatarState",
+                                                                                                       "_lockType"
+                                                                                                   ],
+                  "Client.ViewModel.Contextes.CursedCity.Map.Items.CursedCityMapItemContext":  [
+                                                                                                   "_id",
+                                                                                                   "_type",
+                                                                                                   "_state",
+                                                                                                   "_districtId",
+                                                                                                   "_label",
+                                                                                                   "_stageId"
+                                                                                               ],
+                  "Client.ViewModel.Contextes.CursedCity.Map.CursedCityMapContext":  [
+                                                                                         "_currentDifficultly"
+                                                                                     ]
               }
 }

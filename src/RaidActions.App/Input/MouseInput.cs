@@ -134,6 +134,37 @@ public static class MouseInput
         return null;
     }
 
+    /// <summary>
+    /// A drag from client point (x1, y1) to (x2, y2): press, move in small steps (the game reads the pointer every frame), release.
+    /// Used to move a map that is larger than the window (Cursed City). Null when sent, else why not (nothing sent).
+    /// </summary>
+    public static string? Drag(GameWindowInfo w, float x1, float y1, float x2, float y2, int steps = 18)
+    {
+        if (x2 < 0 || y2 < 0 || x2 >= w.Client.Width || y2 >= w.Client.Height) return $"({x2:0},{y2:0}) is outside the client area.";
+        if (Prepare(w, x1, y1) is { } problem) return problem;
+        mouse_event(LeftDown, 0, 0, 0, IntPtr.Zero);
+        Thread.Sleep(60);
+        var old = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        try
+        {
+            for (var i = 1; i <= steps; i++)
+            {
+                var x = x1 + (x2 - x1) * i / steps;
+                var y = y1 + (y2 - y1) * i / steps;
+                SetCursorPos(w.Client.X + (int)Math.Round(x), w.Client.Y + (int)Math.Round(y));
+                Thread.Sleep(16);
+            }
+        }
+        finally
+        {
+            if (old != IntPtr.Zero) SetThreadDpiAwarenessContext(old);
+        }
+        Thread.Sleep(80);
+        mouse_event(LeftUp, 0, 0, 0, IntPtr.Zero);
+        LastSentUtc = DateTime.UtcNow;
+        return null;
+    }
+
     /// <summary>Why the game's client area is not wholly on the screen (a narrow Remote Desktop screen, a phone in portrait); null when it is.</summary>
     public static string? OffScreen(GameWindowInfo w)
     {

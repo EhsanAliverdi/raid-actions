@@ -31,9 +31,10 @@ public static class AutoplayCommand
         // --enable: play the Classic Arena whatever the settings say; --no-yield: keep playing while the person uses the PC (a watched test).
         var enable = args.Contains("--enable");
         var enableFw = args.Contains("--enable-fw");
+        var enableCc = args.Contains("--enable-cc");
         var noYield = args.Contains("--no-yield");
-        Func<AutoplaySettings, AutoplaySettings>? force = enable || enableFw || noYield
-            ? s => (enable ? s with { Enabled = true, ClassicArena = s.ClassicArena with { Enabled = true } } : s) is var a && (enableFw ? a with { Enabled = true, FactionWars = a.FactionWars with { Enabled = true } } : a) is var e && noYield
+        Func<AutoplaySettings, AutoplaySettings>? force = enable || enableFw || enableCc || noYield
+            ? s => (enable ? s with { Enabled = true, ClassicArena = s.ClassicArena with { Enabled = true } } : s) is var a && (enableFw ? a with { Enabled = true, FactionWars = a.FactionWars with { Enabled = true } } : a) is var b && (enableCc ? b with { Enabled = true, CursedCity = b.CursedCity with { Enabled = true } } : b) is var e && noYield
                 ? e with { Pacing = e.Pacing with { YieldToPersonMinutes = 0 } } : e
             : null;
 
@@ -86,7 +87,9 @@ public static class AutoplayCommand
             // Faction Wars first: its keys are for today only and its gear comes off the same day; the arena's tokens wait.
             var fwActivity = new FactionWarsActivity(game);
             fwActivity.Restore(LiveAutoplayHost.Today(dir), DateOnly.FromDateTime(DateTime.UtcNow));
-            IActivity[] activities = [fwActivity, arena];
+            var ccActivity = new CursedCityActivity(game);
+            ccActivity.Restore(LiveAutoplayHost.Today(dir));
+            IActivity[] activities = [fwActivity, ccActivity, arena];
             host.GameBlocked = game.SessionTaken;
             Print($"Auto Play{(dry ? " (DRY RUN: nothing that spends is pressed)" : "")}. Settings and status: {dir}\\autoplay. Overlays: {folder}. Stop: the app, or Ctrl+Alt+Esc.");
             var engine = new AutoplayEngine(activities, game, host, dry);

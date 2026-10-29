@@ -47,13 +47,45 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
     public string? InputBlocked()
     {
         if (!watchPerson) return null;
-        if (MouseInput.SessionProblem() is { } session) return session;
+        if (MouseInput.SessionProblem() is { } session)
+        {
+            // Ehsan (2026-10-29): "always hand the session to the console; a remote connection should not stop Auto Play". Only for a
+            // session that is already disconnected (never while he is connected): the on-demand task moves it to the PC's monitor.
+            if (session.Contains("disconnected", StringComparison.OrdinalIgnoreCase) && DateTime.UtcNow - _lastHandoff > TimeSpan.FromMinutes(2))
+            {
+                _lastHandoff = DateTime.UtcNow;
+                var ran = RunHandoff();
+                Event(new AutoplayEvent(DateTime.UtcNow, "engine", "handoff", ran is null
+                    ? "Remote Desktop disconnected: handed the session to the console so Auto Play keeps playing"
+                    : "Remote Desktop disconnected; the console handoff did not run: " + ran));
+                Thread.Sleep(5000);
+                if (MouseInput.SessionProblem() is null) return null;
+            }
+            return session;
+        }
         var (w, why) = Game.Window.GameWindow.Find();
         if (w is null) return why;
         if (w.Minimized || MouseInput.OffScreen(w) is null) return null;
         var (after, problem) = Game.Window.WindowFit.Apply(w, Game.Window.WindowFit.Plan(w, w.Client.Width, w.Client.Height));
         if (after is null) return "the game window is off the screen and could not be moved: " + problem;
         return MouseInput.OffScreen(after) is { } still ? still + " (moved it as far as it goes)" : null;
+    }
+
+    private DateTime _lastHandoff = DateTime.MinValue;
+
+    /// <summary>Runs the on-demand "Raid console handoff" task (raid-extractor scripts/disconnect-to-console.ps1); null when it ran.</summary>
+    private static string? RunHandoff()
+    {
+        try
+        {
+            var psi = new System.Diagnostics.ProcessStartInfo("schtasks.exe") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true, RedirectStandardError = true };
+            foreach (var a in new[] { "/run", "/tn", "Raid console handoff" }) psi.ArgumentList.Add(a);
+            using var p = System.Diagnostics.Process.Start(psi)!;
+            var err = p.StandardError.ReadToEnd();
+            p.WaitForExit(15000);
+            return p.ExitCode == 0 ? null : $"schtasks exit {p.ExitCode}: {err.Trim()}";
+        }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException) { return e.Message; }
     }
 
     public void WriteStatus(AutoplayStatus status)

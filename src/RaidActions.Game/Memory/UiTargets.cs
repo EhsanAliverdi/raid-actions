@@ -96,8 +96,11 @@ public static partial class UiTargets
             {
                 var heroId = IntValue(g, g.Ref(n.Context.Address, HeroSlotContext, "_heroId"));
                 if (heroId is null or <= 0) continue; // an empty or placeholder slot of the virtual list (0 or -1)
+                // _isSelected: the champion shown (and a vault grid tick); _isMarked: ticked in the champion list while the vaults are open.
                 var selected = BoolValue(g, g.Ref(n.Context.Address, HeroSlotContext, "_isSelected"));
-                targets.Add(Make("champion-tile", $"champion #{heroId}", heroId, n, ClickableIn(i), selected == true ? "selected" : null));
+                var marked = BoolValue(g, g.Ref(n.Context.Address, HeroSlotContext, "_isMarked"));
+                var tileNote = string.Join(", ", new[] { selected == true ? "selected" : null, marked == true ? "marked" : null }.OfType<string>());
+                targets.Add(Make("champion-tile", $"champion #{heroId}", heroId, n, ClickableIn(i), tileNote.Length == 0 ? null : tileNote));
                 continue;
             }
 
@@ -179,6 +182,10 @@ public static partial class UiTargets
                 "HideButton" when n.Path.Contains("/StorageWindow/", StringComparison.Ordinal) => ("vault-close", "vaults: close"),
                 // With champions ticked in a vault's grid: left "To Collection" (the champion list), right "To <the other vault>".
                 "SingleOrLeftButton" when n.Path.Contains("/StorageWindow/", StringComparison.Ordinal) => ("vault-move-left", "vaults: left button (To Collection when champions are ticked)"),
+                // The game's "Manage Gear" prompt when champions with gear go to the Reserve Vault (seen 2026-10-29): Remove (Deactivate)
+                // takes all their gear back to the storage; its Sell sells it all and is never a target.
+                "Deactivate" when t.View == "BathhouseArtifactRemovalOverlay" => ("vault-gear-remove", "reserve vault prompt: Remove all gear"),
+                "Sell" when t.View == "BathhouseArtifactRemovalOverlay" => ("forbidden", "reserve vault prompt: Sell all gear (never)"),
                 // The right one moves to a vault (with vault champions ticked: the other vault); only the deposit command may click it.
                 "RightButton_h" when n.Path.Contains("/StorageWindow/", StringComparison.Ordinal) => ("vault-move-right", "vaults: right button (to a vault)"),
                 "HideButton" when n.Path.Contains("/SelectedItemWindow/", StringComparison.Ordinal) => ("popup-close-selected", "popup (selected piece): close"),
@@ -217,8 +224,9 @@ public static partial class UiTargets
                 }),
                 _ => ((string?)null, (string?)null),
             };
-            // The vaults' move buttons carry their binding path: it says where they move the ticked champions (Bathhouse = Reserve Vault).
-            var note = named.Item1 is "vault-move-left" or "vault-move-right" ? MoveBinding(n, t) : null;
+            // The vaults' move buttons: the label the game shows on them says where they move the ticked champions (seen 2026-10-29:
+            // AddToBathhouseText_h = to the Reserve Vault, AddToVaultText_h = to the Master Vault, MoveToInventoryText_h = to the list).
+            var note = named.Item1 is "vault-move-left" or "vault-move-right" ? MoveLabel(n, t) : null;
             if (named.Item1 is { } kind) targets.Add(Make(kind, named.Item2!, null, n, n, note, forbidden: kind == "forbidden"));
         }
         // Scroll areas are not clickable elements: they are kept with their rectangles for the wheel.
@@ -227,12 +235,12 @@ public static partial class UiTargets
         return targets.DistinctBy(t => (t.Kind, t.Id, t.Slot, t.Path, t.Rect)).ToList();
     }
 
-    /// <summary>The binding paths on a button and the elements under it ("binding 'A', 'B'"), or null when there are none.</summary>
-    private static string? MoveBinding(UiNode button, UiTree tree)
+    /// <summary>The label a vault move button shows (its active "...Text_h" child), as "label 'AddToBathhouseText_h'"; null when none shows.</summary>
+    private static string? MoveLabel(UiNode button, UiTree tree)
     {
-        var paths = tree.Nodes.Where(x => x == button || x.Path.StartsWith(button.Path + "/", StringComparison.Ordinal))
-            .Select(x => x.BindingPath).OfType<string>().Distinct().ToList();
-        return paths.Count == 0 ? null : "binding " + string.Join(", ", paths.Select(p => $"'{p}'"));
+        var shown = tree.Nodes.Where(x => x.Parent == button.Index && x.ActiveInHierarchy && x.Name.EndsWith("Text_h", StringComparison.Ordinal))
+            .Select(x => x.Name).ToList();
+        return shown.Count == 0 ? null : "label " + string.Join(", ", shown.Select(x => $"'{x}'"));
     }
 
     /// <summary>

@@ -81,6 +81,7 @@
     "Client.ViewModel.Contextes.HeroesInfoDialog.HeroSlot.HeroSlotContext": [
       "_heroId",
       "_isSelected",
+      "_isMarked",
       "_slotType"
     ],
     "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Items.InventoryArtifactContext": [

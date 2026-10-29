@@ -8,9 +8,10 @@ namespace RaidActions.App.Input;
 /// Remove gear through the vaults (the remove-gear command only; Ehsan, 2026-10-29): champions moved from the champion list into the
 /// Reserve Vault lose all their gear and accessories at once, which is much faster than taking pieces off one by one. Then, as chosen:
 /// they stay there, go on to the Master Vault, or come back to the champion list. Every move is checked in the account.
-/// <para>Not yet seen in the game (written 2026-10-29 without a live look): which move button sends ticked list champions to the Reserve
-/// Vault is told by its binding path (<c>Bathhouse</c> = Reserve, <c>Storage</c> = Master), never by its place; when that is not clear
-/// the run stops and lists the buttons it saw. A game prompt after the move is confirmed only when it is about the gear.</para>
+/// <para>Which move button sends the ticked champions where is told by the label it shows (seen 2026-10-29 with four list champions
+/// ticked on the Reserve tab: SingleOrLeftButton showing <c>AddToBathhouseText_h</c>; <c>AddToVaultText_h</c> = Master Vault,
+/// <c>MoveToInventoryText_h</c> = the list), never by its place; when that is not clear the run stops and lists the buttons it saw.
+/// A game prompt after the move is confirmed only when it is about the gear.</para>
 /// </summary>
 public sealed partial class NavigatingDriver
 {
@@ -50,31 +51,31 @@ public sealed partial class NavigatingDriver
         foreach (var id in ids)
         {
             var tile = await ListTile(a, id, ct);
-            if (tile.Note?.Contains("selected") != true)
+            if (!Marked(tile))
             {
-                await Click(a, "champion-tile", id, null, (_, t) => t.Any(x => IsListTile(x, id) && x.Note?.Contains("selected") == true), $"{champions[id].Name} is ticked", ct,
+                await Click(a, "champion-tile", id, null, (_, t) => t.Any(x => IsListTile(x, id) && Marked(x)), $"{champions[id].Name} is ticked", ct,
                     view: UiState.ChampionScreenView);
                 ticked.Add(id);
             }
             log($"remove-gear: {champions[id].Name} (#{id}) ticked in the champion list");
         }
         var (_, tt) = await Read(ct);
-        var extra = tt.Where(x => x.Kind == "champion-tile" && !x.Path.Contains("/StorageWindow/", StringComparison.Ordinal) && x.Note?.Contains("selected") == true
+        var extra = tt.Where(x => x.Kind == "champion-tile" && !x.Path.Contains("/StorageWindow/", StringComparison.Ordinal) && Marked(x)
             && x.Id is { } xi && !ids.Contains(xi)).Select(x => x.Id).ToList();
         if (extra.Count > 0) throw new StopException($"Other champions are ticked too ({string.Join(", ", extra.Select(i => $"#{i}"))}); nothing moved.");
 
-        var toReserve = MoveButton(tt, "Bathhouse", "Reserve Vault");
+        var toReserve = MoveButton(tt, "AddToBathhouseText_h", "Reserve Vault");
         if (!real)
         {
             Shot(a, $"remove-gear: WOULD CLICK {toReserve.Name} ({toReserve.Note}) at {toReserve.Rect} (dry run: NOT pressed)", toReserve.Rect!.Value);
             Clicks.Add((0, $"vaults: to the Reserve Vault ({ids.Count}) (not pressed)", toReserve.Rect!.Value, false, "-"));
-            foreach (var id in ticked)   // untick again
-                await Click(a, "champion-tile", id, null, (_, t) => !t.Any(x => IsListTile(x, id) && x.Note?.Contains("selected") == true), "unticked", ct, view: UiState.ChampionScreenView);
+            await Untick(a, ids, ct);
             return [.. ids];
         }
 
-        await Click(a, toReserve.Kind, null, null, (s2, t2) => s2.Top?.Name == UiState.MessageBoxView || !t2.Any(x => x.Kind == "champion-tile" && x.Id is { } i && ids.Contains(i)
+        await Click(a, toReserve.Kind, null, null, (s2, t2) => s2.Top?.Name is UiState.MessageBoxView or GearRemovalView || !t2.Any(x => x.Kind == "champion-tile" && x.Id is { } i && ids.Contains(i)
             && !x.Path.Contains("/StorageWindow/", StringComparison.Ordinal)), "the champions leave the list (or the game asks)", ct, view: UiState.ChampionScreenView);
+        await RemoveAllGearPrompt(a, ct);
         await ConfirmGearPrompt(a, ct);
         var afterMove = (await game.Account.ReadAsync(ct)).Champions.ToDictionary(c => c.Id);
         var notMoved = ids.Where(i => !afterMove.TryGetValue(i, out var c) || !c.InBathhouse).ToList();
@@ -100,7 +101,7 @@ public sealed partial class NavigatingDriver
             if (tile.Note?.Contains("selected") != true) await TapInVault(a, id, ct);
         }
         var (_, t) = await Read(ct);
-        var toMaster = MoveButton(t, "Storage", "Master Vault");
+        var toMaster = MoveButton(t, "AddToVaultText_h", "Master Vault");
         await Click(a, toMaster.Kind, null, null, (_, t2) => !t2.Any(x => x.Kind == "champion-tile" && x.Id is { } i && ids.Contains(i) && x.Path.Contains("/StorageWindow/", StringComparison.Ordinal)),
             "the champions leave the Reserve Vault", ct, view: UiState.ChampionScreenView);
         await ConfirmGearPrompt(a, ct);
@@ -111,7 +112,7 @@ public sealed partial class NavigatingDriver
     }
 
     /// <summary>
-    /// The vault move button whose binding names <paramref name="bindingWord"/>; stops (listing every move button seen) when none or
+    /// The vault move button that shows the label <paramref name="bindingWord"/>; stops (listing every move button seen) when none or
     /// more than one does: the place of a button is never trusted.
     /// </summary>
     private UiTarget MoveButton(IReadOnlyList<UiTarget> t, string bindingWord, string where)
@@ -123,6 +124,22 @@ public sealed partial class NavigatingDriver
             throw new StopException($"Cannot tell which button moves to the {where} ({match.Count} name '{bindingWord}'); nothing moved. Buttons: "
                 + string.Join("; ", moves.Select(x => $"{x.Name} {x.Note ?? "(no binding)"}")));
         return match[0];
+    }
+
+    private const string GearRemovalView = "BathhouseArtifactRemovalOverlay";
+
+    /// <summary>
+    /// The game's "Manage Gear" prompt (moving champions that wear gear to the Reserve Vault): its Remove (Deactivate) once, which takes
+    /// all their gear back to the storage. Its Sell is a forbidden target. No prompt: nothing to do.
+    /// </summary>
+    private async Task RemoveAllGearPrompt(UiAction a, CancellationToken ct)
+    {
+        var s = await Settled(ct);
+        if (s.Top?.Name != GearRemovalView) return;
+        log("remove-gear: the game asks to remove or sell the gear: Remove");
+        _once = "vault-gear-remove";
+        await Click(a, "vault-gear-remove", null, null, (s2, _) => s2.Top?.Name != GearRemovalView, "the prompt closes", ct, view: GearRemovalView);
+        await Settled(ct);
     }
 
     /// <summary>A game prompt after a vault move: confirmed only when it is about gear (its OK/Confirm/Yes/Move/Continue button); any other stops.</summary>
@@ -144,6 +161,20 @@ public sealed partial class NavigatingDriver
         await Click(a, "message-button", ok[0].Id, null, (s2, _) => s2.Top?.Name != UiState.MessageBoxView, "the prompt closes", ct, view: UiState.MessageBoxView);
         await Settled(ct);
     }
+
+    /// <summary>Unticks every one of <paramref name="ids"/> still ticked in the champion list (also ones a stopped run left ticked).</summary>
+    private async Task Untick(UiAction a, IEnumerable<int> ids, CancellationToken ct)
+    {
+        foreach (var id in ids)
+        {
+            var (_, t) = await Read(ct);
+            if (t.Any(x => IsListTile(x, id) && Marked(x)))
+                await Click(a, "champion-tile", id, null, (_, t2) => !t2.Any(x => IsListTile(x, id) && Marked(x)), "unticked", ct, view: UiState.ChampionScreenView);
+        }
+    }
+
+    /// <summary>Ticked in the champion list while the vaults are open (HeroSlotContext._isMarked; _isSelected is the champion shown).</summary>
+    private static bool Marked(UiTarget x) => x.Note?.Split(", ").Contains("marked") == true;
 
     private static bool IsListTile(UiTarget x, int id) => x.Kind == "champion-tile" && x.Id == id && !x.Path.Contains("/StorageWindow/", StringComparison.Ordinal);
 

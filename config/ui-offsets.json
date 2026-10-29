@@ -381,6 +381,13 @@
           "source": "field",
           "status": "direct"
         },
+        "_isMarked": {
+          "offset": "0x68",
+          "type": "BoolProperty",
+          "field": "_isMarked",
+          "source": "field",
+          "status": "direct"
+        },
         "_slotType": {
           "offset": "0x90",
           "type": "IntProperty",

@@ -398,7 +398,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             if (s.Top?.Name != view) throw new StopException($"Expected {view} on top; the screen shows {s.Top?.Name}.");
             targets = targets.Where(t => t.View == view).ToList();
         }
-        if (Screen.Covering(s) is { } cover && kind is not ("manage-close" or "manage-remove" or "dialog-close" or "swap-cancel" or "swap-continue" or "back" or "message-button" or "powerup-level" or "powerup-cancel")) throw new StopException($"Unexpected popup {cover} over the champion screen.");
+        if (Screen.Covering(s) is { } cover && kind is not ("manage-close" or "manage-remove" or "vault-gear-remove" or "dialog-close" or "swap-cancel" or "swap-continue" or "back" or "message-button" or "powerup-level" or "powerup-cancel")) throw new StopException($"Unexpected popup {cover} over the champion screen.");
         if (before?.Invoke(s) is { } changed) throw new StopException(changed);
         var (t, problem) = UiTargets.Resolve(targets, kind, id, slot);
         if (t is null) throw new StopException($"{kind}: {problem}");
@@ -556,11 +556,23 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
         if (w is null) throw new StopException(why!);
         if (policy.Problem(w) is null) return;
         _before ??= WindowFit.Save(w);
-        var fit = WindowFit.Plan(w, policy.MinWidth, policy.MinHeight);
-        var (after, problem) = WindowFit.Apply(w, fit);
-        if (after is null) throw new StopException("window fit: " + problem);
-        if (policy.Problem(after) is { } still) throw new StopException("window fit: " + still);
-        log($"window fit: {(w.Minimized ? "minimized" : $"{w.Client.Width}x{w.Client.Height}")} → {after.Client.Width}x{after.Client.Height} (the minimum)");
+        var from = w.Minimized ? "minimized" : $"{w.Client.Width}x{w.Client.Height}";
+        // A minimized window is still restoring (and changing DPI) when the first size is applied: measured again and sized again.
+        for (var attempt = 1; ; attempt++)
+        {
+            var fit = WindowFit.Plan(w, policy.MinWidth, policy.MinHeight);
+            var (after, problem) = WindowFit.Apply(w, fit);
+            if (after is null) throw new StopException("window fit: " + problem);
+            if (policy.Problem(after) is not { } still)
+            {
+                log($"window fit: {from} → {after.Client.Width}x{after.Client.Height} (the minimum){(attempt > 1 ? $", attempt {attempt}" : "")}");
+                return;
+            }
+            if (attempt == 3) throw new StopException("window fit: " + still);
+            Thread.Sleep(500);
+            (w, why) = GameWindow.Find();
+            if (w is null) throw new StopException(why!);
+        }
     }
 
     /// <summary>

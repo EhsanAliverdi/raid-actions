@@ -50,7 +50,7 @@ public class CursedCityActivityTests
     [Fact]
     public async Task A_level_lost_twice_is_skipped_and_the_keys_go_to_the_highest_beaten_level()
     {
-        var (_, game, engine) = Make(stopAfter: TimeSpan.FromHours(3), cc: s => s with { GearUnused = false });
+        var (_, game, engine) = Make(stopAfter: TimeSpan.FromHours(3), cc: s => s with { GearUnused = false, LossesToSkip = 2 });
         game.Keys = 4;
         game.WinsUpTo = 5;
         game.Levels.Add(new FakeCursedCityGame.Level { Number = 5, Team = [(1, false)], Wins = 1 });

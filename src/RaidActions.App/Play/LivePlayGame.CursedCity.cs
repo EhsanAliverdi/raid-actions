@@ -18,21 +18,26 @@ public sealed partial class LivePlayGame : ICursedCityGame
     /// <summary>Champions the team screen showed locked for Cursed City (used elsewhere in the city this rotation): left out of every plan.</summary>
     private readonly HashSet<int> _ccLocked = [];
 
-    public async Task<CursedCityPlan> PlanAsync(int lossesToSkip, IReadOnlySet<int> skip, CancellationToken ct)
+    public async Task<CursedCityPlan> PlanAsync(int lossesToSkip, IReadOnlySet<int> skip, bool allowRisky, CancellationToken ct)
     {
         var (data, _, ratings, locks) = await Account(ct);
         LoadLocked(data.Progress?.CursedCity?.RotationUpdatedUtc);
-        var plan = CursedCityPlanner.Plan(data, locks, ratings, lossesToSkip, skip, _ccLocked);
+        // The readiness check (AoE control, survivability, damage, the boss's needs): NotReady levels are never played.
+        _ccCtx ??= CcContext.Load(extractorRoot, ExtractorOutput);
+        var plan = CursedCityPlanner.Plan(data, locks, ratings, lossesToSkip, skip, _ccLocked, _ccCtx, allowRisky);
         // The chosen level's own disabled champions: its team built again without them.
         if (plan.Next is { } next && _ccDisabled.TryGetValue(next.Stage.Id, out var off) && off.Count > 0)
         {
-            var team = CursedCityPlanner.BuildTeam(next.Stage, [.. data.Champions.Where(c => (c.Level > 1 || c.Rank > 1) && !_ccLocked.Contains(c.Id) && !off.Contains(c.Id))], locks, ratings);
-            plan = plan with { Next = next with { Team = team } };
+            var team = CursedCityPlanner.BuildTeam(next.Stage, [.. data.Champions.Where(c => (c.Level > 1 || c.Rank > 1) && !_ccLocked.Contains(c.Id) && !off.Contains(c.Id))], locks, ratings, _ccCtx);
+            var byId = data.Champions.ToDictionary(c => c.Id);
+            plan = plan with { Next = next with { Team = team, Readiness = _ccCtx is null || team.Members.Count == 0 ? null
+                : CursedCityReadiness.Assess(next.Stage, [.. team.Members.Select(m => byId[m.Id])], _ccCtx) } };
         }
         return plan;
     }
 
     private DateTime? _ccRotation;
+    private CcContext? _ccCtx;
     private string LockedFile => Path.Combine(ExtractorOutput, "autoplay", "cc-locked.json");
 
     /// <summary>The champions locked in the city this rotation, kept in a file (a restarted bot does not learn them again); a new rotation clears them.</summary>

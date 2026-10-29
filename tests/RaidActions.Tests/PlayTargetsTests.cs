@@ -56,7 +56,8 @@ public class PlayTargetsTests
             N("Arena", ctx: g.Ctx("Client.ViewModel.Contextes.ArenaDialogContext", new() { ["_tabIndex"] = g.Prop(0) })),
             N("Arena/BattleTab", ctx: g.Ctx("Client.ViewModel.Contextes.ArenaDialog.ArenaBattleTabContext",
                 new() { ["_freeRefreshAvailable"] = g.Prop(false), ["_isLoading"] = g.Prop(false), ["_freeRefreshTimeLeft"] = g.Prop("12:30") })),
-            N("Arena/BattleTab/RefreshButton", 50, interactable: true),
+            N("Arena/BattleTab/RefreshBlock/FreeResfreshAvailable_h/BTN_1", 50, interactable: true),
+            N("Arena/BattleTab/RefreshBlock/FreeResfreshNotAvailable_h/BTN_1_MultiResources_1Row", 50, interactable: true),
             N("Arena/BattleTab/Rows/Row", 100, ctx: g.Opponent(4_000_000_123L, "Alpha", 85_000)),
             N("Arena/BattleTab/Rows/Row/AvatarButton", 100, interactable: true),
             N("Arena/BattleTab/Rows/Row/BattleButton", 100, interactable: true),
@@ -72,14 +73,15 @@ public class PlayTargetsTests
         Assert.Equal("12:30", board.FreeRefreshText);
         Assert.Equal([4_000_000_123L, 7L], board.Rows.Select(r => r.UserId));
         var alpha = board.Rows[0];
-        Assert.Equal(("Alpha", 85_000, 0, true), (alpha.Name, alpha.Power, alpha.Status, alpha.Playable));
+        Assert.Equal(("Alpha", 85_000, 0, true), (alpha.Name, alpha.Power, alpha.Status, alpha.Playable)); // team power from the row text, not the account's
         Assert.Equal(1, board.Rows[1].Status);
         // The row's own Battle button, not its avatar (which opens the player's profile).
         Assert.EndsWith("/BattleButton", alpha.Battle!.Path);
         Assert.Null(alpha.Battle.NotClickable);
         Assert.Equal(4_000_000_123L, alpha.Battle.Key);
         var refresh = scan.Targets.Single(t => t.Kind == "arena-refresh");
-        Assert.EndsWith("/RefreshButton", refresh.Path);
+        Assert.EndsWith("/FreeResfreshAvailable_h/BTN_1", refresh.Path);
+        Assert.True(scan.Targets.Single(t => t.Path.EndsWith("BTN_1_MultiResources_1Row")).Forbidden); // the paid refresh (gems): never
         Assert.StartsWith("not free now", refresh.Note);
     }
 

@@ -26,7 +26,6 @@
                   "Client.ViewModel.DTO.ViewKey",
                   "Client.RaidApp.ViewVisibility",
                   "Client.RaidApp.ViewState",
-                  "SharedModel.Meta.Account.ResourceTypeId",
                   "SharedModel.Meta.Battle.Arena.ArenaOpponentStatus"
               ],
     "reviewed":  {

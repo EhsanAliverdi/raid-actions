@@ -98,6 +98,10 @@ public sealed class UnityUi(INativeMemory mem, NativeLayout L, IGameObjects g)
         var paths = new Dictionary<int, string>();
         string? problem = null;
         float scale = 0;
+        // A view with no canvas above it (a 3D scene such as the arena map) can hold screen-space canvases of its own (labels that
+        // follow scene objects, WorldSpaceOverlay): below such a canvas root, rectangles are read as under a top canvas.
+        var rects = new HashSet<int>();
+        var nested = new HashSet<int>();
         for (var k = 0; k < count; k++)
         {
             var i = order[k];
@@ -127,7 +131,10 @@ public sealed class UnityUi(INativeMemory mem, NativeLayout L, IGameObjects g)
             paths[i] = k == 0 ? name : $"{paths.GetValueOrDefault(parent, "?")}/{name}";
             var isRect = components.Count > 0 && components[0].TypeIndex == L.RectTransformTypeIndex;
             ClientRect? screen = null;
-            if (isRect && problem is null)
+            if (isRect) rects.Add(i);
+            if (isRect && problem is not null && canvas < 0 && (nested.Contains(parent) || !rects.Contains(parent) && CanvasCheck(world[i], clientWidth, clientHeight).Problem is null))
+                nested.Add(i);
+            if (isRect && (problem is null || nested.Contains(i)))
             {
                 var r = F32s(t + (ulong)L.RectRect, 4);
                 screen = ToClient(world[i], r[0], r[1], r[2], r[3], clientHeight);

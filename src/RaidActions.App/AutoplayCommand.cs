@@ -28,8 +28,13 @@ public static class AutoplayCommand
         var dry = args.Contains("--dry-run");
         var once = args.Contains("--once");
         var fake = args.Contains("--fake");
-        Func<AutoplaySettings, AutoplaySettings>? force = args.Contains("--enable")
-            ? s => s with { Enabled = true, ClassicArena = s.ClassicArena with { Enabled = true } } : null;
+        // --enable: play the Classic Arena whatever the settings say; --no-yield: keep playing while the person uses the PC (a watched test).
+        var enable = args.Contains("--enable");
+        var noYield = args.Contains("--no-yield");
+        Func<AutoplaySettings, AutoplaySettings>? force = enable || noYield
+            ? s => (enable ? s with { Enabled = true, ClassicArena = s.ClassicArena with { Enabled = true } } : s) is var e && noYield
+                ? e with { Pacing = e.Pacing with { YieldToPersonMinutes = 0 } } : e
+            : null;
 
         using var hold = BotLock.TakeAutoplay();
         if (hold is null)

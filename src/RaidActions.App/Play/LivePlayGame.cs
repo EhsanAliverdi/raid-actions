@@ -47,6 +47,8 @@ public sealed class LivePlayGame(LiveGame game, UnityUi ui, string folder, Windo
     public async Task GoHomeAsync(CancellationToken ct)
     {
         _nav.FitWindow();
+        // The arena result has no back button (a tap closes it), so the gear driver's way home cannot leave it.
+        if (Has(await ReadState(ct), PlayTargets.ArenaResultView)) await LeaveResult(ct);
         await _nav.GoHome(Action("go home"), ct);
     }
 
@@ -297,8 +299,21 @@ public sealed class LivePlayGame(LiveGame game, UnityUi ui, string folder, Windo
     /// <summary>The arena result screen left by its way back (never Replay or Next), until the battle flow is closed.</summary>
     private async Task LeaveResult(CancellationToken ct)
     {
-        await Click("back", null, (s2, _) => !Has(s2, PlayTargets.ArenaResultView), "the result screen closes", ct, view: PlayTargets.ArenaResultView,
-            within: TimeSpan.FromSeconds(15));
+        // Up to three taps, a little longer apart each time (a tap during the result's animations can be ignored).
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await Click("result-close", null, (s2, _) => !Has(s2, PlayTargets.ArenaResultView), "the result screen closes", ct, view: PlayTargets.ArenaResultView,
+                    within: TimeSpan.FromSeconds(6));
+                break;
+            }
+            catch (PlayStopException) when (attempt < 3)
+            {
+                log($"autoplay: the result screen is still open; tapping again ({attempt + 1} of 3)");
+                await Task.Delay(1500 * attempt, ct);
+            }
+        }
         await Settled(ct);
     }
 
@@ -347,8 +362,11 @@ public sealed class LivePlayGame(LiveGame game, UnityUi ui, string folder, Windo
         if (kind == "dialog-close") all = all.Where(t => t.View == top && t.Path.EndsWith("/BTN_Close1", StringComparison.Ordinal)).ToList();
         var ok = all.Where(t => t.NotClickable is null).ToList();
         if (ok.Count != 1)
-            throw new PlayStopException(all.Count == 0 ? $"{kind}: not on screen (top {top})." : ok.Count > 1 ? $"{kind}: {ok.Count} clickable elements claim it; refused."
-                : $"{kind}: {string.Join("; ", all.Select(t => $"{t.NotClickable} ({t.Note})").Distinct())}.");
+        {
+            var dump = DumpScreen($"{kind} not found");
+            throw new PlayStopException((all.Count == 0 ? $"{kind}: not on screen (top {top})." : ok.Count > 1 ? $"{kind}: {ok.Count} clickable elements claim it; refused."
+                : $"{kind}: {string.Join("; ", all.Select(t => $"{t.NotClickable} ({t.Note})").Distinct())}.") + $" Screen dump: {dump}");
+        }
         var target = ok[0];
         var (w, why) = GameWindow.Find();
         if (w is null) throw new PlayStopException(why!);
@@ -373,6 +391,37 @@ public sealed class LivePlayGame(LiveGame game, UnityUi ui, string folder, Windo
         }
         var end = await ReadState(ct);
         throw new PlayStopException($"After clicking {target.Name}, expected {expected}; the screen shows {Top(end)}.");
+    }
+
+    /// <summary>
+    /// The visible screens' elements (active ones: name, binding path, bound context, rectangle, clickable) to a text file in the run
+    /// folder, so a target rule that found nothing can be fixed from one run. Returns the file.
+    /// </summary>
+    private string DumpScreen(string why)
+    {
+        var file = Path.Combine(folder, $"{DateTime.Now:HHmmss}-screen.txt");
+        try
+        {
+            var (s, _) = game.ReadUi();
+            var (w, _) = GameWindow.Find();
+            var lines = new List<string> { why, $"top: {s?.Top?.Name}" };
+            if (s is not null && w is not null)
+                foreach (var (name, view) in game.Views().Where(v => s.Active.Any(a => a.Visible && a.Name == v.Name) && !v.Name.EndsWith("NotificationsView", StringComparison.Ordinal)))
+                {
+                    try
+                    {
+                        var tree = ui.Read(view, name, w.Client.Width, w.Client.Height);
+                        lines.Add($"== {name}");
+                        foreach (var n in tree.Nodes.Where(n => n.ActiveInHierarchy && (n.Interactable is not null || n.Context is not null || n.BindingPath is not null)))
+                            lines.Add($"{new string(' ', Math.Min(n.Depth, 30))}{n.Name}  binding '{n.BindingPath}'  ctx {n.Context?.Class.Split('.')[^1]}  {n.Screen}  {(n.Interactable is { } ia ? (ia ? "CLICKABLE" : "disabled") : "")}");
+                    }
+                    catch (Exception e) when (e is UiReadException or RaidExtractor.ReadCheckException) { lines.Add($"== {name}: {e.Message}"); }
+                }
+            Directory.CreateDirectory(folder);
+            File.WriteAllLines(file, lines);
+            return file;
+        }
+        catch (IOException e) { return "(not written: " + e.Message + ")"; }
     }
 
     private static bool IsPurchase(string view) =>

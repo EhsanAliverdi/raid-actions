@@ -65,7 +65,7 @@ public static partial class PlayTargets
     public static readonly IReadOnlySet<string> Kinds = new HashSet<string>
     {
         "village-battle", "village-inbox", "mode-arena", "arena-classic", "arena-tab", "arena-opponent", "arena-refresh", "team-start",
-        "battle-auto", "inbox-collect",
+        "battle-auto", "inbox-collect", "result-close",
     };
 
     [GeneratedRegex(@"Battle|Start|Fight|Attack", RegexOptions.IgnoreCase)] private static partial Regex FightName();
@@ -149,14 +149,14 @@ public static partial class PlayTargets
                     free = Try(() => BoolValue(g, g.Ref(c.Address, BattleTab, "_freeRefreshAvailable")), null, notes, "ArenaBattleTabContext._freeRefreshAvailable");
                     loading = Try(() => BoolValue(g, g.Ref(c.Address, BattleTab, "_isLoading")), null, notes, "ArenaBattleTabContext._isLoading");
                     freeText = Try(() => StringValue(g, g.Ref(c.Address, BattleTab, "_freeRefreshTimeLeft")), null, notes, "ArenaBattleTabContext._freeRefreshTimeLeft");
-                    var (refresh, why) = Named(i, RefreshName(), null);
-                    // The refresh button outside the tab's own subtree (a header): looked for in the whole view below.
-                    if (refresh is null)
-                    {
-                        var all = nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && (RefreshName().IsMatch(x.Name) || x.BindingPath is { } bp && RefreshName().IsMatch(bp))).ToList();
-                        if (all.Count == 1) (refresh, why) = (all[0], "found outside the battle tab");
-                    }
-                    targets.Add(Make("arena-refresh", "arena: Refresh", n, refresh, (free == true ? "free now" : "not free now") + (why is null ? "" : "; " + why)));
+                    // The refresh (seen 2026-10-29): RefreshBlock/FreeResfreshAvailable_h/BTN_1 is the free one (the game's spelling);
+                    // RefreshBlock/FreeResfreshNotAvailable_h/BTN_1_MultiResources_1Row is the paid one (gems): never clicked.
+                    var freeButtons = SelfAndBelow(i).Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Name == "BTN_1"
+                        && x.Path.Contains("/FreeResfreshAvailable_h/", StringComparison.Ordinal)).ToList();
+                    targets.Add(Make("arena-refresh", "arena: Refresh (free)", n, freeButtons.Count == 1 ? freeButtons[0] : null,
+                        (free == true ? "free now" : "not free now") + (freeButtons.Count == 1 ? "" : $"; {freeButtons.Count} free refresh buttons shown")));
+                    foreach (var paid in SelfAndBelow(i).Where(x => x.Interactable is not null && x.Path.Contains("/FreeResfreshNotAvailable_h/", StringComparison.Ordinal)))
+                        targets.Add(Make("forbidden", "arena: paid refresh (gems, never)", paid, paid, null) with { Forbidden = true });
                     rows ??= [];
                     break;
                 }
@@ -167,17 +167,19 @@ public static partial class PlayTargets
                     var id = Try(() => g.Long(o, Opponent, "UserId"), 0L, notes, "ArenaOpponent.UserId");
                     if (id == 0) break;
                     var name = Try(() => g.String(o, Opponent, "Name"), null, notes, "ArenaOpponent.Name");
-                    var power = Try(() => g.Int(o, Opponent, "TotalPower"), 0, notes, "ArenaOpponent.TotalPower");
+                    // The arena team's power is the row's text ("198.04K"); ArenaOpponent.TotalPower is the whole account (seen 2026-10-29).
+                    var accountPower = Try(() => g.Int(o, Opponent, "TotalPower"), 0, notes, "ArenaOpponent.TotalPower");
+                    var teamText = Try(() => StringValue(g, g.Ref(c.Address, CurrentOpponent, "_teamPower")), null, notes, "CurrentOpponentContext._teamPower");
+                    var power = RaidExtractor.Autoplay.GameText.Power(teamText) is { } tp ? (int)tp : 0;
                     var status = Try(() => g.Int(o, Opponent, "Status"), -1, notes, "ArenaOpponent.Status");
                     var playable = Try(() => BoolValue(g, g.Ref(c.Address, CurrentOpponent, "_playable")), null, notes, "CurrentOpponentContext._playable") == true;
                     var quarantine = Try(() => BoolValue(g, g.Ref(c.Address, CurrentOpponent, "_onQuarantine")), null, notes, "CurrentOpponentContext._onQuarantine") == true;
-                    var teamPower = Try(() => StringValue(g, g.Ref(c.Address, CurrentOpponent, "_teamPower")), null, notes, "CurrentOpponentContext._teamPower");
                     var (button, why) = Named(i, FightName(), NotFightName());
                     var target = Make("arena-opponent", $"arena: Battle {name ?? "?"} ({power:N0})", n, button,
-                        $"user {id}, power {power:N0}, status {status}, {(playable ? "playable" : "not playable")}" + (why is null ? "" : "; " + why), key: id);
+                        $"user {id}, team power {power:N0} (account {accountPower:N0}), status {status}, {(playable ? "playable" : "not playable")}" + (why is null ? "" : "; " + why), key: id);
                     targets.Add(target);
                     rows ??= [];
-                    rows.Add(new ArenaRow(id, name, power, status, playable, quarantine, teamPower, target));
+                    rows.Add(new ArenaRow(id, name, power, status, playable, quarantine, teamText, target));
                     break;
                 }
                 case BattleHud:
@@ -214,6 +216,48 @@ public static partial class PlayTargets
                     break;
                 }
             }
+        }
+
+        // Buttons the game binds by path rather than by a context of their own (seen 2026-10-29: the village HUD's sub-contexts are
+        // fields of VillageHUDContext, bound by name: WorldMapButton → "BattleMap", InboxButton → "Inbox").
+        for (var i = 0; i < nodes.Count; i++)
+        {
+            var n = nodes[i];
+            if (n.BindingPath is not { } bp || !n.ActiveInHierarchy) continue;
+            var byPath = (t.View, bp) switch
+            {
+                (VillageHudView, "BattleMap") => ("village-battle", "village: Battle"),
+                (VillageHudView, "Inbox") => ("village-inbox", "village: Inbox"),
+                // The battle menu's Arena card (seen 2026-10-29: "Arena" bound to Arenas, its clickable Panel below).
+                (BattleMenuView, "Arenas") => ("mode-arena", "battle menu: Arena"),
+                // The arena map's buildings: labels that follow the 3D scene (a canvas inside the view); Arena1x1 is the Classic Arena.
+                (ArenaMapView, "Arena1x1") => ("arena-classic", "arena map: Classic Arena"),
+                _ => ((string?)null, (string?)null),
+            };
+            if (byPath.Item1 is not { } kind) continue;
+            var own = Own(i);
+            if (own is not null && !targets.Any(x => x.Kind == kind && x.Path == own.Path)) targets.Add(Make(kind, byPath.Item2!, n, own, $"binding '{bp}'"));
+        }
+
+        // The arena result closes on a tap (seen 2026-10-29: "CloseBlock", a click area with no button, over the lower part of the
+        // screen with the champion avatars on it): the target is a strip at its bottom, clear of the avatars.
+        if (t.View == ArenaResultView)
+            foreach (var cb in nodes.Where(x => x.Name == "CloseBlock" && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+            {
+                // Its "Content" child is the RETURN TO ARENA bar (seen 2026-10-29): the middle of that bar.
+                var bar = nodes.FirstOrDefault(x => x.Parent == cb.Index && x.Name == "Content" && x.ActiveInHierarchy && x.Screen is not null)?.Screen ?? cb.Screen!.Value;
+                var middle = new ClientRect(bar.X + bar.Width * 0.35f, bar.Y + bar.Height * 0.3f, bar.Width * 0.3f, bar.Height * 0.4f);
+                targets.Add(new UiTarget("result-close", "arena result: Return to Arena", null, t.View, middle, true, true, true, false, cb.Path, "the RETURN TO ARENA bar",
+                    ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
+            }
+
+        // The team selection's Start (seen 2026-10-29: "Default_h", the big button bottom right; its Checkbox_h above is left alone).
+        if (t.View == TeamView)
+        {
+            var start = nodes.Where(x => x.Name == "Default_h" && x.Interactable is not null && x.ActiveInHierarchy).ToList();
+            if (start.Count >= 1)
+                targets.Add(Make("team-start", "team selection: Start", start[0], start.Count == 1 ? start[0] : null,
+                    start.Count == 1 ? null : $"{start.Count} elements named Default_h"));
         }
 
         // The arena dialog's tabs (toggles in the ArenaDialog view, in their order): tab 0 is the battle tab.

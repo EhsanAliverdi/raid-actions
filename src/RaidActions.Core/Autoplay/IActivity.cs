@@ -38,7 +38,7 @@ public sealed class PlayContext(AutoplaySettings settings, IPlayGame game, IAuto
     /// <summary>The regenerating resources, by the game's resource name (Token, Energy).</summary>
     public Dictionary<string, ResourceClock> Clocks { get; } = new()
     {
-        ["Token"] = new ResourceClock("Token", 10, TimeSpan.FromMinutes(12)),
+        ["Token"] = new ResourceClock("Token", 10, TimeSpan.FromMinutes(60)),
         ["Energy"] = new ResourceClock("Energy", 130, TimeSpan.FromMinutes(3)),
     };
 

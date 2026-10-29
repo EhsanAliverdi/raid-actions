@@ -9,6 +9,10 @@
 - raid-extractor's [CLAUDE.md](../raid-extractor/CLAUDE.md) has the shared hard rules (read-only memory, what is never committed,
   allow-lists, testing on the real game: dry run first, then a small real run after Ehsan's go-ahead).
 
+## Auto Play
+- The bot that plays the game: [docs/AUTOPLAY.md](docs/AUTOPLAY.md) (layers, target rules, safety, adding an area); the plan is
+  raid-extractor's plan/autoplay.md. Run `autoplay-explore` before trusting a new target rule live.
+
 ## This repo
 - raid-actions never modifies raid-extractor. RaidExtractor.Core is compiled from source; when it changes, review and accept the lock:
   `dotnet build -p:AcceptCoreChanges=true`, commit `src/RaidActions.ExtractorCore/core-sources.lock`.

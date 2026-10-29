@@ -550,7 +550,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
     /// When the window is minimized or below the minimum: restores it to the minimum size (the smallest that keeps click targets
     /// big enough), remembering where it was. Any other size is used as it is.
     /// </summary>
-    private void FitWindow()
+    public void FitWindow()
     {
         var (w, why) = GameWindow.Find();
         if (w is null) throw new StopException(why!);

@@ -10,6 +10,10 @@ namespace RaidActions.App.Input;
 /// </summary>
 public static class MouseInput
 {
+    /// <summary>When this process last sent input (a click, a wheel turn, the keystroke that brings the game to the front): Auto Play
+    /// tells the person's input from its own by it.</summary>
+    public static DateTime LastSentUtc { get; private set; } = DateTime.MinValue;
+
     /// <summary>Brings the game to the front if it is not; the reason it could not, or null.</summary>
     public static string? EnsureForeground(GameWindowInfo w)
     {
@@ -20,7 +24,11 @@ public static class MouseInput
         for (var attempt = 0; attempt < 2; attempt++)
         {
             foreach (var way in Ways)
-                if (way(w.Handle)) return null;
+            {
+                var ok = way(w.Handle);
+                LastSentUtc = DateTime.UtcNow;
+                if (ok) return null;
+            }
             Thread.Sleep(500);
         }
         return "Could not bring the game window to the front.";
@@ -97,6 +105,7 @@ public static class MouseInput
         mouse_event(LeftDown, 0, 0, 0, IntPtr.Zero);
         Thread.Sleep(random.Next(45, 95));
         mouse_event(LeftUp, 0, 0, 0, IntPtr.Zero);
+        LastSentUtc = DateTime.UtcNow;
         return null;
     }
 
@@ -113,12 +122,14 @@ public static class MouseInput
         if (single)
         {
             mouse_event(WheelFlag, 0, 0, Math.Clamp(notches, -250, 250) * 120, IntPtr.Zero);
+            LastSentUtc = DateTime.UtcNow;
             return null;
         }
         for (var i = 0; i < Math.Abs(notches); i++)
         {
             mouse_event(WheelFlag, 0, 0, Math.Sign(notches) * 120, IntPtr.Zero);
             Thread.Sleep(gapMs);
+            LastSentUtc = DateTime.UtcNow;
         }
         return null;
     }
@@ -138,7 +149,9 @@ public static class MouseInput
             if (sx < vx || sy < vy || sx >= vx + vw || sy >= vy + vh)
                 return $"({sx},{sy}) is off the screen ({vw}x{vh} at ({vx},{vy})): the game window does not fit the screen. Use a screen at least as large as the window (Remote Desktop in landscape, or a larger resolution).";
             if (under != w.Handle) return $"The window under ({sx},{sy}) is not the game.";
-            if (!SetCursorPos(sx, sy) || !GetCursorPos(out var at) || at.X != sx || at.Y != sy) return "Could not move the cursor to the point.";
+            var moved = SetCursorPos(sx, sy);
+            LastSentUtc = DateTime.UtcNow;
+            if (!moved || !GetCursorPos(out var at) || at.X != sx || at.Y != sy) return "Could not move the cursor to the point.";
         }
         finally
         {

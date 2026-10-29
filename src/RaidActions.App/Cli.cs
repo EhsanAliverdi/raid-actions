@@ -37,6 +37,12 @@ public static class Cli
                                                targets, one level at a time; stops before an attempt it cannot pay for;
                                                --dry-run opens each piece's upgrade screen and closes it: nothing is upgraded
 
+          RaidActions autoplay [--dry-run] [--once] [--fake] [--enable]
+                                               Auto Play (raid-extractor's Auto Play page starts and stops it): plays the
+                                               areas switched on in the settings (Classic Arena); --dry-run presses nothing
+                                               that spends; --once stops when nothing is to be done now; --fake: no game
+          RaidActions autoplay-explore         read only: what Auto Play sees on the open screen (targets, board, timers)
+
         Read-only, against the running game (no input, never brings it to the front):
           RaidActions window                   find the game window: size, DPI, state, usable for clicks
           RaidActions window fit [--size WxH]  restore / size the game window to the minimum (or the given size)
@@ -116,6 +122,19 @@ public static class Cli
     /// <param name="abortHook">Receives the session's abort, for Ctrl+C and the kill switch.</param>
     public static async Task<int> RunAsync(string[] args, TextWriter output, TextReader input, bool interactive, Action<Action>? abortHook = null)
     {
+        if (args.Length > 0 && (args[0].Equals("autoplay", StringComparison.OrdinalIgnoreCase) || args[0].Equals("autoplay-explore", StringComparison.OrdinalIgnoreCase)))
+        {
+            var outIndex = Array.IndexOf(args, "--output");
+            var outDir = AppPaths.Resolve(null, outIndex >= 0 && outIndex + 1 < args.Length ? args[outIndex + 1] : null).Output;
+            return await AutoplayCommand.RunAsync(args, outDir, output, abortHook);
+        }
+        // One bot at a time: while Auto Play plays, the commands that click the game refuse.
+        if (args.Length > 0 && args[0].ToLowerInvariant() is "run" or "dry-run" or "go-home" or "sell" or "upgrade" or "vault-open" or "vault-withdraw"
+            or "remove-gear" or "unequip" or "restart-game" && Play.BotLock.AutoplayRunning())
+        {
+            output.WriteLine("Auto Play is running: stop it first (the app's Auto Play page, or Ctrl+Alt+Esc). One bot at a time.");
+            return Refused;
+        }
         if (args.Length > 0 && args[0].Equals("go-home", StringComparison.OrdinalIgnoreCase))
         {
             var outIndex = Array.IndexOf(args, "--output");

@@ -1,0 +1,460 @@
+using RaidActions.App.Input;
+using RaidActions.Autoplay;
+using RaidActions.Execution;
+using RaidActions.Game.Dry;
+using RaidActions.Game.Memory;
+using RaidActions.Game.Window;
+using RaidExtractor.Autoplay;
+
+namespace RaidActions.App.Play;
+
+/// <summary>
+/// Auto Play's hands on the running game (plan/autoplay.md): the Classic Arena flow and the inbox, with clicks only on the play
+/// targets (<see cref="PlayTargets"/>) and the back/close elements, each resolved fresh from memory right before it, sent only to
+/// Raid's window and followed by a read that must show the expected change; anything else stops the turn (the engine sends the game
+/// home). Never a gem: a refresh only when the game says it is free, and any purchase or refill window is closed. A dry run shows
+/// the clicks that would spend something (overlay pictures) and presses none of them.
+/// </summary>
+public sealed class LivePlayGame(LiveGame game, UnityUi ui, string folder, WindowPolicy policy, Action<string> log) : IPlayGame
+{
+    private readonly NavigatingDriver _nav = new(game, ui, null, folder, policy, log);
+    private readonly Random _random = new();
+    private int _shot;
+
+    /// <summary>The kinds this game may click: the play targets and the ways back. Nothing else, ever.</summary>
+    private static readonly HashSet<string> Allowed = [.. PlayTargets.Kinds, "back", "dialog-close", "screen-close"];
+
+    private static readonly string[] BattleViews = ["Battle", "BattleHUD", "BattleLoadingDialog"];
+
+    // ------------------------------------------------------------------ IPlayGame
+
+    public async Task<GameResources> ReadResourcesAsync(CancellationToken ct)
+    {
+        var account = await game.Account.ReadAsync(ct);
+        double R(string name) => account.Account.Resources.TryGetValue(name, out var v) ? v : 0;
+        TimeSpan? timer = null;
+        int? cap = null;
+        // The HUD's own counter (the arena screens show the tokens with "next in" and "7/10").
+        var (s, _, play) = await Read(ct);
+        if (play.Hud.FirstOrDefault(h => h.Resource == "Token") is { } hud)
+        {
+            timer = GameText.TimeLeft(hud.Timer);
+            cap = GameText.Amount(hud.Value)?.Max;
+        }
+        return new GameResources(DateTime.UtcNow, R("Token"), R("Energy"), R("Gem"), timer, null, cap);
+    }
+
+    public async Task GoHomeAsync(CancellationToken ct)
+    {
+        _nav.FitWindow();
+        await _nav.GoHome(Action("go home"), ct);
+    }
+
+    public async Task<ArenaBoard> OpenClassicArenaAsync(CancellationToken ct)
+    {
+        _nav.FitWindow();
+        for (var hop = 0; hop < 8; hop++)
+        {
+            var s = await Settled(ct);
+            if (s.InBattle && !Has(s, PlayTargets.ArenaResultView))
+            {
+                log("autoplay: a battle is running; waiting for it to end (no input)");
+                await WaitBattle(ct);
+                continue;
+            }
+            if (Has(s, PlayTargets.ArenaResultView)) { await LeaveResult(ct); continue; }
+            if (OnArena(s)) return await Board(ct);
+            if (Top(s) == PlayTargets.TeamView) { await Back(PlayTargets.TeamView, ct); continue; }
+            if (Has(s, PlayTargets.ArenaMapView) && Top(s) is PlayTargets.ArenaMapView or PlayTargets.ArenaHudView)
+            {
+                await Click("arena-classic", null, (s2, _) => OnArena(s2), "the Classic Arena opens", ct);
+                continue;
+            }
+            if (Top(s) == PlayTargets.BattleMenuView)
+            {
+                await Click("mode-arena", null, (s2, _) => Has(s2, PlayTargets.ArenaMapView), "the arena map opens", ct);
+                continue;
+            }
+            if (!NavigatingDriver.AtVillage(s)) { await _nav.GoHome(Action("to the village"), ct); continue; }
+            await Click("village-battle", null, (s2, _) => Has(s2, PlayTargets.BattleMenuView) || Has(s2, PlayTargets.ArenaMapView), "the battle menu opens", ct);
+        }
+        throw new PlayStopException("Could not reach the Classic Arena in 8 steps.");
+    }
+
+    public async Task<BattleOutcome> FightArenaOpponentAsync(long userId, bool dryRun, CancellationToken ct)
+    {
+        var started = DateTime.UtcNow;
+        var (s, _, play) = await Read(ct);
+        if (!OnArena(s) || play.Arena is not { } board) throw new PlayStopException($"Expected the Classic Arena on top; the screen shows {Top(s)}.");
+        var row = board.Rows.FirstOrDefault(r => r.UserId == userId) ?? throw new PlayStopException($"Opponent {userId} is not on the board.");
+        if (row.Status != 0 || !row.Playable) throw new PlayStopException($"Opponent {row.Name} cannot be fought now (status {row.Status}, playable {row.Playable}).");
+        await ScrollTo(userId, ct);
+        var who = $"{row.Name} ({row.Power:N0})";
+
+        // The row's Battle: the team selection opens (or the game says something: out of tokens, set a defence team, ...).
+        await Click("arena-opponent", t => t.Key == userId, (s2, _) => Top(s2) is PlayTargets.TeamView or PlayTargets.RefillView or UiState.MessageBoxView,
+            $"the team selection for {who} opens", ct);
+        var after = await Settled(ct);
+        if (Top(after) != PlayTargets.TeamView) await Refuse(after, $"Battle {who}", ct);
+
+        if (dryRun)
+        {
+            var (_, _, team) = await Read(ct);
+            var start = team.Targets.FirstOrDefault(t => t.Kind == "team-start");
+            if (start?.Rect is { } r) Shot($"autoplay: WOULD CLICK Start vs {who} (dry run: NOT pressed)", r, always: true);
+            await Back(PlayTargets.TeamView, ct);
+            return new BattleOutcome(BattleResult.NotStarted, start?.NotClickable is null && start is not null
+                ? "Start shown, not pressed" : $"Start not identified: {start?.Note ?? "no team-start target"}");
+        }
+
+        await Click("team-start", null, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView,
+            "the battle starts", ct, within: TimeSpan.FromSeconds(25), shot: true);
+        var inBattle = await ReadState(ct);
+        if (!inBattle.Active.Any(v => BattleViews.Contains(v.Name))) await Refuse(inBattle, $"Start vs {who}", ct);
+        log($"autoplay: battle vs {who} started");
+
+        var result = await WaitBattle(ct);
+        await LeaveResult(ct);
+        var took = DateTime.UtcNow - started;
+        var outcome = result?.ResultType switch { 1 => BattleResult.Victory, 2 => BattleResult.Defeat, 3 => BattleResult.Draw, _ => BattleResult.Unknown };
+        return new BattleOutcome(outcome, $"{took.TotalSeconds:0} s" + (result?.EnemyPower is { } ep ? $", enemy power {ep:N0}" : ""));
+    }
+
+    public async Task<ArenaBoard?> RefreshArenaFreeAsync(bool dryRun, CancellationToken ct)
+    {
+        var (s, targets, play) = await Read(ct);
+        if (!OnArena(s) || play.Arena is not { } board) throw new PlayStopException($"Expected the Classic Arena on top; the screen shows {Top(s)}.");
+        if (board.FreeRefreshAvailable != true) return null; // never a paid refresh
+        var before = board.Rows.Select(r => r.UserId).OrderBy(x => x).ToList();
+        if (dryRun)
+        {
+            if (targets.FirstOrDefault(t => t.Kind == "arena-refresh") is { Rect: { } r } t) Shot($"autoplay: WOULD CLICK {t.Name} (free; dry run: NOT pressed)", r, always: true);
+            return null;
+        }
+        await Click("arena-refresh", null, (_, lazy) => lazy().Arena is { } b && b.Loading != true && b.Rows.Count > 0
+            && !b.Rows.Select(r => r.UserId).OrderBy(x => x).SequenceEqual(before), "a new board", ct, within: TimeSpan.FromSeconds(12),
+            before: p => p.Arena?.FreeRefreshAvailable == true ? null : "the refresh is not free any more");
+        return await Board(ct);
+    }
+
+    public async Task<int> CollectInboxTokensAsync(bool dryRun, CancellationToken ct)
+    {
+        var before = (await game.Account.ReadAsync(ct)).Account.Resources.GetValueOrDefault("Token");
+        await GoHomeAsync(ct);
+        await Click("village-inbox", null, (s2, _) => Has(s2, PlayTargets.InboxView), "the inbox opens", ct);
+        await Task.Delay(1500, ct);
+        for (var n = 0; n < 10; n++)
+        {
+            var (_, _, play) = await Read(ct);
+            var entry = play.Inbox.FirstOrDefault(e => PlayTargets.IsArenaTokens(e) && e.Collect?.NotClickable is null);
+            if (entry is null)
+            {
+                if (n == 0) log($"autoplay: inbox: no arena tokens ({play.Inbox.Count} entries: {string.Join("; ", play.Inbox.Select(e => e.Title ?? e.Message).Take(8))})");
+                break;
+            }
+            if (dryRun)
+            {
+                Shot($"autoplay: WOULD CLICK {entry.Collect!.Name} (dry run: NOT pressed)", entry.Collect.Rect!.Value, always: true);
+                break;
+            }
+            var count = play.Inbox.Count(PlayTargets.IsArenaTokens);
+            await Click("inbox-collect", t => t.Path == entry.Collect!.Path, (s2, lazy) => Top(s2) != PlayTargets.InboxView || lazy().Inbox.Count(PlayTargets.IsArenaTokens) < count,
+                $"\"{entry.Title}\" is collected", ct);
+            // A rewards popup after collecting: closed with its own close.
+            var s3 = await Settled(ct);
+            if (Top(s3) is { } top && top != PlayTargets.InboxView && top.EndsWith("Overlay", StringComparison.Ordinal)) await Back(top, ct);
+        }
+        await GoHomeAsync(ct);
+        var after = (await game.Account.ReadAsync(ct)).Account.Resources.GetValueOrDefault("Token");
+        return (int)Math.Max(0, Math.Round(after - before));
+    }
+
+    /// <summary>
+    /// What Auto Play sees now, read only (autoplay-explore): the views, every play target and way back with whether it may be clicked
+    /// and why, the arena board, the HUD counters and the inbox entries. For checking the target rules on a live screen.
+    /// </summary>
+    public List<string> Explore()
+    {
+        var (s, targets, play) = ReadSync();
+        if (s is null) return ["The UI state could not be read."];
+        var lines = new List<string> { $"top: {Top(s)}   battle: {(s.InBattle ? "yes" : "no")}   views: {string.Join(", ", s.Active.Where(v => v.Visible && !v.Name.EndsWith("NotificationsView", StringComparison.Ordinal)).Select(v => v.Name))}", "" };
+        lines.Add("targets (Auto Play clicks only these kinds):");
+        foreach (var t in targets.Where(t => Allowed.Contains(t.Kind)).OrderBy(t => t.View).ThenBy(t => t.Kind))
+            lines.Add($"  {t.Kind,-15} {t.Name,-44} {t.View,-28} {t.Rect?.ToString() ?? "-",-22} {t.NotClickable ?? "ok"}{(t.Note is { } n ? $"   [{n}]" : "")}");
+        if (play.Arena is { } a)
+        {
+            lines.Add("");
+            lines.Add($"arena board: tab {a.Tab?.ToString() ?? "?"}, loading {a.Loading?.ToString() ?? "?"}, free refresh {(a.FreeRefreshAvailable == true ? "available" : $"not now ({a.FreeRefreshText ?? "?"})")}");
+            foreach (var r in a.Rows)
+                lines.Add($"  {r.Name,-22} power {r.Power,9:N0}  status {r.Status}  {(r.Playable ? "playable" : "not playable")}{(r.Quarantined ? ", quarantine" : "")}  team power text \"{r.TeamPowerText}\"  battle: {r.Battle?.NotClickable ?? "ok"}");
+        }
+        if (play.AutoOn is { } auto) lines.Add($"battle: auto {(auto ? "on" : "off")}");
+        if (play.Result is { } res) lines.Add($"result: type {res.ResultType} (1 victory, 2 defeat, 3 draw), enemy {res.EnemyName} power {res.EnemyPower:N0}");
+        if (play.Hud.Count > 0)
+        {
+            lines.Add("");
+            lines.Add("HUD counters:");
+            foreach (var h in play.Hud) lines.Add($"  {h.Resource,-14} \"{h.Value}\"   next: \"{h.Timer}\" → {GameText.TimeLeft(h.Timer)?.ToString() ?? "-"}");
+        }
+        if (play.Inbox.Count > 0)
+        {
+            lines.Add("");
+            lines.Add("inbox:");
+            foreach (var e in play.Inbox) lines.Add($"  {(PlayTargets.IsArenaTokens(e) ? "TOKENS " : "       ")}\"{e.Title}\" / \"{e.Message}\" icon {e.Icon}  collect: {e.Collect?.NotClickable ?? "ok"}");
+        }
+        if (play.Notes.Count > 0)
+        {
+            lines.Add("");
+            lines.Add("read problems:");
+            lines.AddRange(play.Notes.Select(n => "  " + n));
+        }
+        return lines;
+    }
+
+    // ------------------------------------------------------------------ flow pieces
+
+    /// <summary>The board as the activity sees it, once the battle tab has loaded (at most 10 s).</summary>
+    private async Task<ArenaBoard> Board(CancellationToken ct)
+    {
+        for (var i = 0; i < 20; i++)
+        {
+            var (s, targets, play) = await Read(ct);
+            if (!OnArena(s)) throw new PlayStopException($"Expected the Classic Arena on top; the screen shows {Top(s)}.");
+            if (play.Arena is { Tab: { } tab } && tab != 0)
+            {
+                await Click("arena-tab", t => t.Id == 0, (_, lazy) => lazy().Arena?.Tab == 0, "the battle tab is on", ct);
+                continue;
+            }
+            if (play.Arena is { Loading: not true } b && b.Rows.Count > 0)
+            {
+                var rows = b.Rows.Where(r => r.Battle?.Active == true).DefaultIfEmpty().Where(r => r is not null).Select(r => r!).ToList();
+                if (rows.Count == 0) rows = b.Rows;
+                var left = GameText.TimeLeft(b.FreeRefreshText);
+                return new ArenaBoard(DateTime.UtcNow, [.. rows.DistinctBy(r => r.UserId).Select(r => new ArenaOpponentInfo(r.UserId, r.Name, r.Power,
+                    r.Status switch { 1 => OpponentStatus.Defeated, 2 => OpponentStatus.Won, _ => OpponentStatus.None }, r.Playable && !r.Quarantined))],
+                    b.FreeRefreshAvailable == true, left);
+            }
+            await Task.Delay(500, ct);
+        }
+        throw new PlayStopException("The Classic Arena board did not load in 10 s (no opponent rows read).");
+    }
+
+    /// <summary>Wheel-scrolls the board until the opponent's Battle button is fully visible (at most 12 turns).</summary>
+    private async Task ScrollTo(long userId, CancellationToken ct)
+    {
+        for (var i = 0; i < 12; i++)
+        {
+            var (_, targets, _) = await Read(ct);
+            var mine = targets.FirstOrDefault(t => t.Kind == "arena-opponent" && t.Key == userId);
+            if (mine is null) throw new PlayStopException($"Opponent {userId} has no Battle target on the board.");
+            if (mine.NotClickable is null) return;
+            if (mine.Rect is null || mine.Interactable is null) throw new PlayStopException($"Opponent {userId}'s Battle button: {mine.NotClickable} ({mine.Note}).");
+            var shown = targets.Where(t => t.Kind == "arena-opponent" && t.FullyVisible && t.Rect is not null).Select(t => t.Rect!.Value).ToList();
+            if (shown.Count == 0) throw new PlayStopException("No opponent row is fully shown to scroll from.");
+            var cx = shown.Average(r => r.Center.X);
+            var cy = shown.Average(r => r.Center.Y);
+            var (w, why) = GameWindow.Find();
+            if (w is null) throw new PlayStopException(why!);
+            var down = mine.Rect.Value.Center.Y > cy;
+            if (MouseInput.Wheel(w, cx, cy, down ? -2 : 2) is { } notSent) throw new PlayStopException("Not scrolled: " + notSent);
+            log($"autoplay: scrolled the board {(down ? "down" : "up")} towards opponent {userId}");
+            await Task.Delay(400, ct);
+        }
+        throw new PlayStopException($"Opponent {userId} not reachable by scrolling.");
+    }
+
+    /// <summary>Waits for the battle to end (no input but the Auto button, once, when auto is off); the result read, if any.</summary>
+    private async Task<ArenaResultRead?> WaitBattle(CancellationToken ct)
+    {
+        var until = DateTime.UtcNow + TimeSpan.FromMinutes(12);
+        var autoTried = false;
+        while (DateTime.UtcNow < until)
+        {
+            await Task.Delay(1500, ct);
+            var s = await ReadState(ct);
+            if (Has(s, PlayTargets.ArenaResultView))
+            {
+                await Task.Delay(1200, ct); // the result's numbers fill in
+                var (_, _, play) = await Read(ct);
+                return play.Result;
+            }
+            if (!s.InBattle) return null; // the battle ended somewhere else (the game moved on)
+            if (!autoTried && Has(s, PlayTargets.BattleHudView) && !s.UiBlocked)
+            {
+                var (_, _, play) = await Read(ct);
+                if (play.AutoOn == false)
+                {
+                    autoTried = true;
+                    await Click("battle-auto", null, (_, lazy) => lazy().AutoOn == true, "auto is on", ct, view: PlayTargets.BattleHudView);
+                    log("autoplay: auto switched on");
+                }
+                else if (play.AutoOn == true) autoTried = true;
+            }
+        }
+        throw new PlayStopException("The battle did not end in 12 minutes.");
+    }
+
+    /// <summary>The arena result screen left by its way back (never Replay or Next), until the battle flow is closed.</summary>
+    private async Task LeaveResult(CancellationToken ct)
+    {
+        await Click("back", null, (s2, _) => !Has(s2, PlayTargets.ArenaResultView), "the result screen closes", ct, view: PlayTargets.ArenaResultView,
+            within: TimeSpan.FromSeconds(15));
+        await Settled(ct);
+    }
+
+    /// <summary>A screen's back or close element (its own; an overlay's BTN_Close1).</summary>
+    private async Task Back(string view, CancellationToken ct)
+    {
+        var (_, targets, _) = await Read(ct);
+        var kind = targets.Any(t => t.View == view && t.Kind == "dialog-close" && t.NotClickable is null) ? "dialog-close" : "back";
+        await Click(kind, null, (s2, _) => Top(s2) != view, $"{view} closes", ct, view: view);
+    }
+
+    /// <summary>A screen that is not the one the click should open: a purchase/refill is closed, anything else is left; the turn stops.</summary>
+    private async Task Refuse(UiState s, string what, CancellationToken ct)
+    {
+        var top = Top(s);
+        if (top == PlayTargets.RefillView)
+        {
+            await Back(top, ct);
+            throw new PlayStopException($"{what}: the game offered to buy arena tokens (out of tokens); closed, nothing bought.");
+        }
+        if (top == UiState.MessageBoxView)
+        {
+            var text = s.MessageBox is { } m ? $"\"{m.Title}\": \"{m.Message}\"" : "(unread)";
+            throw new PlayStopException($"{what}: the game shows a message {text}; nothing pressed. Answer it, then start Auto Play again.");
+        }
+        throw new PlayStopException($"{what}: expected the next screen; the screen shows {top}.");
+    }
+
+    // ------------------------------------------------------------------ clicking and reading
+
+    /// <summary>
+    /// One click on a play target: allowed kind, no purchase window on top, exactly one clickable target (of <paramref name="which"/>),
+    /// the window unchanged, then reads until <paramref name="expect"/> holds (its second argument walks the UI tree only when called).
+    /// </summary>
+    private async Task Click(string kind, Func<UiTarget, bool>? which, Func<UiState, Func<PlayScan>, bool> expect, string expected, CancellationToken ct,
+        string? view = null, TimeSpan? within = null, Func<PlayScan, string?>? before = null, bool shot = false)
+    {
+        if (!Allowed.Contains(kind)) throw new PlayStopException($"Refused: {kind} is not an Auto Play click.");
+        _nav.FitWindow();
+        var (s, targets, play) = await Read(ct);
+        var top = Top(s);
+        if (top is { } t0 && kind is not ("dialog-close" or "back") && IsPurchase(t0)) throw new PlayStopException($"Refused: a purchase window ({t0}) is on top.");
+        if (view is not null && top != view && !(view == PlayTargets.BattleHudView && Has(s, view))) throw new PlayStopException($"Expected {view} on top; the screen shows {top}.");
+        if (before?.Invoke(play) is { } changed) throw new PlayStopException(changed);
+        var all = targets.Where(t => t.Kind == kind && (which is null || which(t)) && (view is null || t.View == view)).ToList();
+        if (kind == "dialog-close") all = all.Where(t => t.View == top && t.Path.EndsWith("/BTN_Close1", StringComparison.Ordinal)).ToList();
+        var ok = all.Where(t => t.NotClickable is null).ToList();
+        if (ok.Count != 1)
+            throw new PlayStopException(all.Count == 0 ? $"{kind}: not on screen (top {top})." : ok.Count > 1 ? $"{kind}: {ok.Count} clickable elements claim it; refused."
+                : $"{kind}: {string.Join("; ", all.Select(t => $"{t.NotClickable} ({t.Note})").Distinct())}.");
+        var target = ok[0];
+        var (w, why) = GameWindow.Find();
+        if (w is null) throw new PlayStopException(why!);
+        if (policy.Problem(w) is { } bad) throw new PlayStopException(bad);
+        if (target.ClientWidth is { } cw && (cw != w.Client.Width || target.ClientHeight != w.Client.Height))
+            throw new PlayStopException("The window changed size before the click.");
+        var r = target.Rect!.Value;
+        var x = r.X + r.Width * (0.3f + 0.4f * (float)_random.NextDouble());
+        var y = r.Y + r.Height * (0.3f + 0.4f * (float)_random.NextDouble());
+        if (shot) Shot($"autoplay: CLICK {target.Name} at {r}", r, always: true);
+        await Task.Delay(_random.Next(120, 320), ct);
+        if (MouseInput.Click(w, x, y, _random) is { } notSent) throw new PlayStopException($"Not clicked ({target.Name}): {notSent}");
+        log($"autoplay: clicked {target.Name} at ({x:0},{y:0})");
+
+        var until = DateTime.UtcNow + (within ?? TimeSpan.FromSeconds(8));
+        while (DateTime.UtcNow < until)
+        {
+            await Task.Delay(250, ct);
+            var s2 = await ReadState(ct);
+            PlayScan? cache = null;
+            if (expect(s2, () => cache ??= ReadSync().Play)) return;
+        }
+        var end = await ReadState(ct);
+        throw new PlayStopException($"After clicking {target.Name}, expected {expected}; the screen shows {Top(end)}.");
+    }
+
+    private static bool IsPurchase(string view) =>
+        view.Contains("Bank", StringComparison.Ordinal) || view.Contains("Offer", StringComparison.Ordinal) || view.Contains("Shop", StringComparison.Ordinal)
+        || view == PlayTargets.RefillView || view.Contains("Purchase", StringComparison.Ordinal);
+
+    private async Task<(UiState State, List<UiTarget> Targets, PlayScan Play)> Read(CancellationToken ct)
+    {
+        for (var i = 0; i < 15; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var r = ReadSync();
+            if (r.State is not null) return (r.State, r.Targets, r.Play);
+            await Task.Delay(300, ct);
+        }
+        throw new PlayStopException("The UI state could not be read.");
+    }
+
+    /// <summary>Every visible view's tree, once: the gear targets (for the ways back) and the play targets with their facts.</summary>
+    private (UiState? State, List<UiTarget> Targets, PlayScan Play) ReadSync()
+    {
+        var (s, _) = game.ReadUi();
+        if (s is null) return (null, [], PlayScan.Empty);
+        var (w, _) = GameWindow.Find();
+        if (w is null || w.NotUsable is not null) return (s, [], PlayScan.Empty);
+        var visible = s.Active.Where(v => v.Visible).Select(v => v.Name).ToHashSet();
+        var targets = new List<UiTarget>();
+        var play = PlayScan.Empty;
+        foreach (var (name, view) in game.Views().Where(v => visible.Contains(v.Name) && !v.Name.EndsWith("NotificationsView", StringComparison.Ordinal)))
+        {
+            try
+            {
+                var tree = ui.Read(view, name, w.Client.Width, w.Client.Height);
+                targets.AddRange(UiTargets.Find(tree, game.Objects));
+                var p = PlayTargets.Scan(tree, game.Objects);
+                targets.AddRange(p.Targets);
+                play = play.Merge(p with { Targets = [] });
+            }
+            catch (Exception e) when (e is UiReadException or RaidExtractor.ReadCheckException) { }
+        }
+        return (s, targets, play with { Targets = targets.Where(t => PlayTargets.Kinds.Contains(t.Kind)).ToList() });
+    }
+
+    private async Task<UiState> ReadState(CancellationToken ct)
+    {
+        for (var i = 0; i < 15; i++)
+        {
+            ct.ThrowIfCancellationRequested();
+            var (s, _) = game.ReadUi();
+            if (s is not null) return s;
+            await Task.Delay(300, ct);
+        }
+        throw new PlayStopException("The UI state could not be read.");
+    }
+
+    /// <summary>Reads until the top view has stayed the same for 1.2 s (popups that queue up have appeared), at most 8 s.</summary>
+    private async Task<UiState> Settled(CancellationToken ct)
+    {
+        var s = await ReadState(ct);
+        var since = DateTime.UtcNow;
+        var until = DateTime.UtcNow + TimeSpan.FromSeconds(8);
+        while (DateTime.UtcNow < until)
+        {
+            await Task.Delay(400, ct);
+            var s2 = await ReadState(ct);
+            if (Top(s2) != Top(s)) since = DateTime.UtcNow;
+            s = s2;
+            if (DateTime.UtcNow - since >= TimeSpan.FromSeconds(1.2)) break;
+        }
+        return s;
+    }
+
+    private static bool Has(UiState s, string view) => s.Active.Any(v => v.Name == view);
+
+    /// <summary>The Classic Arena dialog is the screen in front (its HUD may sit above it).</summary>
+    private static bool OnArena(UiState s) => Top(s) == PlayTargets.ArenaDialogView || Has(s, PlayTargets.ArenaDialogView) && Top(s) == PlayTargets.ArenaHudView;
+
+    /// <summary>The view on top, a HUD counted as the screen under it (ArenaHUD over ArenaMap, BattleHUD over the battle).</summary>
+    private static string? Top(UiState s) => s.Top?.Name;
+
+    private string? Shot(string caption, ClientRect r, bool always = false) =>
+        always ? Screen.Overlay(folder, $"{++_shot:000}-autoplay.png", caption, r, WindowPolicy.CaptureProblem) : null;
+
+    private static UiAction Action(string text) => new(ActionKind.OpenChampion, 0, "autoplay: " + text);
+}

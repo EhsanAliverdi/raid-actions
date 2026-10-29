@@ -12,9 +12,10 @@ namespace RaidActions.Game.Memory;
 /// <param name="Note">Extra state: selected, tab on, the binding path, why it cannot be clicked; a message box button: its text.</param>
 /// <param name="SellMarked">Inventory items: ticked for sale (InventoryItemContext._withSellMark); null when not read.</param>
 /// <param name="HasOwner">Inventory items: worn by a champion (InventoryItemContext._hasOwner); null when not read.</param>
+/// <param name="Key">A 64-bit identity (Auto Play: the arena opponent's user id); null otherwise.</param>
 public sealed record UiTarget(string Kind, string Name, int? Id, string View, ClientRect? Rect, bool Active, bool? Interactable,
     bool FullyVisible, bool Forbidden, string Path, string? Note, string? Slot = null, int? ClientWidth = null, int? ClientHeight = null,
-    bool? SellMarked = null, bool? HasOwner = null)
+    bool? SellMarked = null, bool? HasOwner = null, long? Key = null)
 {
     public bool IsScrollArea => Kind.StartsWith("scroll-", StringComparison.Ordinal);
 

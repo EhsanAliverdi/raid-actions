@@ -237,6 +237,22 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             var top = s.Top?.Name ?? throw new StopException("No view is on top.");
             var (_, targets) = await Read(ct);
             var mine = targets.Where(t => t.View == top).ToList();
+            // A message box right after an offer was closed ("leave the offer?", seen 2026-10-30: its X brings the offer back, a loop):
+            // the button that confirms leaving, never one that names buying, a price or a number.
+            if (top == UiState.MessageBoxView && left.LastOrDefault()?.Contains("Offer", StringComparison.Ordinal) == true)
+            {
+                log($"go home: message box after an offer: \"{s.MessageBox?.Title}\": \"{s.MessageBox?.Message}\"; buttons {string.Join(", ", mine.Where(t => t.Kind == "message-button").Select(t => $"\"{t.Note}\""))}");
+                var leave = mine.Where(t => t.Kind == "message-button" && t.NotClickable is null && t.Note is { } text
+                    && Regex.IsMatch(text, @"close|leave|yes|ok|exit|skip|later|no,? thanks|decline|cancel|confirm", RegexOptions.IgnoreCase)
+                    && !Regex.IsMatch(text, @"buy|purchase|get|claim|pay|\d|gem|back to|return", RegexOptions.IgnoreCase)).ToList();
+                if (leave.Count == 1)
+                {
+                    _once = "message-button";
+                    await Click(a, "message-button", leave[0].Id, null, (s2, _) => s2.Top?.Name != UiState.MessageBoxView, "the message box closes", ct, view: top);
+                    left.Add($"{top} via \"{leave[0].Note}\"");
+                    continue;
+                }
+            }
             var kind = BackKinds.FirstOrDefault(k => mine.Any(t => t.Kind == k && t.NotClickable is null && !t.Forbidden));
             if (kind is null)
             {

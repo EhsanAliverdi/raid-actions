@@ -177,6 +177,12 @@ public sealed partial class LivePlayGame : ICursedCityGame
         var result = await WaitBattle(ct, PlayTargets.CcResultView);
         await LeaveResult(ct, PlayTargets.CcResultView);
         var outcome = result?.Pve?.ResultType switch { 1 => BattleResult.Victory, 2 => BattleResult.Defeat, 3 => BattleResult.Draw, _ => BattleResult.Unknown };
+        // A win locks its champions in the city for the rotation (seen 2026-10-30: level 7's winners locked on level 5; a defeat locks nobody).
+        if (outcome == BattleResult.Victory)
+        {
+            foreach (var m in level.Team.Members) _ccLocked.Add(m.Id);
+            SaveLocked();
+        }
         return new BattleOutcome(outcome, $"{(DateTime.UtcNow - started).TotalSeconds:0} s");
     }
 

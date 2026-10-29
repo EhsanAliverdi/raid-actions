@@ -164,13 +164,16 @@ public sealed partial class LivePlayGame : ICursedCityGame
             return new BattleOutcome(BattleResult.NotStarted, start?.NotClickable is null && start is not null ? "team set, Start shown, not pressed"
                 : $"team set, Start not identified: {start?.Note ?? "no team-start target"}; screen dump: {DumpScreen("cc team-start not found")}");
         }
+        string? refused = null;
         try
         {
             await Click("team-start", t => t.View == PlayTargets.CcTeamView, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView,
                 "the battle starts", ct, within: TimeSpan.FromSeconds(25), shot: true);
         }
-        catch (PlayStopException) when (Top(await ReadState(ct)) == PlayTargets.CcTeamView)
+        catch (PlayStopException e) { refused = e.Message; }
+        if (refused is not null)
         {
+            if (Top(await ReadState(ct)) != PlayTargets.CcTeamView) throw new PlayStopException(refused);
             // Start pressed, the team screen stays (seen 2026-10-30 on Hard level 23, twice, reason not known yet): the level is skipped
             // for this run so the keys go to other levels, instead of the same refusal every turn.
             var dump = DumpScreen("cc start refused");

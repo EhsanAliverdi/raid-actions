@@ -22,7 +22,14 @@ public sealed partial class LivePlayGame : ICursedCityGame
     {
         var (data, _, ratings, locks) = await Account(ct);
         LoadLocked(data.Progress?.CursedCity?.RotationUpdatedUtc);
-        return CursedCityPlanner.Plan(data, locks, ratings, lossesToSkip, skip, _ccLocked);
+        var plan = CursedCityPlanner.Plan(data, locks, ratings, lossesToSkip, skip, _ccLocked);
+        // The chosen level's own disabled champions: its team built again without them.
+        if (plan.Next is { } next && _ccDisabled.TryGetValue(next.Stage.Id, out var off) && off.Count > 0)
+        {
+            var team = CursedCityPlanner.BuildTeam(next.Stage, [.. data.Champions.Where(c => (c.Level > 1 || c.Rank > 1) && !_ccLocked.Contains(c.Id) && !off.Contains(c.Id))], locks, ratings);
+            plan = plan with { Next = next with { Team = team } };
+        }
+        return plan;
     }
 
     private DateTime? _ccRotation;
@@ -55,13 +62,17 @@ public sealed partial class LivePlayGame : ICursedCityGame
     private sealed record LockedFileData(DateTime? Rotation, List<int> Ids);
 
     /// <summary>A planned champion the team screen will not take: the team is built again without it.</summary>
-    private sealed class LockedHeroException(int heroId, IReadOnlyList<int> alsoLocked) : Exception($"#{heroId} is locked here")
+    private sealed class LockedHeroException(int heroId, int state, IReadOnlyList<(int Id, int State)> shown) : Exception($"#{heroId} cannot be picked here (state {state})")
     {
         public int HeroId => heroId;
+        public int State => state;
 
-        /// <summary>Every champion the list shows locked at the same time (learnt in one go, not one per try).</summary>
-        public IReadOnlyList<int> AlsoLocked => alsoLocked;
+        /// <summary>Every champion the list shows not pickable at the same time, with its state (learnt in one go, not one per try).</summary>
+        public IReadOnlyList<(int Id, int State)> Shown => shown;
     }
+
+    /// <summary>Champions disabled on one level's team screen (state 2: not for this level), by the map's level id; not kept for other levels.</summary>
+    private readonly Dictionary<int, HashSet<int>> _ccDisabled = [];
 
     public async Task<string> GearAsync(CcLevel level, IReadOnlyList<int> ids, bool dryRun, CancellationToken ct)
     {
@@ -111,12 +122,16 @@ public sealed partial class LivePlayGame : ICursedCityGame
         try { await SetTeam(team, ct); }
         catch (LockedHeroException e)
         {
+            // State 3 and up (Locked, LockedByFraction, ...): locked in the city for the rotation. State 2 (Disabled): only on this level.
             var before = _ccLocked.Count;
-            _ccLocked.Add(e.HeroId);
-            foreach (var id in e.AlsoLocked) _ccLocked.Add(id);
+            var all = e.Shown.Append((e.HeroId, e.State)).Distinct().ToList();
+            foreach (var (id, st) in all.Where(x => x.Item2 >= 3)) _ccLocked.Add(id);
+            var disabled = _ccDisabled.TryGetValue(level.Stage.Id, out var d) ? d : _ccDisabled[level.Stage.Id] = [];
+            foreach (var (id, st) in all.Where(x => x.Item2 == 2)) disabled.Add(id);
             SaveLocked();
+            log($"autoplay: not pickable on this level: {string.Join(", ", all.Select(x => $"#{x.Item1}:{x.Item2}"))}");
             await Back(PlayTargets.CcTeamView, ct);
-            return new BattleOutcome(BattleResult.Retry, $"{_ccLocked.Count - before} champion(s) locked in the city ({string.Join(", ", _ccLocked.Select(i => $"#{i}"))}): planning again without them");
+            return new BattleOutcome(BattleResult.Retry, $"{_ccLocked.Count - before} more champion(s) locked in the city, {disabled.Count} disabled on this level: planning again without them");
         }
         if (dryRun)
         {
@@ -257,7 +272,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
             if (pick?.Pick is { } t && t.NotClickable is null)
             {
                 if (pick.State is >= 2 and not 7)
-                    throw new LockedHeroException(missing, [.. (play.Picks ?? []).Where(p => p.State is >= 2 and not 7).Select(p => p.HeroId)]);
+                    throw new LockedHeroException(missing, pick.State.Value, [.. (play.Picks ?? []).Where(p => p.State is >= 2 and not 7).Select(p => (p.HeroId, p.State!.Value))]);
                 await Click("team-pick", x => x.Id == missing && x.View == PlayTargets.CcTeamView, (_, lazy) => (lazy().TeamIds ?? []).Contains(missing),
                     $"#{missing} joins the team", ct);
                 continue;

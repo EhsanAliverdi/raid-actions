@@ -92,6 +92,13 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
         await ctx.ThinkAsync(ct);
         var outcome = await game.FightAsync(level!, ctx.DryRun, ct);
         var where = CursedCityPlanner.Where(level!.Stage);
+        if (outcome.Result == BattleResult.Retry)
+        {
+            // The game locks some champions in the city: plan again without them (their stand-ins get gear first).
+            ctx.Event(AreaId, "team", $"{where}: {outcome.Text}");
+            _planAt = DateTime.MinValue;
+            return "";
+        }
         if (outcome.Result == BattleResult.NotStarted)
         {
             _dryShown.Add(level.Stage.Id);

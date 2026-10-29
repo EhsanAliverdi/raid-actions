@@ -21,8 +21,38 @@ public sealed partial class LivePlayGame : ICursedCityGame
     public async Task<CursedCityPlan> PlanAsync(int lossesToSkip, IReadOnlySet<int> skip, CancellationToken ct)
     {
         var (data, _, ratings, locks) = await Account(ct);
+        LoadLocked(data.Progress?.CursedCity?.RotationUpdatedUtc);
         return CursedCityPlanner.Plan(data, locks, ratings, lossesToSkip, skip, _ccLocked);
     }
+
+    private DateTime? _ccRotation;
+    private string LockedFile => Path.Combine(ExtractorOutput, "autoplay", "cc-locked.json");
+
+    /// <summary>The champions locked in the city this rotation, kept in a file (a restarted bot does not learn them again); a new rotation clears them.</summary>
+    private void LoadLocked(DateTime? rotation)
+    {
+        if (_ccRotation is not null && _ccRotation == rotation) return;
+        _ccRotation = rotation;
+        try
+        {
+            if (File.Exists(LockedFile) && System.Text.Json.JsonSerializer.Deserialize<LockedFileData>(File.ReadAllText(LockedFile)) is { } saved && saved.Rotation == rotation)
+                foreach (var id in saved.Ids) _ccLocked.Add(id);
+            else _ccLocked.Clear();
+        }
+        catch (Exception e) when (e is IOException or System.Text.Json.JsonException) { }
+    }
+
+    private void SaveLocked()
+    {
+        try
+        {
+            Directory.CreateDirectory(Path.GetDirectoryName(LockedFile)!);
+            File.WriteAllText(LockedFile, System.Text.Json.JsonSerializer.Serialize(new LockedFileData(_ccRotation, [.. _ccLocked])));
+        }
+        catch (IOException) { }
+    }
+
+    private sealed record LockedFileData(DateTime? Rotation, List<int> Ids);
 
     /// <summary>A planned champion the team screen will not take: the team is built again without it.</summary>
     private sealed class LockedHeroException(int heroId, IReadOnlyList<int> alsoLocked) : Exception($"#{heroId} is locked here")
@@ -76,28 +106,17 @@ public sealed partial class LivePlayGame : ICursedCityGame
         var after = await Settled(ct);
         if (Top(after) != PlayTargets.CcTeamView) await Refuse(after, where, ct);
 
-        // The game locks some champions in Cursed City (used elsewhere this rotation): the team is built again without them.
-        for (var attempt = 0; ; attempt++)
+        // The game locks some champions in Cursed City (used elsewhere this rotation): learnt from the list, then the plan is made again
+        // without them (Retry), so their stand-ins get gear before they fight.
+        try { await SetTeam(team, ct); }
+        catch (LockedHeroException e)
         {
-            try
-            {
-                await SetTeam(team, ct);
-                break;
-            }
-            catch (LockedHeroException e) when (attempt < 8)
-            {
-                _ccLocked.Add(e.HeroId);
-                foreach (var id in e.AlsoLocked) _ccLocked.Add(id);
-                var (data, _, ratings, locks) = await Account(ct);
-                var rebuilt = CursedCityPlanner.BuildTeam(level.Stage, data.Champions.Where(c => (c.Level > 1 || c.Rank > 1) && !_ccLocked.Contains(c.Id)).ToList(), locks, ratings);
-                if (!rebuilt.Feasible)
-                {
-                    await Back(PlayTargets.CcTeamView, ct);
-                    return new BattleOutcome(BattleResult.NotStarted, $"no team without the locked champions ({string.Join(", ", _ccLocked.Select(i => $"#{i}"))}): {rebuilt.Why}");
-                }
-                team = rebuilt.Members.Select(m => m.Id).ToList();
-                log($"autoplay: #{e.HeroId} is locked in Cursed City; team built again: {string.Join(", ", rebuilt.Members.Select(m => m.Name))}");
-            }
+            var before = _ccLocked.Count;
+            _ccLocked.Add(e.HeroId);
+            foreach (var id in e.AlsoLocked) _ccLocked.Add(id);
+            SaveLocked();
+            await Back(PlayTargets.CcTeamView, ct);
+            return new BattleOutcome(BattleResult.Retry, $"{_ccLocked.Count - before} champion(s) locked in the city ({string.Join(", ", _ccLocked.Select(i => $"#{i}"))}): planning again without them");
         }
         if (dryRun)
         {

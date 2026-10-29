@@ -41,7 +41,8 @@ public sealed record GameResources(DateTime Utc, double Tokens, double Energy, d
 /// <param name="FreeRefreshIn">Time to the next free refresh, when the game shows it.</param>
 public sealed record ArenaBoard(DateTime Utc, List<ArenaOpponentInfo> Opponents, bool FreeRefreshAvailable, TimeSpan? FreeRefreshIn);
 
-public enum BattleResult { Victory, Defeat, Draw, Unknown, NotStarted }
+/// <summary>Retry: nothing was fought, but the game showed something the plan must take in first (Cursed City: champions locked in the city).</summary>
+public enum BattleResult { Victory, Defeat, Draw, Unknown, NotStarted, Retry }
 
 /// <param name="Text">What happened, for the event log (opponent, power, result, how long).</param>
 public sealed record BattleOutcome(BattleResult Result, string Text);

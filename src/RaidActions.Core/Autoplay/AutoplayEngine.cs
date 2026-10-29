@@ -15,6 +15,9 @@ public interface IAutoplayHost
     /// <summary>The last time the person (not the bot) used the mouse or keyboard; null when unknown.</summary>
     DateTime? PersonLastInputUtc();
 
+    /// <summary>Why no input can reach the game now (a disconnected or locked Windows session); null when it can.</summary>
+    string? InputBlocked() => null;
+
     void WriteStatus(AutoplayStatus status);
     void Event(AutoplayEvent e);
 }
@@ -70,6 +73,12 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                     Remember(new AutoplayEvent(now, "engine", "break", $"a break until {until.ToLocalTime():HH:mm}"));
                     while (host.UtcNow < until && !host.StopRequested() && host.LoadSettings().Enabled) await Idle("resting", "taking a break, like a person", until, ct);
                     sessionEnd = host.UtcNow + Jitter(p.SessionMinutes);
+                    continue;
+                }
+                if (host.InputBlocked() is { } blocked)
+                {
+                    // Nothing can be clicked (Remote Desktop disconnected, PC locked): wait, look again every minute, carry on after.
+                    await Idle("waiting", "no input reaches the game: " + blocked, now + TimeSpan.FromMinutes(1), ct, untilOnly: true);
                     continue;
                 }
                 if (host.PersonLastInputUtc() is { } person && now - person < TimeSpan.FromMinutes(Math.Max(0, p.YieldToPersonMinutes)))

@@ -40,6 +40,22 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
         return at > MouseInput.LastSentUtc + TimeSpan.FromSeconds(2) ? at : null;
     }
 
+    /// <summary>
+    /// Why no click can reach the game now: the session is disconnected or locked, or the game window does not fit the screen (the
+    /// window is then moved onto the screen, same size, and checked again: a phone in portrait is wide enough for the minimum window).
+    /// </summary>
+    public string? InputBlocked()
+    {
+        if (!watchPerson) return null;
+        if (MouseInput.SessionProblem() is { } session) return session;
+        var (w, why) = Game.Window.GameWindow.Find();
+        if (w is null) return why;
+        if (w.Minimized || MouseInput.OffScreen(w) is null) return null;
+        var (after, problem) = Game.Window.WindowFit.Apply(w, Game.Window.WindowFit.Plan(w, w.Client.Width, w.Client.Height));
+        if (after is null) return "the game window is off the screen and could not be moved: " + problem;
+        return MouseInput.OffScreen(after) is { } still ? still + " (moved it as far as it goes)" : null;
+    }
+
     public void WriteStatus(AutoplayStatus status)
     {
         try { status.Save(dir); }

@@ -134,6 +134,23 @@ public static class MouseInput
         return null;
     }
 
+    /// <summary>Why the game's client area is not wholly on the screen (a narrow Remote Desktop screen, a phone in portrait); null when it is.</summary>
+    public static string? OffScreen(GameWindowInfo w)
+    {
+        var old = SetThreadDpiAwarenessContext(new IntPtr(-4));
+        try
+        {
+            var (vx, vy, vw, vh) = (GetSystemMetrics(76), GetSystemMetrics(77), GetSystemMetrics(78), GetSystemMetrics(79));
+            var c = w.Client;
+            return c.X >= vx && c.Y >= vy && c.X + c.Width <= vx + vw && c.Y + c.Height <= vy + vh ? null
+                : $"the game window ({c.Width}x{c.Height} at ({c.X},{c.Y})) is not wholly on the screen ({vw}x{vh})";
+        }
+        finally
+        {
+            if (old != IntPtr.Zero) SetThreadDpiAwarenessContext(old);
+        }
+    }
+
     private static string? Prepare(GameWindowInfo w, float x, float y)
     {
         if (x < 0 || y < 0 || x >= w.Client.Width || y >= w.Client.Height) return $"({x:0},{y:0}) is outside the client area.";

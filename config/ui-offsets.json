@@ -1219,6 +1219,26 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.HourlyGiftPrizeContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_state": {
+          "offset": "0x70",
+          "type": "IntProperty",
+          "field": "_state",
+          "source": "field",
+          "status": "direct"
+        },
+        "_title": {
+          "offset": "0x60",
+          "type": "StringProperty",
+          "field": "_title",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.AllianceActivityMap.AllianceActivityMapContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

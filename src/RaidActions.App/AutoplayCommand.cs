@@ -34,6 +34,7 @@ public static class AutoplayCommand
         var enableCc = args.Contains("--enable-cc");
         var enableEnergy = args.Contains("--enable-energy");
         var enableCb = args.Contains("--enable-cb");
+        var enableGifts = args.Contains("--enable-gifts");
         var noYield = args.Contains("--no-yield");
         // --cc-difficulty Normal|Hard: the Cursed City difficulty to play; --cc-risky: also risky levels (whatever the settings say).
         var ccAt = Array.IndexOf(args, "--cc-difficulty");
@@ -46,12 +47,13 @@ public static class AutoplayCommand
             if (enableCc) s = s with { Enabled = true, CursedCity = s.CursedCity with { Enabled = true } };
             if (enableEnergy) s = s with { Enabled = true, Energy = s.Energy with { Enabled = true } };
             if (enableCb) s = s with { Enabled = true, ClanBoss = s.ClanBoss with { Enabled = true } };
+            if (enableGifts) s = s with { Enabled = true, FreeRewards = s.FreeRewards with { Enabled = true } };
             if (ccDifficulty is not null) s = s with { CursedCity = s.CursedCity with { Difficulty = ccDifficulty } };
             if (ccRisky) s = s with { CursedCity = s.CursedCity with { TryRisky = true } };
             if (noYield) s = s with { Pacing = s.Pacing with { YieldToPersonMinutes = 0 } };
             return s;
         }
-        Func<AutoplaySettings, AutoplaySettings>? force = enable || enableFw || enableCc || enableEnergy || enableCb || noYield || ccDifficulty is not null || ccRisky ? Force : null;
+        Func<AutoplaySettings, AutoplaySettings>? force = enable || enableFw || enableCc || enableEnergy || enableCb || enableGifts || noYield || ccDifficulty is not null || ccRisky ? Force : null;
 
         using var hold = BotLock.TakeAutoplay();
         if (hold is null)
@@ -111,7 +113,10 @@ public static class AutoplayCommand
             var cbActivity = new ClanBossActivity(game);
             cbActivity.Restore(LiveAutoplayHost.Today(dir), DateOnly.FromDateTime(DateTime.Now));
             // Clan Boss (plan/clan-boss.md) after the arena: its keys come slowly, so a key waiting is spent before the energy places.
-            IActivity[] activities = [arena, cbActivity, energyActivity, fwActivity, ccActivity];
+            var giftsActivity = new FreeRewardsActivity(game);
+            giftsActivity.Restore(LiveAutoplayHost.Today(dir), DateOnly.FromDateTime(DateTime.Now));
+            // Free rewards first: a check is a few clicks every 20 minutes (plan/free-rewards.md).
+            IActivity[] activities = [giftsActivity, arena, cbActivity, energyActivity, fwActivity, ccActivity];
             host.GameBlocked = game.SessionTaken;
             Print($"Auto Play{(dry ? " (DRY RUN: nothing that spends is pressed)" : "")}. Settings and status: {dir}\\autoplay. Overlays: {folder}. Stop: the app, or Ctrl+Alt+Esc.");
             var engine = new AutoplayEngine(activities, game, host, dry);

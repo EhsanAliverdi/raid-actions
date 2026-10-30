@@ -229,6 +229,7 @@
                   "Client.ViewModel.Contextes.HeroesSelectionDialog.HeroesSelectionPveDialogContext":  [ "MultiRun" ],
                   "Client.ViewModel.Contextes.MultiRun.MultiRunContext":  [ "_active", "_enabled", "_locked" ],
                   "Client.ViewModel.Contextes.MapRegionItemContext":  [ "_regionType", "_regionName", "_isLocked" ],
+                  "Client.ViewModel.Contextes.HourlyGiftPrizeContext":  [ "_state", "_title" ],
                   "Client.ViewModel.Contextes.AllianceActivityMap.AllianceActivityMapContext":  [ "_demonLord" ],
                   "Client.ViewModel.Contextes.AllianceEnemies.EnemyItem.AllianceEnemyItemContext":  [ "_name", "_unlocked", "_selected", "_StageId_k__BackingField", "_enemyType" ],
                   "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishAllianceEnemyDialogContext":  [ "_damageDealt", "_stageName" ],

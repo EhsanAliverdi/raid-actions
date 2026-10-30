@@ -136,6 +136,8 @@ public static partial class PlayTargets
     private const string ClanEnemy = "Client.ViewModel.Contextes.AllianceEnemies.EnemyItem.AllianceEnemyItemContext";
     private const string ClanResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishAllianceBossDialogContext";
     private const string ClanEnemyResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishAllianceEnemyDialogContext";
+    // Free rewards (plan/free-rewards.md; from the dump 2026-10-31): the village's playtime gifts.
+    private const string GiftPrize = "Client.ViewModel.Contextes.HourlyGiftPrizeContext";
     private const string IntProperty = "Client.MVVM.Base.ViewModel.Properties.IntProperty";
     private const string BoolProperty = "Client.MVVM.Base.ViewModel.Properties.BoolProperty";
     private const string StringProperty = "Client.MVVM.Base.ViewModel.Properties.StringProperty";
@@ -150,6 +152,7 @@ public static partial class PlayTargets
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-demonlord", "clan-difficulty", "clan-battle",
+        "village-gifts", "gift-prize",
     };
 
     [GeneratedRegex(@"Vault|Storage", RegexOptions.IgnoreCase)] private static partial Regex VaultName();
@@ -419,6 +422,14 @@ public static partial class PlayTargets
                         ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
                     break;
                 }
+                case GiftPrize:
+                {
+                    // A playtime gift (HourlyGiftItemState: 0 collected, 1 ready to collect, 2 on going).
+                    var state = Try(() => IntValue(g, g.Ref(c.Address, GiftPrize, "_state")), null, notes, "HourlyGiftPrizeContext._state");
+                    var title = Try(() => StringValue(g, g.Ref(c.Address, GiftPrize, "_title")), null, notes, "HourlyGiftPrizeContext._title");
+                    targets.Add(Make("gift-prize", $"playtime gift: {title}", n, Own(i), $"state {state}", id: targets.Count(x => x.Kind == "gift-prize")));
+                    break;
+                }
                 case ClanResult:
                     clanDamage = Try(() => StringValue(g, g.Ref(c.Address, ClanEnemyResult, "_damageDealt")), null, notes, "BattleFinishAllianceEnemyDialogContext._damageDealt");
                     break;
@@ -643,6 +654,7 @@ public static partial class PlayTargets
                 // The village's Tavern and Portal (names to confirm live; the 3D buildings may only be reachable by their HUD buttons).
                 (VillageHudView, var b) when b.Contains("Tavern", StringComparison.OrdinalIgnoreCase) => ("village-tavern", "village: Tavern"),
                 (VillageHudView, "HeroesInfo") => ("village-heroes", "village: Champions"),
+                (VillageHudView, "HourlyGifts") => ("village-gifts", "village: playtime gifts"),
                 (VillageHudView, var b) when b.Contains("Portal", StringComparison.OrdinalIgnoreCase) => ("village-portal", "village: Portal"),
                 // The battle menu's Campaign card (AdventureModeContext, field _adventure: binding to confirm live).
                 (BattleMenuView, var b) when b.Contains("Adventure", StringComparison.OrdinalIgnoreCase) || b.Contains("Campaign", StringComparison.OrdinalIgnoreCase)

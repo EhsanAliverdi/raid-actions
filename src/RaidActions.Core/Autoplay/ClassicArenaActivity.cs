@@ -52,6 +52,14 @@ public sealed class ClassicArenaActivity : IActivity
         {
             if (s.CollectInboxTokens && ctx.Utc >= _inboxCheckAfter) return Decision.Now("out of tokens: checking the inbox");
             var at = ctx.Clocks["Token"].Out()?.WhenAt(s.KeepTokens + 1) ?? ctx.Utc + RefreshUnknown;
+            // Ehsan (2026-10-30): with no token and nobody to fight under the limit, refresh anyway (free) so an opponent is there when the
+            // next token comes; never refresh while someone is there to fight.
+            if (s.UseFreeRefresh && Eligible(s).Count == 0 && !ctx.DryRun)
+            {
+                if (_board.FreeRefreshAvailable || _freeRefreshAt is { } due && due <= ctx.Utc)
+                    return Decision.Now("out of tokens, nobody to fight: free refresh for the next token");
+                if (_freeRefreshAt is { } fr && fr < at) return Decision.Wait(fr, "out of tokens, nobody to fight: waiting for the free refresh");
+            }
             return Decision.Wait(at, "out of tokens: waiting for the next one");
         }
         var eligible = Eligible(s);
@@ -72,8 +80,11 @@ public sealed class ClassicArenaActivity : IActivity
         {
             if (!s.CollectInboxTokens || ctx.Utc < _inboxCheckAfter)
             {
-                // Read the board anyway when it is unknown (timers for the page), then wait for a token.
-                if (_board is null || ctx.Utc - _board.Utc > BoardStale) Seen(ctx, await ctx.Game.OpenClassicArenaAsync(ct));
+                // Read the board anyway when it is unknown (timers for the page); nobody to fight on it: the free refresh, so an opponent
+                // waits for the next token.
+                var seen = _board is null || ctx.Utc - _board.Utc > BoardStale || _freeRefreshAt is { } due && due <= ctx.Utc
+                    ? Seen(ctx, await ctx.Game.OpenClassicArenaAsync(ct)) : _board;
+                if (s.UseFreeRefresh && !ctx.DryRun && seen.FreeRefreshAvailable && Eligible(s).Count == 0) return await FreeRefresh(ctx, seen, s, ct);
                 return "";
             }
             var got = await ctx.Game.CollectInboxTokensAsync(ctx.DryRun, ct);
@@ -94,19 +105,7 @@ public sealed class ClassicArenaActivity : IActivity
         if (eligible.Count == 0)
         {
             if (!s.UseFreeRefresh || !board.FreeRefreshAvailable) return "";
-            await ctx.ThinkAsync(ct);
-            var fresh = await ctx.Game.RefreshArenaFreeAsync(ctx.DryRun, ct);
-            if (ctx.DryRun) _dryRefreshShown = board.Utc;
-            if (fresh is null)
-            {
-                if (ctx.DryRun) ctx.Event(AreaId, "dry-run", "would use the free refresh (not pressed)");
-                return "";
-            }
-            _refreshes++;
-            _skip.Clear();
-            Seen(ctx, fresh);
-            ctx.Event(AreaId, "refresh", ctx.DryRun ? "would use the free refresh (dry run: not pressed)" : $"free refresh: {Eligible(s).Count} opponent(s) under {s.MaxOpponentPower:N0} now");
-            return ctx.DryRun ? "" : "free refresh";
+            return await FreeRefresh(ctx, board, s, ct);
         }
 
         var target = eligible[0];
@@ -135,6 +134,24 @@ public sealed class ClassicArenaActivity : IActivity
         _board = _board is null ? null : _board with { Utc = DateTime.MinValue }; // the board changed: read it again next turn
         ctx.Event(AreaId, "battle", $"{outcome.Result} vs {who}. {outcome.Text}");
         return $"{outcome.Result} vs {who}";
+    }
+
+    /// <summary>The arena's free refresh (nobody to fight under the power limit): the new board read, the skips cleared.</summary>
+    private async Task<string> FreeRefresh(PlayContext ctx, ArenaBoard board, ClassicArenaSettings s, CancellationToken ct)
+    {
+        await ctx.ThinkAsync(ct);
+        var fresh = await ctx.Game.RefreshArenaFreeAsync(ctx.DryRun, ct);
+        if (ctx.DryRun) _dryRefreshShown = board.Utc;
+        if (fresh is null)
+        {
+            if (ctx.DryRun) ctx.Event(AreaId, "dry-run", "would use the free refresh (not pressed)");
+            return "";
+        }
+        _refreshes++;
+        _skip.Clear();
+        Seen(ctx, fresh);
+        ctx.Event(AreaId, "refresh", ctx.DryRun ? "would use the free refresh (dry run: not pressed)" : $"free refresh: {Eligible(s).Count} opponent(s) under {s.MaxOpponentPower:N0} now");
+        return ctx.DryRun ? "" : "free refresh";
     }
 
     public AreaStatus Status(PlayContext ctx, Decision decision)

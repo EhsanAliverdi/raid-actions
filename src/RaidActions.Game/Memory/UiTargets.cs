@@ -170,6 +170,11 @@ public static partial class UiTargets
             if (n.Interactable is null) continue;
             var named = n.Name switch
             {
+                // The game's Exit dialog (seen 2026-10-30 after a Cursed City win; the game then closed): only its cancel is ever a target,
+                // any other button there (quit) is forbidden.
+                _ when t.View.Contains("Exit", StringComparison.Ordinal) && System.Text.RegularExpressions.Regex.IsMatch(n.Name, "Cancel|No|Close", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                    => ("back", $"{t.View}: {n.Name} (stay in the game)"),
+                _ when t.View.Contains("Exit", StringComparison.Ordinal) => ("forbidden", $"{t.View}: {n.Name} (never: it quits the game)"),
                 // Opening the champion screen from the village, and leaving it.
                 "HeroesButton" when n.BindingPath == "HeroesInfo" => ("open-champions", "village: Champions"),
                 "CloseButton" when n.Path.EndsWith("/HeroesHeader/CloseButton", StringComparison.Ordinal) => ("screen-close", "champion screen: close"),
@@ -214,6 +219,8 @@ public static partial class UiTargets
                 "Apply" when n.Path.Contains("/SellArtifactsPanel_h/", StringComparison.Ordinal) => ("sell-apply", "sell panel: Sell"),
                 // Any other popup's close button (offers and the like): closing only; their other buttons are never targets.
                 "BTN_Close1" when t.View.EndsWith("Overlay", StringComparison.Ordinal) => ("dialog-close", $"{t.View}: close"),
+                // A champion filter panel's Hide: it stays loaded when closed (2026-10-30), so it is never a screen's way back.
+                "HideButton" when n.Path.Contains("FilterView", StringComparison.Ordinal) => ("filter-hide", $"{t.View}: filter panel Hide"),
                 // Any other screen's back or close element (by its own name), and a battle result's way back (never Replay or Next).
                 _ when IsBackName(n.Name) || UiState.IsBattleResultView(t.View) && IsResultLeaveName(n.Name) => ("back", $"{t.View}: {n.Name}"),
                 _ when NeverClick.Contains(n.Name) => ("forbidden", n.Name switch

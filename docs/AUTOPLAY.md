@@ -27,6 +27,12 @@ again by `status.json` (fresh and its process alive).
   one battle, one refresh, one inbox visit). Otherwise the engine waits until the earliest time an activity named (re-checking
   every 5 s, and never a busy loop: an idle step always waits at least 1 s).
 - An exception in a turn: event `error`, game sent home (`GoHomeAsync`), back-off 30 s, 60 s, 120 s…; `MaxErrorsInARow` (3) stops.
+- Priority (Ehsan, 2026-10-30): Classic Arena, Energy, Faction Wars, Cursed City. The arena refreshes for free whenever nobody under
+  the power limit is on the board (even with no token, so an opponent waits for the next one) and never while someone is.
+- Energy (raid-extractor plan/energy.md): one activity for every place that spends energy; its settings are a priority list of rows
+  (place, difficulty, stage or highest beaten, runs per day or unlimited, Super Raid) and sources per resource (keep, inbox, gem
+  refills off unless switched on, with per-day / price / gems-to-keep limits). `EnergyPlanner` (raid-extractor Core) is pure and
+  tested; the live dungeon route (`LivePlayGame.Energy.cs`) is built from the dump and **not run yet**.
 - `--once`: stops when nothing is to be done now (dry runs, tests). `--dry-run`: the game shows (overlay picture) and does not press
   anything that spends or changes the account (Start, Refresh, Collect).
 
@@ -77,6 +83,8 @@ fix the rules in `PlayTargets.cs`.
 - Allow-list: `LivePlayGame` clicks only `PlayTargets.Kinds` and the ways back (`back`, `dialog-close`, `screen-close`); a purchase
   view on top (Bank, Offer, Shop, Refill, Purchase) refuses every click but its close.
 - No gems: refresh only when `_freeRefreshAvailable` is true; out of tokens the game's refill window is closed and the turn stops.
+  The one exception is Energy's gem refills, only when switched on in its sources and within their limits; the live game does not
+  buy yet (the refill window is to be explored first) and answers "not explored".
 - Spending clicks (Start, Refresh, Collect) are shown, not pressed, in a dry run.
 - One bot at a time: Auto Play holds the mutex `Local\RaidActions.Autoplay`; the clicking commands refuse while it is held.
 - Ctrl+Alt+Esc aborts (the kill switch is registered for `autoplay`).

@@ -32,11 +32,24 @@ public static class AutoplayCommand
         var enable = args.Contains("--enable");
         var enableFw = args.Contains("--enable-fw");
         var enableCc = args.Contains("--enable-cc");
+        var enableEnergy = args.Contains("--enable-energy");
         var noYield = args.Contains("--no-yield");
-        Func<AutoplaySettings, AutoplaySettings>? force = enable || enableFw || enableCc || noYield
-            ? s => (enable ? s with { Enabled = true, ClassicArena = s.ClassicArena with { Enabled = true } } : s) is var a && (enableFw ? a with { Enabled = true, FactionWars = a.FactionWars with { Enabled = true } } : a) is var b && (enableCc ? b with { Enabled = true, CursedCity = b.CursedCity with { Enabled = true } } : b) is var e && noYield
-                ? e with { Pacing = e.Pacing with { YieldToPersonMinutes = 0 } } : e
-            : null;
+        // --cc-difficulty Normal|Hard: the Cursed City difficulty to play; --cc-risky: also risky levels (whatever the settings say).
+        var ccAt = Array.IndexOf(args, "--cc-difficulty");
+        var ccDifficulty = ccAt >= 0 && ccAt + 1 < args.Length ? args[ccAt + 1] : null;
+        var ccRisky = args.Contains("--cc-risky");
+        AutoplaySettings Force(AutoplaySettings s)
+        {
+            if (enable) s = s with { Enabled = true, ClassicArena = s.ClassicArena with { Enabled = true } };
+            if (enableFw) s = s with { Enabled = true, FactionWars = s.FactionWars with { Enabled = true } };
+            if (enableCc) s = s with { Enabled = true, CursedCity = s.CursedCity with { Enabled = true } };
+            if (enableEnergy) s = s with { Enabled = true, Energy = s.Energy with { Enabled = true } };
+            if (ccDifficulty is not null) s = s with { CursedCity = s.CursedCity with { Difficulty = ccDifficulty } };
+            if (ccRisky) s = s with { CursedCity = s.CursedCity with { TryRisky = true } };
+            if (noYield) s = s with { Pacing = s.Pacing with { YieldToPersonMinutes = 0 } };
+            return s;
+        }
+        Func<AutoplaySettings, AutoplaySettings>? force = enable || enableFw || enableCc || enableEnergy || noYield || ccDifficulty is not null || ccRisky ? Force : null;
 
         using var hold = BotLock.TakeAutoplay();
         if (hold is null)
@@ -84,12 +97,16 @@ public static class AutoplayCommand
             Directory.CreateDirectory(folder);
             var policy = Game.Window.WindowPolicy.Load(GameCommands.WindowConfig);
             var game = new LivePlayGame(live, ui, folder, policy, l => Print($"{DateTime.Now:HH:mm:ss} {l}"), GameCommands.LivePaths(outDir).RaidExtractorRoot, outDir);
-            // Faction Wars first: its keys are for today only and its gear comes off the same day; the arena's tokens wait.
             var fwActivity = new FactionWarsActivity(game);
             fwActivity.Restore(LiveAutoplayHost.Today(dir), DateOnly.FromDateTime(DateTime.UtcNow));
             var ccActivity = new CursedCityActivity(game);
             ccActivity.Restore(LiveAutoplayHost.Today(dir));
-            IActivity[] activities = [fwActivity, ccActivity, arena];
+            var energyActivity = new EnergyActivity(game);
+            energyActivity.Restore(LiveAutoplayHost.Today(dir), DateOnly.FromDateTime(DateTime.Now));
+            // Priority (Ehsan, 2026-10-30): the arena first (its free refresh every 15 minutes, a token's opponent ready), then energy
+            // (plan/energy.md); Faction Wars and Cursed City fill the time while the others wait for tokens and energy. A turn is one
+            // battle, so a battle running is always finished first.
+            IActivity[] activities = [arena, energyActivity, fwActivity, ccActivity];
             host.GameBlocked = game.SessionTaken;
             Print($"Auto Play{(dry ? " (DRY RUN: nothing that spends is pressed)" : "")}. Settings and status: {dir}\\autoplay. Overlays: {folder}. Stop: the app, or Ctrl+Alt+Esc.");
             var engine = new AutoplayEngine(activities, game, host, dry);

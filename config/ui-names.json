@@ -223,6 +223,7 @@
                                                                                                    "_label",
                                                                                                    "_stageId"
                                                                                                ],
+                  "Client.ViewModel.Contextes.DungeonMap.DungeonRegionItemContext":  [ "_regionName", "_regionState", "_setRegionTypeId" ],
                   "Client.ViewModel.Contextes.CursedCity.Map.CursedCityMapContext":  [
                                                                                          "_currentDifficultly"
                                                                                      ]

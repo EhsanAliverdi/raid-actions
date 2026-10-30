@@ -24,7 +24,7 @@ public sealed class FakeCursedCityGame : ICursedCityGame
     public List<string> Calls { get; } = [];
     private readonly HashSet<int> _wearing = [];
 
-    public Task<CursedCityPlan> PlanAsync(int lossesToSkip, IReadOnlySet<int> skip, bool allowRisky, CancellationToken ct)
+    public Task<CursedCityPlan> PlanAsync(int lossesToSkip, IReadOnlySet<int> skip, bool allowRisky, string? difficulty, CancellationToken ct)
     {
         var levels = Levels.Select(l =>
         {

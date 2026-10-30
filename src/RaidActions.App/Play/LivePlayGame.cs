@@ -139,19 +139,23 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         return await Board(ct);
     }
 
-    public async Task<int> CollectInboxTokensAsync(bool dryRun, CancellationToken ct)
+    public async Task<int> CollectInboxTokensAsync(bool dryRun, CancellationToken ct) =>
+        (int)await CollectInbox(PlayTargets.IsArenaTokens, "Token", "arena tokens", dryRun, ct);
+
+    /// <summary>Collects every inbox entry <paramref name="match"/> takes; what the account gained of <paramref name="resource"/>.</summary>
+    private async Task<double> CollectInbox(Func<InboxEntry, bool> match, string resource, string what, bool dryRun, CancellationToken ct)
     {
-        var before = (await game.Account.ReadAsync(ct)).Account.Resources.GetValueOrDefault("Token");
+        var before = (await game.Account.ReadAsync(ct)).Account.Resources.GetValueOrDefault(resource);
         await GoHomeAsync(ct);
         await Click("village-inbox", null, (s2, _) => Has(s2, PlayTargets.InboxView), "the inbox opens", ct);
         await Task.Delay(1500, ct);
         for (var n = 0; n < 10; n++)
         {
             var (_, _, play) = await Read(ct);
-            var entry = play.Inbox.FirstOrDefault(e => PlayTargets.IsArenaTokens(e) && e.Collect?.NotClickable is null);
+            var entry = play.Inbox.FirstOrDefault(e => match(e) && e.Collect?.NotClickable is null);
             if (entry is null)
             {
-                if (n == 0) log($"autoplay: inbox: no arena tokens ({play.Inbox.Count} entries: {string.Join("; ", play.Inbox.Select(e => e.Title ?? e.Message).Take(8))})");
+                if (n == 0) log($"autoplay: inbox: no {what} ({play.Inbox.Count} entries: {string.Join("; ", play.Inbox.Select(e => e.Title ?? e.Message).Take(8))})");
                 break;
             }
             if (dryRun)
@@ -159,16 +163,16 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 Shot($"autoplay: WOULD CLICK {entry.Collect!.Name} (dry run: NOT pressed)", entry.Collect.Rect!.Value, always: true);
                 break;
             }
-            var count = play.Inbox.Count(PlayTargets.IsArenaTokens);
-            await Click("inbox-collect", t => t.Path == entry.Collect!.Path, (s2, lazy) => Top(s2) != PlayTargets.InboxView || lazy().Inbox.Count(PlayTargets.IsArenaTokens) < count,
+            var count = play.Inbox.Count(match);
+            await Click("inbox-collect", t => t.Path == entry.Collect!.Path, (s2, lazy) => Top(s2) != PlayTargets.InboxView || lazy().Inbox.Count(match) < count,
                 $"\"{entry.Title}\" is collected", ct);
             // A rewards popup after collecting: closed with its own close.
             var s3 = await Settled(ct);
             if (Top(s3) is { } top && top != PlayTargets.InboxView && top.EndsWith("Overlay", StringComparison.Ordinal)) await Back(top, ct);
         }
         await GoHomeAsync(ct);
-        var after = (await game.Account.ReadAsync(ct)).Account.Resources.GetValueOrDefault("Token");
-        return (int)Math.Max(0, Math.Round(after - before));
+        var after = (await game.Account.ReadAsync(ct)).Account.Resources.GetValueOrDefault(resource);
+        return Math.Max(0, Math.Round(after - before));
     }
 
     /// <summary>
@@ -191,6 +195,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 lines.Add($"  {r.Name,-22} power {r.Power,9:N0}  status {r.Status}  {(r.Playable ? "playable" : "not playable")}{(r.Quarantined ? ", quarantine" : "")}  team power text \"{r.TeamPowerText}\"  battle: {r.Battle?.NotClickable ?? "ok"}");
         }
         if (play.AutoOn is { } auto) lines.Add($"battle: auto {(auto ? "on" : "off")}");
+        if (play.CcDifficulty is { } ccd) lines.Add($"cursed city map: difficulty {ccd} (1 Normal, 2 Hard, 3 Brutal)");
         if (play.Result is { } res) lines.Add($"result: type {res.ResultType} (1 victory, 2 defeat, 3 draw), enemy {res.EnemyName} power {res.EnemyPower:N0}");
         if (play.Hud.Count > 0)
         {

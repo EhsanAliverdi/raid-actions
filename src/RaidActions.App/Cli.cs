@@ -40,7 +40,8 @@ public static class Cli
                                                targets, one level at a time; stops before an attempt it cannot pay for;
                                                --dry-run opens each piece's upgrade screen and closes it: nothing is upgraded
 
-          RaidActions autoplay [--dry-run] [--once] [--fake] [--enable]
+          RaidActions autoplay [--dry-run] [--once] [--fake] [--enable] [--enable-fw] [--enable-cc] [--enable-energy]
+                               [--cc-difficulty Normal|Hard] [--cc-risky] [--no-yield]
                                                Auto Play (raid-extractor's Auto Play page starts and stops it): plays the
                                                areas switched on in the settings (Classic Arena); --dry-run presses nothing
                                                that spends; --once stops when nothing is to be done now; --fake: no game

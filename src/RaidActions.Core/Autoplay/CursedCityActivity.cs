@@ -7,7 +7,7 @@ namespace RaidActions.Autoplay;
 public interface ICursedCityGame
 {
     /// <summary>The plan from a fresh account read (<see cref="CursedCityPlanner"/>): keys, levels, the next level and its team.</summary>
-    Task<CursedCityPlan> PlanAsync(int lossesToSkip, IReadOnlySet<int> skip, bool allowRisky, CancellationToken ct);
+    Task<CursedCityPlan> PlanAsync(int lossesToSkip, IReadOnlySet<int> skip, bool allowRisky, string? difficulty, CancellationToken ct);
 
     /// <summary>Gears these unused champions from the inventory (Prepare) for the level; vault members are taken out first.</summary>
     Task<string> GearAsync(CcLevel level, IReadOnlyList<int> ids, bool dryRun, CancellationToken ct);
@@ -68,7 +68,7 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
     public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
     {
         var s = ctx.Settings.CursedCity;
-        _plan = await game.PlanAsync(Math.Max(1, s.LossesToSkip), _dryShown, s.TryRisky, ct);
+        _plan = await game.PlanAsync(Math.Max(1, s.LossesToSkip), _dryShown, s.TryRisky, s.Difficulty, ct);
         _planAt = ctx.Utc;
         var level = _plan.Next;
         var playable = level is not null && Spendable(s) >= Cost(level) && level.Team.Feasible && !_dryShown.Contains(level.Stage.Id);
@@ -86,9 +86,10 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
         if (!playable) return "";
 
         var gearNow = s.GearUnused ? level!.Team.Members.Where(m => m.GetsGear && !_geared.Contains(m.Id)).Select(m => m.Id).ToList() : [];
+        // Before gear is moved: the level's team list read once end to end (no slot clicks), so gear goes only to champions the level takes
+        // (2026-10-30: 21 pieces moved to three champions level 3 then refused). Then gear, then the level with the team set once.
         if (gearNow.Count > 0 && !ctx.DryRun)
         {
-            // The team on the team screen first: the game may refuse members (used in the city, the criterion); gear only a team it takes.
             var check = await game.CheckTeamAsync(level!, ct);
             if (check.Result == BattleResult.Retry)
             {

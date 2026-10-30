@@ -59,8 +59,27 @@ public sealed partial class LivePlayGame : IFactionWarsGame
     public async Task<string> RemoveGearAsync(IReadOnlyList<int> ids, bool dryRun, CancellationToken ct)
     {
         if (ids.Count == 0) return "nobody";
-        await RunCommand(["remove-gear", .. ids.Select(i => i.ToString(System.Globalization.CultureInfo.InvariantCulture)), "--then", "reserve", .. (dryRun ? new[] { "--dry-run" } : [])], ct);
+        await StripGear(ids, "reserve", dryRun, ct);
         return dryRun ? "(dry run)" : "done";
+    }
+
+    /// <summary>
+    /// The champions' gear off through a vault (remove-gear, then <paramref name="then"/>). Some champions are not in the vault screen's
+    /// list at all (2026-10-30: Zelotah, used in Cursed City this rotation): the gear still worn then comes off on the champion screen
+    /// (unequip) and those champions stay in the list.
+    /// </summary>
+    private async Task StripGear(IReadOnlyList<int> ids, string then, bool dryRun, CancellationToken ct)
+    {
+        var args = ids.Select(i => i.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
+        try { await RunCommand(["remove-gear", .. args, "--then", then, .. (dryRun ? new[] { "--dry-run" } : [])], ct); }
+        catch (PlayStopException e) when (!dryRun)
+        {
+            var (data, _, _, _) = await Account(ct);
+            var worn = data.Champions.Where(c => ids.Contains(c.Id) && c.Artifacts.Count > 0).Select(c => c.Id).ToList();
+            if (worn.Count == 0) return;
+            log($"autoplay: STEP the vault did not take {string.Join(", ", worn.Select(Who))} ({e.Message}); their gear comes off on the champion screen, they stay in the list");
+            await RunCommand(["unequip", .. worn.Select(i => i.ToString(System.Globalization.CultureInfo.InvariantCulture))], ct);
+        }
     }
 
     public async Task<BattleOutcome> FightCryptAsync(CryptPlan crypt, int stage, bool dryRun, CancellationToken ct)
@@ -86,9 +105,15 @@ public sealed partial class LivePlayGame : IFactionWarsGame
         if (shown.Count == 0) log($"autoplay: the team slots were not read; screen dump: {DumpScreen("team slots not read")}");
         if (shown.Count > 0 && !shown.ToHashSet().SetEquals(crypt.Team))
         {
-            await Back(PlayTargets.FwTeamView, ct);
-            throw new PlayStopException($"{crypt.Name}: the team screen shows {string.Join(", ", shown.Select(i => $"#{i}"))}, the saved crypt team is "
-                + $"{string.Join(", ", crypt.Team.Select(i => $"#{i}"))} ({string.Join(", ", crypt.TeamNames)}). Set the team once in the game; nothing started.");
+            // Another team in the slots (2026-10-30: the last one played by hand): the crypt team is set here (Cursed City's routine).
+            log($"autoplay: STEP setting {crypt.Name}'s crypt team: {string.Join(", ", crypt.TeamNames)}");
+            try { await SetTeam(crypt.Team, ct, PlayTargets.FwTeamView); }
+            catch (LockedHeroException e)
+            {
+                await Back(PlayTargets.FwTeamView, ct);
+                throw new PlayStopException($"{crypt.Name}: {Who(e.HeroId)} cannot be put in the crypt team (state {e.State}); nothing started.");
+            }
+            (_, targets, _) = await Read(ct);
         }
         if (dryRun)
         {
@@ -98,8 +123,19 @@ public sealed partial class LivePlayGame : IFactionWarsGame
             return new BattleOutcome(BattleResult.NotStarted, (start?.NotClickable is null && start is not null ? "Start shown, not pressed" : $"Start not identified: {start?.Note ?? "no team-start target"}")
                 + (shown.Count == 0 ? "; the team slots were not read" : "; the saved team is set"));
         }
-        await Click("team-start", t => t.View == PlayTargets.FwTeamView, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView,
-            "the battle starts", ct, within: TimeSpan.FromSeconds(25), shot: true);
+        try
+        {
+            await Click("team-start", t => t.View == PlayTargets.FwTeamView, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView,
+                "the battle starts", ct, within: TimeSpan.FromSeconds(25), shot: true);
+        }
+        catch (PlayStopException)
+        {
+            if (Top(await ReadState(ct)) != PlayTargets.FwTeamView) throw;
+            // Start pressed and the team screen stays (2026-10-30: stage 9 costs 2 keys, 1 left; the game does nothing): not enough keys for
+            // this stage. Left; the crypt is done for today.
+            await Back(PlayTargets.FwTeamView, ct);
+            return new BattleOutcome(BattleResult.NotStarted, "not enough keys for this stage (Start did nothing)");
+        }
         var inBattle = await ReadState(ct);
         if (!inBattle.Active.Any(v => BattleViews.Contains(v.Name))) await Refuse(inBattle, $"Start {crypt.Name} stage {stage}", ct);
         log($"autoplay: {crypt.Name} stage {stage} started");
@@ -127,7 +163,8 @@ public sealed partial class LivePlayGame : IFactionWarsGame
             {
                 var (_, _, play) = await Read(ct);
                 if (play.Stages is { Count: > 0 } && OnCrypt(play, crypt)) return;
-                await Back(Top(s)!, ct); // another crypt's list: back to the map
+                _openCrypt = null;
+                await Back(Top(s)!, ct); // another crypt's list (or one this bot did not open): back to the map
                 continue;
             }
             if (Has(s, PlayTargets.FwMapView) && Top(s) is PlayTargets.FwMapView or "FractionWarsHUD")
@@ -136,7 +173,10 @@ public sealed partial class LivePlayGame : IFactionWarsGame
                 var mine = play.Crypts?.FirstOrDefault(c => IsFaction(c, crypt));
                 if (mine?.Open is null)
                     throw new PlayStopException($"{crypt.Name}: not found on the Faction Wars map ({string.Join(", ", (play.Crypts ?? []).Select(c => $"{c.FactionId} {c.Name}"))}). Screen dump: {DumpScreen("fw-crypt not found")}");
+                // The map runs past the window (2026-10-30: Lizardmen at x -222): dragged until the crypt is inside.
+                await DragIntoView("fw-crypt", ct, t => t.Id == mine.FactionId);
                 await Click("fw-crypt", t => t.Id == mine.FactionId, (s2, _) => Has(s2, PlayTargets.FwDialogView), $"{crypt.Name}'s stages open", ct);
+                _openCrypt = crypt.Name;
                 continue;
             }
             if (Top(s) == PlayTargets.BattleMenuView)
@@ -156,11 +196,16 @@ public sealed partial class LivePlayGame : IFactionWarsGame
         : c.Name?.Replace(" ", "", StringComparison.Ordinal).Contains(crypt.Name.Replace(" ", "", StringComparison.Ordinal), StringComparison.OrdinalIgnoreCase) == true;
 
     /// <summary>Whether the open stage list is the crypt's (the map remembers the opened faction).</summary>
+    /// <summary>The crypt whose stage list is open: the one this bot opened (2026-10-30: on a stage list the map's crypts are not read, so
+    /// "no crypt read" said yes for any crypt and Demonspawn's list was taken for Lizardmen's). Unknown (another crypt, a restart): no.</summary>
     private bool OnCrypt(PlayScan play, CryptPlan crypt) =>
-        play.Crypts is not { Count: > 0 } || play.Crypts.Any(c => IsFaction(c, crypt));
+        _openCrypt == crypt.Name && (play.Crypts is not { Count: > 0 } || play.Crypts.Any(c => IsFaction(c, crypt)));
+
+    private string? _openCrypt;
 
     /// <summary>The stage's button on the list, scrolled into view: by the number in its name, else its place in the list.</summary>
-    private async Task<UiTarget> FindStage(int stage, CancellationToken ct)
+    /// <param name="kind">"fw-stage" (crypts) or "dungeon-stage"; <paramref name="stageId"/>: the game's stage id, preferred to the name.</param>
+    private async Task<UiTarget> FindStage(int stage, CancellationToken ct, string kind = "fw-stage", int? stageId = null)
     {
         for (var i = 0; i < 14; i++)
         {
@@ -168,12 +213,13 @@ public sealed partial class LivePlayGame : IFactionWarsGame
             var stages = play.Stages ?? [];
             if (stages.Count == 0) throw new PlayStopException($"No stage read on the crypt's list. Screen dump: {DumpScreen("fw-stage not found")}");
             var byName = stages.Where(x => StageNumber(x.Name) == stage).ToList();
-            var mine = byName.Count == 1 ? byName[0] : stages.OrderBy(x => x.Id).ElementAtOrDefault(stage - 1);
+            var mine = stageId is { } wanted && stages.FirstOrDefault(x => x.Id == wanted) is { } exact ? exact
+                : byName.Count == 1 ? byName[0] : stages.OrderBy(x => x.Id).ElementAtOrDefault(stage - 1);
             if (mine?.Start is not { } t) throw new PlayStopException($"Stage {stage} not on the list ({string.Join(", ", stages.Select(x => x.Name ?? x.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)))}).");
-            var live = targets.FirstOrDefault(x => x.Kind == "fw-stage" && x.Id == t.Id) ?? t;
+            var live = targets.FirstOrDefault(x => x.Kind == kind && x.Id == t.Id) ?? t;
             if (live.NotClickable is null) return live;
             if (live.Rect is null || live.Interactable is null) throw new PlayStopException($"Stage {stage}'s button: {live.NotClickable} ({live.Note}). Screen dump: {DumpScreen("fw-stage not clickable")}");
-            var shown = targets.Where(x => x.Kind == "fw-stage" && x.FullyVisible && x.Rect is not null).Select(x => x.Rect!.Value).ToList();
+            var shown = targets.Where(x => x.Kind == kind && x.FullyVisible && x.Rect is not null).Select(x => x.Rect!.Value).ToList();
             if (shown.Count == 0) throw new PlayStopException("No stage is fully shown to scroll from.");
             var (w, why) = Game.Window.GameWindow.Find();
             if (w is null) throw new PlayStopException(why!);
@@ -194,9 +240,15 @@ public sealed partial class LivePlayGame : IFactionWarsGame
     {
         if (extractorRoot.Length == 0) throw new PlayStopException("raid-extractor is not known (Auto Play needs its folder for the teams and gear).");
         var data = await game.Account.ReadAsync(ct);
+        foreach (var c in data.Champions) _names[c.Id] = c.Name ?? $"#{c.Id}";
         var gd = GameDataLookup.Load(ExtractorOutput);
         return (data, gd, ChampionRatings.Load(extractorRoot), Prepare.LocksFor(data, LockStore.Load(ExtractorOutput)));
     }
+
+    private readonly Dictionary<int, string> _names = [];
+
+    /// <summary>A champion as the log names it: "Kael (#1)".</summary>
+    private string Who(int id) => _names.TryGetValue(id, out var n) ? $"{n} (#{id})" : $"#{id}";
 
     /// <summary>Runs one of this repo's own commands in this process (the gear flows), its lines in the log; a failure stops the turn.</summary>
     private async Task RunCommand(string[] args, CancellationToken ct)

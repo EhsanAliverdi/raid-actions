@@ -1111,6 +1111,33 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.DungeonMap.DungeonRegionItemContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_regionName": {
+          "offset": "0x78",
+          "type": "StringProperty",
+          "field": "_regionName",
+          "source": "field",
+          "status": "direct"
+        },
+        "_regionState": {
+          "offset": "0x70",
+          "type": "IntProperty",
+          "field": "_regionState",
+          "source": "field",
+          "status": "direct"
+        },
+        "_setRegionTypeId": {
+          "offset": "0xD4",
+          "type": "RegionTypeId",
+          "field": "_setRegionTypeId",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.CursedCity.Map.CursedCityMapContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

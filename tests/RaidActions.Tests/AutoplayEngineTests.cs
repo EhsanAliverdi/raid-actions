@@ -71,6 +71,26 @@ public class AutoplayEngineTests
     }
 
     [Fact]
+    public async Task Out_of_tokens_with_nobody_to_fight_it_still_uses_the_free_refresh_so_an_opponent_waits_for_the_next_token()
+    {
+        // Ehsan (2026-10-30): refresh when nobody is there to fight, even without a token; never while someone is there.
+        var (_, game, engine) = Make(ArenaOn(a => a with { CollectInboxTokens = false }), stopAfter: TimeSpan.FromMinutes(40));
+        game.Tokens = 0;
+        game.TokenPeriod = TimeSpan.FromHours(5);   // no token comes back in the test
+        game.Powers = (150_000, 200_000);           // never anyone under the 100,000 limit
+        await engine.RunAsync(once: false, Limit());
+        Assert.True(game.Calls.Count(c => c == "refresh") >= 2);   // every free refresh is used
+        Assert.Empty(Fought(game));
+
+        var (_, game2, engine2) = Make(ArenaOn(a => a with { CollectInboxTokens = false }), stopAfter: TimeSpan.FromMinutes(40));
+        game2.Tokens = 0;
+        game2.TokenPeriod = TimeSpan.FromHours(5);
+        game2.Powers = (40_000, 60_000);            // opponents to fight are there
+        await engine2.RunAsync(once: false, Limit());
+        Assert.DoesNotContain("refresh", game2.Calls);
+    }
+
+    [Fact]
     public async Task Inbox_tokens_are_left_alone_when_switched_off()
     {
         var (_, game, engine) = Make(ArenaOn(a => a with { CollectInboxTokens = false }), stopAfter: TimeSpan.FromMinutes(20));

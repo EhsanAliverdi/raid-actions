@@ -60,6 +60,8 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
                 case "strip": _stripped = true; break;
                 case "gear": _geared.Add(name); break;
                 case "remove": _removed.Add(name); break;
+                // "Demonspawn stage 9: not enough keys ...": the crypt stays done for today after a restart too.
+                case "keys": _dryShown.Add(name.Split(" stage ")[0]); break;
                 case "battle" when System.Text.RegularExpressions.Regex.Match(e.Text, @"^(\w+) vs (.+) stage (\d+)") is { Success: true } m:
                 {
                     var crypt = m.Groups[2].Value;

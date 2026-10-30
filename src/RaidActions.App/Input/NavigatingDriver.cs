@@ -479,11 +479,12 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
         float? perNotch = null;
         float? lastY = null;
         var lastNotches = 0;
+        var same = 0;
         for (var i = 0; i < 80; i++)
         {
             var (s, targets) = await Read(ct);
             if (Screen.Covering(s) is { } cover) throw new StopException($"Unexpected popup {cover} over the champion screen.");
-            var (t, _) = UiTargets.Resolve(targets, kind, id);
+            var (t, whyNot) = UiTargets.Resolve(targets, kind, id);
             // Found without scrolling: the list is still, so the click that follows may use this read (see SelectPiece).
             _found = t is not null && i == 0 ? (DateTime.Now, kind, id, s, targets) : null;
             if (t is not null) return t;
@@ -492,7 +493,10 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             var ar = area.Rect!.Value;
             // Direction: towards the target when the list holds it (above or below the viewport); else down, then up at the end.
             var known = targets.FirstOrDefault(x => x.Kind == kind && x.Id == id && x.Active && x.Rect is not null);
-            if (known is not null) down = known.Rect!.Value.Y > ar.Y;
+            // By the centres (2026-10-30: by the top edges a tile inside the view flipped the direction every turn, 80 turns of 2 notches).
+            if (known is not null) down = known.Rect!.Value.Center.Y > ar.Center.Y;
+            if (known is not null && known.Rect!.Value.Y >= ar.Y && known.Rect!.Value.Bottom <= ar.Bottom && i >= 3)
+                throw new StopException($"{kind} {id} is in view but cannot be clicked: {whyNot}");
             // Big turns while the target is more than a viewport away, small ones near it (or when its place is unknown). Once one
             // turn has shown how far a notch moves the list, the turn brings the target to the middle of the viewport in one go.
             var gap = known is null ? 0 : Math.Abs(known.Rect!.Value.Center.Y - ar.Center.Y);
@@ -501,10 +505,12 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             lastY = known?.Rect!.Value.Y;
             var away = gap / Math.Max(1, ar.Height);
             var notches = perNotch is { } ppn && known is not null ? Math.Clamp((int)Math.Round(gap / ppn), 1, 60)
-                : away > 4 ? 15 : away > 2 ? 8 : away > 1 ? 4 : 2;
+                : known is null ? 6 : away > 4 ? 15 : away > 2 ? 8 : away > 1 ? 4 : 2;   // not built: big steps (2 notches showed nothing new and turned it round every turn, 2026-10-30)
             lastNotches = notches;
             var seen = string.Join(",", targets.Where(x => x.Kind == kind && x.FullyVisible).Select(x => x.Id));
-            if (known is null && seen == lastSeen) down = !down; // nothing moved: an end of the list
+            // Nothing moved twice running: an end of the list, so turn around.
+            same = known is null && seen == lastSeen ? same + 1 : 0;
+            if (same >= 2) { down = !down; same = 0; }
             lastSeen = seen;
             var (w, why) = GameWindow.Find();
             if (w is null) throw new StopException(why!);

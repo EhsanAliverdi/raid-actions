@@ -27,7 +27,9 @@
                   "Client.ViewModel.DTO.ViewKey",
                   "Client.RaidApp.ViewVisibility",
                   "Client.RaidApp.ViewState",
-                  "SharedModel.Meta.Battle.Arena.ArenaOpponentStatus"
+                  "SharedModel.Meta.Battle.Arena.ArenaOpponentStatus",
+                  "SharedModel.Meta.Stages.RegionTypeId",
+                  "SharedModel.Meta.Shards.ShardTypeId"
               ],
     "reviewed":  {
 
@@ -157,7 +159,9 @@
                                                                       "Name"
                                                                   ],
                   "ECS.ViewModel.BattleHUDContext":  [
-                                                         "_isAutoEnabled"
+                                                         "_isAutoEnabled",
+                                                         "_speedInt",
+                                                         "_speedString"
                                                      ],
                   "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishArenaDialogContext":  [
                                                                                                        "_battleResultType",
@@ -224,6 +228,15 @@
                                                                                                    "_stageId"
                                                                                                ],
                   "Client.ViewModel.Contextes.DungeonMap.DungeonRegionItemContext":  [ "_regionName", "_regionState", "_setRegionTypeId" ],
+                  "Client.ViewModel.Contextes.HeroesSelectionDialog.HeroesSelectionPveDialogContext":  [ "MultiRun" ],
+                  "Client.ViewModel.Contextes.MultiRun.MultiRunContext":  [ "_active", "_enabled", "_locked" ],
+                  "Client.ViewModel.Contextes.MapRegionItemContext":  [ "_regionType", "_regionName", "_isLocked" ],
+                  "Client.ViewModel.Contextes.FastRankUpOverlay.GradeItemContext":  [ "_grade", "_isSelected", "_count", "_isLocked" ],
+                  "Client.ViewModel.Contextes.FastRankUpOverlay.HeroRankUpItemContext":  [ "_heroAvatar", "_isActive" ],
+                  "Client.ViewModel.Contextes.FastRankUpOverlay.FoodItemContext":  [ "_heroAvatar" ],
+                  "Client.ViewModel.Contextes.FastRankUpOverlay.FastRankUpOverlayContext":  [ "_rankUpAvailable", "_rankUpPrice" ],
+                  "Client.ViewModel.Contextes.PortalDialog.Summon.ShardItemContext":  [ "_shardTypeId", "_count", "_isSelected" ],
+                  "Client.ViewModel.Contextes.PortalDialog.Summon.SummonTabContext":  [ "_selectedShardTypeId" ],
                   "Client.ViewModel.Contextes.CursedCity.Map.CursedCityMapContext":  [
                                                                                          "_currentDifficultly"
                                                                                      ]

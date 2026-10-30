@@ -39,7 +39,8 @@ public sealed record GameResources(DateTime Utc, double Tokens, double Energy, d
     int? TokenCap = null, int? EnergyCap = null);
 
 /// <param name="FreeRefreshIn">Time to the next free refresh, when the game shows it.</param>
-public sealed record ArenaBoard(DateTime Utc, List<ArenaOpponentInfo> Opponents, bool FreeRefreshAvailable, TimeSpan? FreeRefreshIn);
+/// <param name="MyPower">My Classic Arena defense team's power (from the account), for "up to my power"; null when not known.</param>
+public sealed record ArenaBoard(DateTime Utc, List<ArenaOpponentInfo> Opponents, bool FreeRefreshAvailable, TimeSpan? FreeRefreshIn, int? MyPower = null);
 
 /// <summary>Retry: nothing was fought, but the game showed something the plan must take in first (Cursed City: champions locked in the city).</summary>
 public enum BattleResult { Victory, Defeat, Draw, Unknown, NotStarted, Retry }

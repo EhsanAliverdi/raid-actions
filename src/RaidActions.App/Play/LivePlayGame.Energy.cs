@@ -15,19 +15,26 @@ public sealed partial class LivePlayGame : IEnergyGame
     public async Task<EnergyAccount> ReadAccountAsync(CancellationToken ct)
     {
         var (data, _, _, _) = await Account(ct);
-        return new EnergyAccount(data.Account.Resources, data.Progress?.StageCosts ?? [], data.Progress?.Areas ?? []);
+        return new EnergyAccount(data.Account.Resources, data.Progress?.StageCosts ?? [], data.Progress?.Areas ?? [], 2, data.Champions,
+            data.Inventory?.Shards.GetValueOrDefault("Mystery"));
     }
 
     /// <summary>The dungeon whose stage list this bot opened (as Faction Wars' crypt: a list it did not open is never trusted).</summary>
     private string? _openDungeon;
+
+    /// <summary>The dungeons screen the battle menu's Dungeons card opens (seen live 2026-10-30).</summary>
+    private const string DungeonsView = "DungeonsHUD";
 
     public async Task<BattleOutcome> RunStageAsync(EnergyRun run, bool dryRun, CancellationToken ct)
     {
         var started = DateTime.UtcNow;
         var where = EnergyPlanner.Describe(run);
         log($"autoplay: STEP going to {where}");
-        await OpenDungeon(run.Target.Region, ct);
-        await SetDifficulty(run.Target.Difficulty, ct);
+        var story = run.Target.Area == "Story";
+        var resultView = story ? PlayTargets.StoryResultView : PlayTargets.DungeonResultView;
+        if (story) await OpenCampaign(run.Region, ct);
+        else await OpenDungeon(run.Region, ct);
+        await SetDifficulty(run.Difficulty, run.StageId, ct);
 
         var stage = await FindStage(run.Number, ct, "dungeon-stage", run.StageId);
         await Click("dungeon-stage", t => t.Id == stage.Id, (s2, _) => s2.Top?.Name is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView),
@@ -42,6 +49,7 @@ public sealed partial class LivePlayGame : IEnergyGame
         var teamView = Top(after) ?? "";
         if (!PlayTargets.IsTeamView(teamView)) await Refuse(after, where, ct);
 
+        if (run.Team is { Count: > 0 } team) await SetRunTeam(team, teamView, ct);
         await SetSuperRaid(run.Target.SuperRaid, teamView, ct);
         if (dryRun)
         {
@@ -71,8 +79,8 @@ public sealed partial class LivePlayGame : IEnergyGame
         }
         if (!inBattle.Active.Any(v => BattleViews.Contains(v.Name))) await Refuse(inBattle, $"Start {where}", ct);
         log($"autoplay: {where} started");
-        var result = await WaitBattle(ct, PlayTargets.DungeonResultView);
-        await LeaveResult(ct, PlayTargets.DungeonResultView);
+        var result = await WaitBattle(ct, resultView);
+        await LeaveResult(ct, resultView);
         var pve = result?.Pve;
         var outcome = pve?.ResultType switch { 1 => BattleResult.Victory, 2 => BattleResult.Defeat, 3 => BattleResult.Draw, _ => BattleResult.Unknown };
         return new BattleOutcome(outcome, $"{(DateTime.UtcNow - started).TotalSeconds:0} s");
@@ -103,14 +111,20 @@ public sealed partial class LivePlayGame : IEnergyGame
                 if (!targets.Any(t => t.Kind == "dungeon-region" && Mine(t)))
                     throw new PlayStopException($"{region}: no such dungeon tile ({string.Join(", ", targets.Where(t => t.Kind == "dungeon-region").Select(t => t.Name))}). Screen dump: {DumpScreen("dungeon-region not found")}");
                 await DragIntoView("dungeon-region", ct, Mine);
-                await Click("dungeon-region", Mine, (_, scan) => scan().Targets.Any(t => t.Kind == "dungeon-stage"), $"{region}'s stages open", ct, within: TimeSpan.FromSeconds(15));
+                await Click("dungeon-region", Mine, (s2, scan) => !Has(s2, DungeonsView) || scan().Targets.Any(t => t.Kind == "dungeon-stage"), $"{region}'s stages open", ct, within: TimeSpan.FromSeconds(15));
+                await Task.Delay(800, ct);
+                if (!(await Read(ct)).Item2.Any(t => t.Kind == "dungeon-stage"))
+                    throw new PlayStopException($"{region} opened but no stage is recognised. Screen dump: {DumpScreen("dungeon stages not recognised")}");
                 _openDungeon = region;
                 continue;
             }
+            // The dungeons screen (DungeonsHUD, seen live 2026-10-30) open but no tile recognised: the rule is to fix from the dump.
+            if (Has(s, DungeonsView))
+                throw new PlayStopException($"The dungeons screen is open but no dungeon tile is recognised. Screen dump: {DumpScreen("dungeon tiles not recognised")}");
             if (Top(s) == PlayTargets.BattleMenuView)
             {
                 await DragIntoView("mode-dungeon", ct);
-                await Click("mode-dungeon", null, (_, scan) => scan().Targets.Any(t => t.Kind == "dungeon-region"), "the dungeons open", ct, within: TimeSpan.FromSeconds(15));
+                await Click("mode-dungeon", null, (s2, scan) => Has(s2, DungeonsView) || scan().Targets.Any(t => t.Kind == "dungeon-region"), "the dungeons open", ct, within: TimeSpan.FromSeconds(15));
                 continue;
             }
             if (!Input.NavigatingDriver.AtVillage(s)) { await _nav.GoHome(Action("to the village"), ct); continue; }
@@ -119,21 +133,34 @@ public sealed partial class LivePlayGame : IEnergyGame
         throw new PlayStopException($"Could not open {region}'s stages in 12 steps. Screen dump: {DumpScreen("dungeon not reached")}");
     }
 
-    /// <summary>The dungeon's difficulty switch set (a toggle whose note starts with the difficulty); none shown and Normal wanted: fine.</summary>
-    private async Task SetDifficulty(string difficulty, CancellationToken ct)
+    /// <summary>
+    /// The dungeon's difficulty shown: the list shows one difficulty, whose stage ids are its own, so the wanted stage's id in the list
+    /// means the right one. Otherwise the dropdown (bottom left, seen live 2026-10-30) is opened and the item named for it clicked.
+    /// </summary>
+    private async Task SetDifficulty(string difficulty, int? stageId, CancellationToken ct)
     {
-        var (_, targets, _) = await Read(ct);
-        var mine = targets.FirstOrDefault(t => t.Kind == "dungeon-difficulty" && t.Note?.StartsWith(difficulty, StringComparison.OrdinalIgnoreCase) == true);
-        if (mine is null)
+        if (stageId is not { } sid) throw new PlayStopException($"No stage id for {difficulty}: the export has no stage costs for this dungeon.");
+        for (var tries = 0; tries < 4; tries++)
         {
-            if (difficulty == "Normal") return;
-            throw new PlayStopException($"The dungeon's {difficulty} switch is not found. Screen dump: {DumpScreen("dungeon difficulty")}");
+            var (_, targets, _) = await Read(ct);
+            if (targets.Any(t => t.Kind == "dungeon-stage" && t.Id == sid)) return;
+            var item = targets.FirstOrDefault(t => t.Kind == "cc-difficulty-item" && t.NotClickable is null && SameName(t.Note, difficulty));
+            if (item is not null)
+            {
+                log($"autoplay: STEP switching the dungeon to {difficulty}");
+                await Click("cc-difficulty-item", t => t == item || t.Name == item.Name, (_, scan) => scan().Targets.Any(t => t.Kind == "dungeon-stage" && t.Id == sid),
+                    $"the dungeon shows {difficulty}", ct, within: TimeSpan.FromSeconds(10));
+                await Task.Delay(800, ct);
+                continue;
+            }
+            await Click("dungeon-dropdown", null, (_, scan) => scan().Targets.Any(t => t.Kind == "cc-difficulty-item"), "the difficulty list opens", ct, within: TimeSpan.FromSeconds(8));
+            await Task.Delay(500, ct);
         }
-        if (mine.Note!.EndsWith("on", StringComparison.Ordinal)) return;
-        log($"autoplay: STEP switching the dungeon to {difficulty}");
-        await Click("dungeon-difficulty", t => t.Path == mine.Path, (_, scan) => scan().Targets.Any(t => t.Kind == "dungeon-difficulty" && t.Path == mine.Path && t.Note!.EndsWith("on", StringComparison.Ordinal)),
-            $"{difficulty} is on", ct);
-        await Task.Delay(800, ct);
+        throw new PlayStopException($"The dungeon does not show {difficulty} (stage id {sid} not in the list). Screen dump: {DumpScreen("dungeon difficulty")}");
+
+        // The export says "None" for Normal; the dropdown's text may carry more than the name.
+        static bool SameName(string? text, string want) => text is { } x && (x.Trim().Contains(want, StringComparison.OrdinalIgnoreCase)
+            || want == "Normal" && x.Trim().Contains("None", StringComparison.OrdinalIgnoreCase));
     }
 
     /// <summary>The team screen's Super Raid box set as the row says (none shown: fine only when the row does not want it).</summary>
@@ -147,6 +174,11 @@ public sealed partial class LivePlayGame : IEnergyGame
             throw new PlayStopException($"The Super Raid box is not found on the team screen. Screen dump: {DumpScreen("super raid")}");
         }
         if (box.Note == (wanted ? "on" : "off")) return;
+        if (box.Note is not ("on" or "off"))
+        {
+            if (!wanted) return;
+            throw new PlayStopException($"Super Raid cannot be ticked here: the box is {box.Note}.");
+        }
         log($"autoplay: STEP Super Raid {(wanted ? "on" : "off")}");
         await Click("super-raid", t => t.Path == box.Path, (_, scan) => scan().Targets.Any(t => t.Kind == "super-raid" && t.Path == box.Path && t.Note == (wanted ? "on" : "off")),
             $"Super Raid {(wanted ? "on" : "off")}", ct);

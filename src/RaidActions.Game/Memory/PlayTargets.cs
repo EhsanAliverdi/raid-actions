@@ -33,16 +33,21 @@ public sealed record TeamPickRead(int HeroId, int? State, UiTarget? Pick);
 /// <summary>A PvE result screen (BattleFinishPveDialogContext): 1 victory, 2 defeat, 3 draw; stars; the stage.</summary>
 public sealed record PveResultRead(int? ResultType, int? Stars, string? StageName, bool? NextStageAvailable);
 
+/// <summary>A champion in Fast Rank Up's list (HeroRankUpItemContext): its id, whether it is ticked, the food the game picked for it.</summary>
+public sealed record RankUpItemRead(int HeroId, bool? Active, List<int> FoodIds, UiTarget? Toggle);
+
 /// <summary>What Auto Play reads on the screens it plays: click targets and the facts next to them.</summary>
 public sealed record PlayScan(List<UiTarget> Targets, ArenaBoardRead? Arena, bool? AutoOn, ArenaResultRead? Result, List<HudResource> Hud,
     List<InboxEntry> Inbox, List<string> Notes, List<CryptRead>? Crypts = null, List<StageRead>? Stages = null, List<int>? TeamIds = null,
-    PveResultRead? Pve = null, List<CcMapRead>? CcLevels = null, List<TeamPickRead>? Picks = null, int? CcDifficulty = null)
+    PveResultRead? Pve = null, List<CcMapRead>? CcLevels = null, List<TeamPickRead>? Picks = null, int? CcDifficulty = null,
+    List<RankUpItemRead>? RankUps = null, int? SelectedShard = null)
 {
     public static PlayScan Empty => new([], null, null, null, [], [], []);
 
     public PlayScan Merge(PlayScan o) => new([.. Targets, .. o.Targets], Arena ?? o.Arena, AutoOn ?? o.AutoOn, Result ?? o.Result, [.. Hud, .. o.Hud],
         [.. Inbox, .. o.Inbox], [.. Notes, .. o.Notes], [.. Crypts ?? [], .. o.Crypts ?? []], [.. Stages ?? [], .. o.Stages ?? []],
-        [.. TeamIds ?? [], .. o.TeamIds ?? []], Pve ?? o.Pve, [.. CcLevels ?? [], .. o.CcLevels ?? []], [.. Picks ?? [], .. o.Picks ?? []], CcDifficulty ?? o.CcDifficulty);
+        [.. TeamIds ?? [], .. o.TeamIds ?? []], Pve ?? o.Pve, [.. CcLevels ?? [], .. o.CcLevels ?? []], [.. Picks ?? [], .. o.Picks ?? []], CcDifficulty ?? o.CcDifficulty,
+        [.. RankUps ?? [], .. o.RankUps ?? []], SelectedShard ?? o.SelectedShard);
 }
 
 /// <summary>
@@ -63,7 +68,13 @@ public static partial class PlayTargets
         CcMapView = "CursedCityMap", CcTeamView = "CursedCityHeroesSelectionDialog", CcResultView = "BattleFinishCursedCityDialog",
         CcHudView = "CursedCityHUD",
         // The dungeon's result (from BattleFinishDungeonDialogContext's name, as the other results; to confirm live).
-        DungeonResultView = "BattleFinishDungeonDialog";
+        DungeonResultView = "BattleFinishDungeonDialog",
+        // The dungeon map (the 3D scene under DungeonsHUD; seen live 2026-10-30).
+        DungeonsMapView = "DungeonsMap",
+        // A dungeon's stage list (seen live 2026-10-30).
+        DungeonsDialogView = "DungeonsDialog",
+        // Campaign (plan/campaign.md; from the dump 2026-10-30, names to confirm live): the stage's result, the Tavern, its Fast Rank Up.
+        StoryResultView = "BattleFinishStorylineDialog", TavernView = "HeroesDevelopmentDialog", FastRankUpView = "FastRankUpOverlay";
 
     /// <summary>A team screen (the views where a squad is picked before a battle).</summary>
     public static bool IsTeamView(string view) => view.StartsWith("HeroesSelectionDialog", StringComparison.Ordinal) || view.EndsWith("HeroesSelectionDialog", StringComparison.Ordinal);
@@ -88,6 +99,10 @@ public static partial class PlayTargets
     private const string DungeonRegionItem = "Client.ViewModel.Contextes.DungeonMap.DungeonRegionItemContext";
     private const string DungeonStage = "Client.ViewModel.Contextes.RegionDialog.DungeonStageContext";
     private const string DungeonResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishDungeonDialogContext";
+    // The PvE team screen's Super Raid box (seen live 2026-10-30: "Checkbox" under the 'MultiRun' block, no Toggle; its tick fades, so
+    // its state is read from MultiRunContext._active, which the team context keeps as MultiRun).
+    private const string PveTeam = "Client.ViewModel.Contextes.HeroesSelectionDialog.HeroesSelectionPveDialogContext";
+    private const string MultiRunCtx = "Client.ViewModel.Contextes.MultiRun.MultiRunContext";
     private const string StageCtx = "Client.ViewModel.Contextes.RegionDialog.StageContext";
     private const string FwResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishFractionWarsDialogContext";
     private const string PveResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishPveDialogContext";
@@ -97,6 +112,18 @@ public static partial class PlayTargets
     private const string CcMapItem = "Client.ViewModel.Contextes.CursedCity.Map.Items.CursedCityMapItemContext";
     private const string CcMap = "Client.ViewModel.Contextes.CursedCity.Map.CursedCityMapContext";
     private const string CcResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishCursedCityDialogContext";
+    // Campaign (plan/campaign.md; from the dump 2026-10-30, not seen live yet).
+    private const string MapRegionItem = "Client.ViewModel.Contextes.MapRegionItemContext";
+    private const string StoryStage = "Client.ViewModel.Contextes.RegionDialog.StorylineStageContext";
+    private const string StoryRegionDialog = "Client.ViewModel.Contextes.RegionDialog.StorylineRegionDialogContext";
+    private const string StoryResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishStorylineDialogContext";
+    private const string TavernBuilding = "Client.ViewModel.Contextes.Village.TavernBuildingContext";
+    private const string FastRankUp = "Client.ViewModel.Contextes.FastRankUpOverlay.FastRankUpOverlayContext";
+    private const string RankUpGrade = "Client.ViewModel.Contextes.FastRankUpOverlay.GradeItemContext";
+    private const string RankUpItem = "Client.ViewModel.Contextes.FastRankUpOverlay.HeroRankUpItemContext";
+    private const string RankUpFood = "Client.ViewModel.Contextes.FastRankUpOverlay.FoodItemContext";
+    private const string ShardItem = "Client.ViewModel.Contextes.PortalDialog.Summon.ShardItemContext";
+    private const string SummonTab = "Client.ViewModel.Contextes.PortalDialog.Summon.SummonTabContext";
     private const string IntProperty = "Client.MVVM.Base.ViewModel.Properties.IntProperty";
     private const string BoolProperty = "Client.MVVM.Base.ViewModel.Properties.BoolProperty";
     private const string StringProperty = "Client.MVVM.Base.ViewModel.Properties.StringProperty";
@@ -105,9 +132,11 @@ public static partial class PlayTargets
     public static readonly IReadOnlySet<string> Kinds = new HashSet<string>
     {
         "village-battle", "village-inbox", "mode-arena", "arena-classic", "arena-tab", "arena-opponent", "arena-refresh", "team-start",
-        "battle-auto", "inbox-collect", "result-close", "mode-fw", "fw-crypt", "fw-stage", "mode-cc", "cc-level", "team-pick", "team-slot",
+        "battle-auto", "battle-speed", "inbox-collect", "result-close", "mode-fw", "fw-crypt", "fw-stage", "mode-cc", "cc-level", "team-pick", "team-slot",
         "cc-difficulty", "cc-difficulty-item", "team-filter", "team-filter-vault", "filter-hide",
-        "mode-dungeon", "dungeon-region", "dungeon-stage", "dungeon-difficulty", "super-raid",
+        "mode-dungeon", "dungeon-region", "dungeon-stage", "dungeon-difficulty", "dungeon-dropdown", "super-raid",
+        "mode-campaign", "campaign-region", "village-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
+        "fastrankup-go", "village-portal", "portal-shard", "portal-summon1",
     };
 
     [GeneratedRegex(@"Vault|Storage", RegexOptions.IgnoreCase)] private static partial Regex VaultName();
@@ -115,12 +144,18 @@ public static partial class PlayTargets
     [GeneratedRegex(@"Normal|Hard|Brutal|Nightmare", RegexOptions.IgnoreCase)] private static partial Regex DifficultyName();
 
     [GeneratedRegex(@"^Item (\d+): ?(.*)$")] private static partial Regex DropdownItem();
+    [GeneratedRegex(@"^Region(\d+)$")] private static partial Regex ChapterPoint();
 
     [GeneratedRegex(@"Battle|Start|Fight|Attack", RegexOptions.IgnoreCase)] private static partial Regex FightName();
     [GeneratedRegex(@"Info|Avatar|Profile|Hero|Skin|Preset|Auto|Relic|Filter|Sort", RegexOptions.IgnoreCase)] private static partial Regex NotFightName();
     [GeneratedRegex(@"Refresh|Update|Reload", RegexOptions.IgnoreCase)] private static partial Regex RefreshName();
     [GeneratedRegex(@"Collect|Claim|Take|Get|Receive|Accept", RegexOptions.IgnoreCase)] private static partial Regex CollectName();
     [GeneratedRegex(@"Auto", RegexOptions.IgnoreCase)] private static partial Regex AutoName();
+    [GeneratedRegex(@"Speed", RegexOptions.IgnoreCase)] private static partial Regex SpeedName();
+    [GeneratedRegex(@"RankUp|Rank_Up|Upgrade|Confirm", RegexOptions.IgnoreCase)] private static partial Regex RankUpName();
+    [GeneratedRegex(@"Fast|Filter|Info|Faq|Close|Back|Help|Grade|Hero|Food|Avatar", RegexOptions.IgnoreCase)] private static partial Regex NotRankUpName();
+    [GeneratedRegex(@"Single|Summon_?1|x1\b|One|Summon$|SummonButton", RegexOptions.IgnoreCase)] private static partial Regex SummonOneName();
+    [GeneratedRegex(@"Multi|x10|10|Drop|Rate|Info|Dust|Event|Shard", RegexOptions.IgnoreCase)] private static partial Regex NotSummonOneName();
     [GeneratedRegex(@"Repeat|Multi|Climb|Settings", RegexOptions.IgnoreCase)] private static partial Regex NotAutoName();
 
     public static PlayScan Scan(UiTree t, IGameObjects g)
@@ -140,6 +175,8 @@ public static partial class PlayTargets
         List<TeamPickRead>? picks = null;
         PveResultRead? pve = null;
         int? ccDifficulty = null;
+        List<RankUpItemRead>? rankUps = null;
+        int? selectedShard = null;
 
         IEnumerable<UiNode> Below(int i)
         {
@@ -214,11 +251,17 @@ public static partial class PlayTargets
             else if (t.View.Contains("Dungeon", StringComparison.Ordinal) && DifficultyName().Match(x.Path) is { Success: true } dm)
                 targets.Add(Make("dungeon-difficulty", $"dungeon: {dm.Value} ({x.Name})", x, x, $"{dm.Value} {(x.IsOn == true ? "on" : "off")}"));
         }
+        // A Campaign chapter's stage list (StorylineRegionDialogContext; its difficulty is a Dropdown like the dungeons').
+        var storyDialog = nodes.Any(x => x.Context?.Class == StoryRegionDialog);
         // The open list may be built outside the HUD's view (Unity puts it under the canvas): its items are looked for in every view.
         for (var i = 0; i < nodes.Count; i++)
             {
                 if (t.View == PlayTargets.CcHudView && nodes[i].Name == "Dropdown" && nodes[i].Screen is not null)
                     targets.Add(Make("cc-difficulty", "cursed city: difficulty dropdown", nodes[i], nodes[i], null));
+                // A dungeon's difficulty dropdown (bottom left of DungeonsDialog, under the set list; seen live 2026-10-30); its open
+                // items are the same "Item <index>: <text>" kind as Cursed City's.
+                else if ((t.View == DungeonsDialogView || storyDialog) && nodes[i].Name == "Dropdown" && nodes[i].Screen is not null)
+                    targets.Add(Make("dungeon-dropdown", "dungeon: difficulty dropdown", nodes[i], nodes[i], null));
                 else if (DropdownItem().Match(nodes[i].Name) is { Success: true } m && nodes[i].Screen is not null)
                     targets.Add(Make("cc-difficulty-item", $"cursed city: difficulty {m.Groups[2].Value}", nodes[i], nodes[i], m.Groups[2].Value,
                         id: int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture)));
@@ -339,7 +382,91 @@ public static partial class PlayTargets
                     (stages ??= []).Add(new StageRead(sid, name, state, buttonState, target));
                     break;
                 }
-                case FwResult or CcResult or DungeonResult:
+                case MapRegionItem:
+                {
+                    // A Campaign chapter on the campaign map (RegionTypeId 101..112 = Region1..Region12).
+                    var rid = Try(() => (int?)g.Int(c.Address, MapRegionItem, "_regionType"), null, notes, "MapRegionItemContext._regionType");
+                    if (rid is not > 0) break;
+                    var name = Try(() => StringValue(g, g.Ref(c.Address, MapRegionItem, "_regionName")), null, notes, "MapRegionItemContext._regionName");
+                    var locked = Try(() => BoolValue(g, g.Ref(c.Address, MapRegionItem, "_isLocked")), null, notes, "MapRegionItemContext._isLocked");
+                    targets.Add(Make("campaign-region", $"campaign: {name ?? g.EnumName("SharedModel.Meta.Stages.RegionTypeId", rid.Value)}", n, Own(i),
+                        $"region {rid} ({g.EnumName("SharedModel.Meta.Stages.RegionTypeId", rid.Value)}){(locked == true ? ", locked" : "")}", id: rid));
+                    break;
+                }
+                case StoryStage:
+                {
+                    // A Campaign stage row: a StageContext like the dungeons' (the same kind, so the same stage steps play it).
+                    var id = Try(() => IntValue(g, g.Ref(c.Address, StageCtx, "_id")), null, notes, "StageContext._id");
+                    if (id is not { } sid || sid <= 0) break;
+                    var name = Try(() => StringValue(g, g.Ref(c.Address, StageCtx, "_name")), null, notes, "StageContext._name");
+                    var state = Try(() => IntValue(g, g.Ref(c.Address, StageCtx, "_state")), null, notes, "StageContext._state");
+                    var buttonState = Try(() => IntValue(g, g.Ref(c.Address, StageCtx, "_buttonState")), null, notes, "StageContext._buttonState");
+                    var (button, why) = Named(i, FightName(), NotFightName());
+                    var target = Make("dungeon-stage", $"campaign: {name ?? $"stage {sid}"}", n, button, $"stage id {sid}, state {state}, button state {buttonState}" + (why is null ? "" : "; " + why), id: sid);
+                    targets.Add(target);
+                    (stages ??= []).Add(new StageRead(sid, name, state, buttonState, target));
+                    break;
+                }
+                case TavernBuilding:
+                    targets.Add(Make("village-tavern", "village: Tavern", n, Own(i), null));
+                    break;
+                case RankUpGrade:
+                {
+                    // Fast Rank Up's grade tabs (1★, 2★, ...): the grade, whether it is selected, how many champions it would rank up.
+                    var grade = Try(() => (int?)g.Int(c.Address, RankUpGrade, "_grade"), null, notes, "GradeItemContext._grade");
+                    if (grade is null) break;
+                    var selected = Try(() => BoolValue(g, g.Ref(c.Address, RankUpGrade, "_isSelected")), null, notes, "GradeItemContext._isSelected");
+                    var count = Try(() => IntValue(g, g.Ref(c.Address, RankUpGrade, "_count")), null, notes, "GradeItemContext._count");
+                    var locked = Try(() => BoolValue(g, g.Ref(c.Address, RankUpGrade, "_isLocked")), null, notes, "GradeItemContext._isLocked");
+                    targets.Add(Make("fastrankup-grade", $"fast rank up: grade {grade}", n, Own(i),
+                        $"{(selected == true ? "selected" : "not selected")}, count {count}{(locked == true ? ", locked" : "")}", id: grade));
+                    break;
+                }
+                case RankUpItem:
+                {
+                    // A champion Fast Rank Up would rank up, with the food the game picked (FoodItemContext avatars below it).
+                    var av = Try(() => g.Ref(c.Address, RankUpItem, "_heroAvatar"), 0UL, notes, "HeroRankUpItemContext._heroAvatar");
+                    var hero = av == 0 ? null : Try(() => (int?)g.Int(av, HeroAvatar, "_EntityId_k__BackingField"), null, notes, "HeroAvatarContext._EntityId");
+                    if (hero is not > 0) break;
+                    var active = Try(() => BoolValue(g, g.Ref(c.Address, RankUpItem, "_isActive")), null, notes, "HeroRankUpItemContext._isActive");
+                    var food = new List<int>();
+                    foreach (var f in Below(i).Where(x => x.Context?.Class == RankUpFood))
+                    {
+                        var fav = Try(() => g.Ref(f.Context!.Address, RankUpFood, "_heroAvatar"), 0UL, notes, "FoodItemContext._heroAvatar");
+                        var fid = fav == 0 ? null : Try(() => (int?)g.Int(fav, HeroAvatar, "_EntityId_k__BackingField"), null, notes, "HeroAvatarContext._EntityId");
+                        if (fid is > 0 && !food.Contains(fid.Value)) food.Add(fid.Value);
+                    }
+                    var target = Make("fastrankup-item", $"fast rank up: #{hero}", n, Own(i), $"{(active == true ? "ticked" : "not ticked")}; food {string.Join(", ", food.Select(x => "#" + x))}", id: hero);
+                    targets.Add(target);
+                    (rankUps ??= []).Add(new RankUpItemRead(hero.Value, active, food, target));
+                    break;
+                }
+                case FastRankUp:
+                {
+                    var available = Try(() => BoolValue(g, g.Ref(c.Address, FastRankUp, "_rankUpAvailable")), null, notes, "FastRankUpOverlayContext._rankUpAvailable");
+                    var price = Try(() => IntValue(g, g.Ref(c.Address, FastRankUp, "_rankUpPrice")), null, notes, "FastRankUpOverlayContext._rankUpPrice");
+                    var (button, why) = Named(i, RankUpName(), NotRankUpName());
+                    targets.Add(Make("fastrankup-go", "fast rank up: Rank Up", n, button, $"available {available}, price {price}" + (why is null ? "" : "; " + why)));
+                    break;
+                }
+                case ShardItem:
+                {
+                    var type = Try(() => IntValue(g, g.Ref(c.Address, ShardItem, "_shardTypeId")), null, notes, "ShardItemContext._shardTypeId");
+                    if (type is null) break;
+                    var count = Try(() => IntValue(g, g.Ref(c.Address, ShardItem, "_count")), null, notes, "ShardItemContext._count");
+                    var selected = Try(() => BoolValue(g, g.Ref(c.Address, ShardItem, "_isSelected")), null, notes, "ShardItemContext._isSelected");
+                    targets.Add(Make("portal-shard", $"portal: {g.EnumName("SharedModel.Meta.Shards.ShardTypeId", type.Value) ?? $"shard {type}"} shards", n, Own(i),
+                        $"type {type}, count {count}, {(selected == true ? "selected" : "not selected")}", id: type));
+                    break;
+                }
+                case SummonTab:
+                {
+                    selectedShard = Try(() => IntValue(g, g.Ref(c.Address, SummonTab, "_selectedShardTypeId")), null, notes, "SummonTabContext._selectedShardTypeId");
+                    var (button, why) = Named(i, SummonOneName(), NotSummonOneName());
+                    targets.Add(Make("portal-summon1", "portal: Summon x1", n, button, $"selected shard {selectedShard}" + (why is null ? "" : "; " + why)));
+                    break;
+                }
+                case FwResult or CcResult or DungeonResult or StoryResult:
                     pve = new PveResultRead(
                         Try(() => IntValue(g, g.Ref(c.Address, PveResult, "_battleResultType")), null, notes, "BattleFinishPveDialogContext._battleResultType"),
                         Try(() => IntValue(g, g.Ref(c.Address, PveResult, "_stars")), null, notes, "BattleFinishPveDialogContext._stars"),
@@ -393,6 +520,12 @@ public static partial class PlayTargets
                     auto = Try(() => BoolValue(g, g.Ref(c.Address, BattleHud, "_isAutoEnabled")), null, notes, "BattleHUDContext._isAutoEnabled");
                     var (button, why) = Named(i, AutoName(), NotAutoName());
                     targets.Add(Make("battle-auto", "battle: Auto", n, button, (auto == true ? "auto on" : auto == false ? "auto off" : "auto unknown") + (why is null ? "" : "; " + why)));
+                    // The speed button (Ehsan 2026-10-30: x2 is the most the game offers; button name to confirm live): the speed in the note.
+                    var speedText = Try(() => StringValue(g, g.Ref(c.Address, BattleHud, "_speedString")), null, notes, "BattleHUDContext._speedString");
+                    var speedInt = Try(() => IntValue(g, g.Ref(c.Address, BattleHud, "_speedInt")), null, notes, "BattleHUDContext._speedInt");
+                    var (speedButton, speedWhy) = Named(i, SpeedName(), null);
+                    targets.Add(Make("battle-speed", "battle: Speed", n, speedButton, $"speed {speedText ?? "?"} ({speedInt?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "?"})"
+                        + (speedWhy is null ? "" : "; " + speedWhy)));
                     break;
                 }
                 case ArenaResult:
@@ -424,6 +557,26 @@ public static partial class PlayTargets
             }
         }
 
+        // The Super Raid box: on or off from the team context's MultiRunContext; "locked" or "unavailable" when it cannot be ticked.
+        if (PlayTargets.IsTeamView(t.View) && nodes.FirstOrDefault(x => x.Context?.Class == PveTeam) is { } pveTeam)
+        {
+            var mr = Try(() => g.Ref(pveTeam.Context!.Address, PveTeam, "MultiRun"), 0UL, notes, "HeroesSelectionPveDialogContext.MultiRun");
+            if (mr != 0)
+            {
+                var active = Try(() => BoolValue(g, g.Ref(mr, MultiRunCtx, "_active")), null, notes, "MultiRunContext._active");
+                var enabled = Try(() => BoolValue(g, g.Ref(mr, MultiRunCtx, "_enabled")), null, notes, "MultiRunContext._enabled");
+                var locked = Try(() => BoolValue(g, g.Ref(mr, MultiRunCtx, "_locked")), null, notes, "MultiRunContext._locked");
+                var blocks = nodes.Where(x => x.BindingPath == "MultiRun").Select(x => x.Index).ToHashSet();
+                foreach (var x in nodes)
+                {
+                    if (x.Name != "Checkbox" || !x.ActiveInHierarchy || x.Screen is null || !blocks.Contains(x.Parent)) continue;
+                    var state = locked == true ? "locked" : enabled == false ? "unavailable" : active switch { true => "on", false => "off", _ => "unknown" };
+                    targets.Add(new UiTarget("super-raid", "team screen: Super Raid", null, t.View, x.Screen, true, true, x.FullyVisible, false, x.Path, state,
+                        ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
+                }
+            }
+        }
+
         // Buttons the game binds by path rather than by a context of their own (seen 2026-10-29: the village HUD's sub-contexts are
         // fields of VillageHUDContext, bound by name: WorldMapButton → "BattleMap", InboxButton → "Inbox").
         for (var i = 0; i < nodes.Count; i++)
@@ -434,6 +587,12 @@ public static partial class PlayTargets
             {
                 (VillageHudView, "BattleMap") => ("village-battle", "village: Battle"),
                 (VillageHudView, "Inbox") => ("village-inbox", "village: Inbox"),
+                // The village's Tavern and Portal (names to confirm live; the 3D buildings may only be reachable by their HUD buttons).
+                (VillageHudView, var b) when b.Contains("Tavern", StringComparison.OrdinalIgnoreCase) => ("village-tavern", "village: Tavern"),
+                (VillageHudView, var b) when b.Contains("Portal", StringComparison.OrdinalIgnoreCase) => ("village-portal", "village: Portal"),
+                // The battle menu's Campaign card (AdventureModeContext, field _adventure: binding to confirm live).
+                (BattleMenuView, var b) when b.Contains("Adventure", StringComparison.OrdinalIgnoreCase) || b.Contains("Campaign", StringComparison.OrdinalIgnoreCase)
+                    => ("mode-campaign", "battle menu: Campaign"),
                 // The battle menu's Arena card (seen 2026-10-29: "Arena" bound to Arenas, its clickable Panel below).
                 (BattleMenuView, "Arenas") => ("mode-arena", "battle menu: Arena"),
                 // The battle menu's Faction Wars card: bound like the Arena card (name to confirm live: Fraction/Faction).
@@ -451,9 +610,34 @@ public static partial class PlayTargets
             if (own is not null && !targets.Any(x => x.Kind == kind && x.Path == own.Path)) targets.Add(Make(kind, byPath.Item2!, n, own, $"binding '{bp}'"));
         }
 
+        // The dungeon map's dungeons (seen live 2026-10-30): a 3D scene with no contexts; each dungeon is a point named and bound by its
+        // RegionTypeId name ("DragonsLair" at the building, 0x0), placed where the scene shows it (off screen until the map is dragged).
+        // The target is a small square on that point; the click is checked by the stage list opening.
+        if (t.View == DungeonsMapView)
+            foreach (var x in nodes.Where(x => x.ActiveInHierarchy && x.Screen is { Width: 0, Height: 0 } && x.BindingPath == x.Name))
+            {
+                var (px, py) = (x.Screen!.Value.X, x.Screen.Value.Y);
+                var inside = px > 30 && py > 30 && px < t.ClientWidth - 30 && py < t.ClientHeight - 30;
+                targets.Add(new UiTarget("dungeon-region", $"dungeons: {x.Name}", null, t.View, new ClientRect(px - 25, py - 25, 50, 50), true, true, inside, false, x.Path,
+                    $"region ({x.Name})", ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
+            }
+
+        // The campaign map may be a 3D scene like the dungeons' (not seen yet): a point named and bound "Region<N>" is chapter N
+        // (RegionTypeId 100 + N), when no MapRegionItemContext gave it already.
+        if (t.View != DungeonsMapView && !targets.Any(x => x.Kind == "campaign-region"))
+            foreach (var x in nodes.Where(x => x.ActiveInHierarchy && x.Screen is { Width: 0, Height: 0 } && x.BindingPath == x.Name))
+            {
+                if (ChapterPoint().Match(x.Name) is not { Success: true } m) continue;
+                var (px, py) = (x.Screen!.Value.X, x.Screen.Value.Y);
+                var inside = px > 30 && py > 30 && px < t.ClientWidth - 30 && py < t.ClientHeight - 30;
+                targets.Add(new UiTarget("campaign-region", $"campaign: {x.Name}", 100 + int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture),
+                    t.View, new ClientRect(px - 25, py - 25, 50, 50), true, true, inside, false, x.Path, $"region ({x.Name}), a map point", ClientWidth: t.ClientWidth,
+                    ClientHeight: t.ClientHeight));
+            }
+
         // The arena result closes on a tap (seen 2026-10-29: "CloseBlock", a click area with no button, over the lower part of the
         // screen with the champion avatars on it): the target is a strip at its bottom, clear of the avatars.
-        if (t.View is ArenaResultView or FwResultView or DungeonResultView)
+        if (t.View is ArenaResultView or FwResultView or DungeonResultView or StoryResultView)
             foreach (var cb in nodes.Where(x => x.Name == "CloseBlock" && x.ActiveInHierarchy && x.Screen is not null).Take(1))
             {
                 // Its "Content" child is the RETURN TO ARENA bar (seen 2026-10-29): the middle of that bar.
@@ -472,6 +656,17 @@ public static partial class PlayTargets
                     start.Count == 1 ? null : $"{start.Count} elements named Default_h"));
         }
 
+        // The Tavern (HeroesDevelopmentDialog): its Rank Up tab (a toggle whose path says RankUp) and the tab's Fast Rank Up button.
+        if (t.View == TavernView)
+            foreach (var x in nodes.Where(x => x.ActiveInHierarchy && x.Screen is not null))
+            {
+                if (x.IsOn is not null && x.Path.Contains("RankUp", StringComparison.OrdinalIgnoreCase) && !x.Path.Contains("Fast", StringComparison.OrdinalIgnoreCase))
+                    targets.Add(Make("tavern-rankup-tab", "tavern: Rank Up tab", x, x, x.IsOn == true ? "on" : "off"));
+                else if (x.Interactable is not null && (x.Name.Contains("FastRankUp", StringComparison.OrdinalIgnoreCase)
+                    || x.BindingPath?.Contains("FastRankUp", StringComparison.OrdinalIgnoreCase) == true))
+                    targets.Add(Make("tavern-fast-rankup", "tavern: Fast Rank Up", x, x, null));
+            }
+
         // The arena dialog's tabs (toggles in the ArenaDialog view, in their order): tab 0 is the battle tab.
         if (t.View == ArenaDialogView)
         {
@@ -481,7 +676,8 @@ public static partial class PlayTargets
         }
 
         if (rows is not null || free is not null || tab is not null) arena = new ArenaBoardRead(rows ?? [], free, freeText, loading, tab);
-        return new PlayScan(targets, arena, auto, result, hud, inbox, notes.Distinct().ToList(), crypts, stages, team?.Distinct().ToList(), pve, ccLevels, picks, ccDifficulty);
+        return new PlayScan(targets, arena, auto, result, hud, inbox, notes.Distinct().ToList(), crypts, stages, team?.Distinct().ToList(), pve, ccLevels, picks, ccDifficulty,
+            rankUps, selectedShard);
     }
 
     /// <summary>An inbox entry that holds Classic Arena tokens (not Tag/Live arena tokens or auto-battle tickets), by its text and icon.</summary>

@@ -84,6 +84,22 @@ element: name, binding, context, rectangle) next to the run's overlays.
 | team | HeroesSelectionDialogToFractionWars | slots `HeroSlotContext._heroId` under `MySquad`; Start `Default_h` |
 | result | BattleFinishFractionWarsDialog | BattleFinishPveDialogContext (`_battleResultType`, `_stars`) |
 
+Campaign and food (raid-extractor plan/campaign.md; from the dump 2026-10-30, **to confirm with autoplay-explore**):
+
+| Kind | View | Rule |
+| --- | --- | --- |
+| `mode-campaign` | BattleModeSelectionDialog | binding containing "Adventure" (AdventureModeContext) |
+| `campaign-region` (Id = RegionTypeId 101..112) | the campaign map | MapRegionItemContext (`_regionType`, `_regionName`, `_isLocked`); the map is dragged when the chapter is not shown |
+| `dungeon-stage` | the chapter's stage list | StorylineStageContext (a StageContext, the same kind as the dungeons'); difficulty `Dropdown` as the dungeons' |
+| result | BattleFinishStorylineDialog | BattleFinishPveDialogContext fields |
+| `village-tavern`, `tavern-rankup-tab`, `tavern-fast-rankup` | village, HeroesDevelopmentDialog | TavernBuildingContext / HUD binding "Tavern"; the Rank Up toggle; a button named FastRankUp |
+| `fastrankup-grade` (Id = grade), `fastrankup-item` (Id = hero), `fastrankup-go` | FastRankUpOverlay | GradeItemContext; HeroRankUpItemContext with its FoodItemContext avatars; the overlay's Rank Up button |
+| `village-portal`, `portal-shard` (Id = ShardTypeId), `portal-summon1` | village, Portal | HUD binding "Portal"; ShardItemContext; SummonTabContext's single summon (`_selectedShardTypeId` must be 1, Mystery) |
+
+Fast Rank Up presses Rank Up only when every ticked champion and every food the game picked is in the food pool (Common/Uncommon,
+unlocked, no gear, not the farmer); others are unticked first. A message box after Rank Up is closed and the step stops. A summon is
+pressed only with Mystery selected (checked right before the click).
+
 Where a context holds several buttons, the one whose name or binding says what it does is taken; when that is not exactly one the
 target is left unclickable with a note listing the candidates. **`RaidActions autoplay-explore`** (read only) prints every target,
 whether it may be clicked and why, the board, the HUD counters and the inbox: run it on each screen in the first live session and

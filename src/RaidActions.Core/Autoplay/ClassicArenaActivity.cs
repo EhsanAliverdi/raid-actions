@@ -63,7 +63,7 @@ public sealed class ClassicArenaActivity : IActivity
             return Decision.Wait(at, "out of tokens: waiting for the next one");
         }
         var eligible = Eligible(s);
-        if (eligible.Count > 0) return Decision.Now($"{eligible.Count} opponent{(eligible.Count == 1 ? "" : "s")} under {s.MaxOpponentPower:N0}");
+        if (eligible.Count > 0) return Decision.Now($"{eligible.Count} opponent{(eligible.Count == 1 ? "" : "s")} under {Limit(s):N0}");
         if (!s.UseFreeRefresh) return Decision.Wait(_board.Utc + BoardStale, "nobody to fight under the power limit (free refresh is off)");
         if (_board.FreeRefreshAvailable && ctx.DryRun && _dryRefreshShown == _board.Utc)
             return Decision.Wait(_board.Utc + BoardStale, "dry run: the free refresh was shown, not pressed");
@@ -150,8 +150,18 @@ public sealed class ClassicArenaActivity : IActivity
         _refreshes++;
         _skip.Clear();
         Seen(ctx, fresh);
-        ctx.Event(AreaId, "refresh", ctx.DryRun ? "would use the free refresh (dry run: not pressed)" : $"free refresh: {Eligible(s).Count} opponent(s) under {s.MaxOpponentPower:N0} now");
+        ctx.Event(AreaId, "refresh", ctx.DryRun ? "would use the free refresh (dry run: not pressed)" : $"free refresh: {Eligible(s).Count} opponent(s) under {Limit(s):N0} now{Skipped(s)}");
         return ctx.DryRun ? "" : "free refresh";
+    }
+
+    /// <summary>Why the rest of the board is skipped ("; skipped: 6 already beaten, 4 the game does not offer the battle").</summary>
+    private string Skipped(ClassicArenaSettings s)
+    {
+        if (_board is null) return "";
+        var why = _board.Opponents.Select(o => _skip.Contains(o.UserId) ? "skipped this turn" : ArenaRules.Why(o, s, _board.MyPower)).OfType<string>()
+            .Select(w => w.StartsWith("power ", StringComparison.Ordinal) ? $"above {Limit(s):N0}" : w)
+            .GroupBy(w => w).Select(g => $"{g.Count()} {g.Key}").ToList();
+        return why.Count == 0 ? "" : "; skipped: " + string.Join(", ", why) + $" (powers {string.Join(", ", _board.Opponents.Select(o => o.Power.ToString("N0")))})";
     }
 
     public AreaStatus Status(PlayContext ctx, Decision decision)
@@ -175,7 +185,10 @@ public sealed class ClassicArenaActivity : IActivity
     }
 
     private List<ArenaOpponentInfo> Eligible(ClassicArenaSettings s) =>
-        _board is null ? [] : ArenaRules.Eligible(_board.Opponents.Where(o => !_skip.Contains(o.UserId)), s);
+        _board is null ? [] : ArenaRules.Eligible(_board.Opponents.Where(o => !_skip.Contains(o.UserId)), s, _board.MyPower);
+
+    /// <summary>The power limit now: my defense team's power when asked for and known, else the setting's number.</summary>
+    private int Limit(ClassicArenaSettings s) => ArenaRules.Limit(s, _board?.MyPower);
 
     private ArenaBoard Seen(PlayContext ctx, ArenaBoard b)
     {

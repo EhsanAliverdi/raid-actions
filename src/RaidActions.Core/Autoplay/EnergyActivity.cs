@@ -4,8 +4,10 @@ using RaidExtractor.Autoplay;
 namespace RaidActions.Autoplay;
 
 /// <summary>What the energy places need from the account: resources now, each stage's cost, the beaten stages, the Super Raid multiplier.</summary>
+/// <param name="Champions">The roster (food rows: who is food, who is maxed); null: not read.</param>
+/// <param name="MysteryShards">Mystery shards owned (food rows open them when food runs out).</param>
 public sealed record EnergyAccount(IReadOnlyDictionary<string, double> Resources, IReadOnlyList<StageCostOut> Costs, IReadOnlyList<AreaProgressOut> Progress,
-    int SuperRaidMultiplier = 2);
+    int SuperRaidMultiplier = 2, IReadOnlyList<ChampionOut>? Champions = null, int? MysteryShards = null);
 
 /// <summary>A gem refill: bought or not (why), its price, what it gave.</summary>
 public sealed record RefillResult(bool Bought, int Gems, double Got, string Why);
@@ -23,6 +25,21 @@ public interface IEnergyGame
 
     /// <summary>One refill bought with gems, only at <paramref name="maxGems"/> or less (the price is read first; above it: closed).</summary>
     Task<RefillResult> BuyRefillAsync(string resource, int maxGems, bool dryRun, CancellationToken ct);
+
+    /// <summary>
+    /// Food rank-ups (plan/campaign.md) in the game's Fast Rank Up: only champions and food in <paramref name="pool"/> (anything else the
+    /// game lists is switched off, or nothing is pressed). How many champions were ranked up (a dry run: 0, the button shown).
+    /// </summary>
+    Task<int> RankUpFoodAsync(IReadOnlyList<RankUpPlan> rankUps, IReadOnlySet<int> pool, bool dryRun, CancellationToken ct);
+
+    /// <summary>Opens up to <paramref name="count"/> Mystery shards, one at a time (never another shard kind); how many were opened.</summary>
+    Task<int> SummonMysteryAsync(int count, bool dryRun, CancellationToken ct);
+
+    /// <summary>
+    /// Sells the gear Campaign dropped since the farm started (<see cref="GearSale"/>), once at least <see cref="GearSellSettings.Every"/>
+    /// pieces wait, through the sell command's checks; how many were sold (a dry run: 0, the sale shown).
+    /// </summary>
+    Task<int> SellCampaignGearAsync(GearSellSettings settings, bool dryRun, CancellationToken ct);
 }
 
 /// <summary>
@@ -51,6 +68,9 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     private EnergyAccount? _account;
     private DateTime _accountAt;
     private EnergyPlan? _plan;
+    /// <summary>A food step that did nothing (or a dry run that showed it): not tried again until then.</summary>
+    private DateTime _rankUpBlockedUntil = DateTime.MinValue, _summonBlockedUntil = DateTime.MinValue;
+    private int _rankedUp, _summoned, _sold;
 
     public bool IsEnabled(AutoplaySettings settings) => settings.Energy.Enabled;
 
@@ -90,7 +110,22 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         else if (expected && resources.TryGetValue("Energy", out var read))
             resources["Energy"] = read + Math.Floor((ctx.Utc - _accountAt) / EnergyPeriod);
         return new EnergyWorld(resources, a.Costs, a.Progress, _runsToday, _learnt, a.SuperRaidMultiplier, _refillsToday,
-            ctx.Utc - _inboxAt < InboxRecheck);
+            ctx.Utc - _inboxAt < InboxRecheck, a.Champions, a.MysteryShards);
+    }
+
+    /// <summary>The settings the planner sees: rows shown in a dry run left out, a food step that did nothing switched off for a while.</summary>
+    private EnergyPlaySettings Effective(PlayContext ctx)
+    {
+        var s = ctx.Settings.Energy;
+        return s with
+        {
+            Targets = [.. s.Targets.Where(t => !_dryShown.Contains(t.Id))],
+            Food = s.Food with
+            {
+                RankUp = s.Food.RankUp && ctx.Utc >= _rankUpBlockedUntil,
+                SummonMystery = s.Food.SummonMystery && ctx.Utc >= _summonBlockedUntil,
+            },
+        };
     }
 
     public Decision Decide(PlayContext ctx)
@@ -99,11 +134,11 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         var s = ctx.Settings.Energy;
         if (!s.Targets.Any(t => t.Enabled)) return Decision.Off("no place in the list is switched on");
         if (_account is null) return Decision.Now("reading the account");
-        var plan = EnergyPlanner.Plan(s with { Targets = [.. s.Targets.Where(t => !_dryShown.Contains(t.Id))] }, World(ctx, _account, expected: true));
+        var plan = EnergyPlanner.Plan(Effective(ctx), World(ctx, _account, expected: true));
         _plan = plan;
         switch (plan.Step)
         {
-            case EnergyStep.Run or EnergyStep.Inbox or EnergyStep.BuyRefill:
+            case EnergyStep.Run or EnergyStep.Inbox or EnergyStep.BuyRefill or EnergyStep.RankUp or EnergyStep.Summon:
                 return Decision.Now(plan.Why);
             case EnergyStep.Nothing:
                 return Decision.Wait(ctx.Local.Date.AddDays(1).ToUniversalTime(), plan.Why);
@@ -123,10 +158,39 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         var s = ctx.Settings.Energy;
         _account = await game.ReadAccountAsync(ct);
         _accountAt = ctx.Utc;
-        var plan = EnergyPlanner.Plan(s with { Targets = [.. s.Targets.Where(t => !_dryShown.Contains(t.Id))] }, World(ctx, _account, expected: false));
+        var plan = EnergyPlanner.Plan(Effective(ctx), World(ctx, _account, expected: false));
         _plan = plan;
         switch (plan.Step)
         {
+            case EnergyStep.RankUp:
+            {
+                var row = plan.Rows[^1].Target;
+                var pool = (_account.Champions ?? []).Where(c => FoodPlanner.IsFood(c, s.Food, row.Team)).Select(c => c.Id).ToHashSet();
+                await ctx.ThinkAsync(ct);
+                var done = await game.RankUpFoodAsync(plan.Food!.RankUps, pool, ctx.DryRun, ct);
+                _rankedUp += done;
+                var due = string.Join(", ", plan.Food.RankUps.Select(r => $"#{r.HeroId} {r.Rank}*"));
+                ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "rankup", done > 0
+                    ? $"ranked up {done} food champion(s) ({due})"
+                    : $"no rank-up done ({plan.Food.RankUps.Count} due: {due}){(ctx.DryRun ? ": dry run" : "")}");
+                if (done == 0) _rankUpBlockedUntil = ctx.Utc + TimeSpan.FromHours(1);
+                _account = await game.ReadAccountAsync(ct);
+                _accountAt = ctx.Utc;
+                return done > 0 ? $"rank-up: {done} food" : "";
+            }
+            case EnergyStep.Summon:
+            {
+                var count = Math.Max(0, (_account.MysteryShards ?? 0) - s.Food.KeepMysteryShards);
+                await ctx.ThinkAsync(ct);
+                var opened = await game.SummonMysteryAsync(Math.Min(count, 10), ctx.DryRun, ct);
+                _summoned += opened;
+                ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "summon",
+                    opened > 0 ? $"opened {opened} Mystery shard(s) for food" : $"no Mystery shard opened{(ctx.DryRun ? ": dry run" : "")}");
+                if (opened == 0) _summonBlockedUntil = ctx.Local.Date.AddDays(1).ToUniversalTime();
+                _account = await game.ReadAccountAsync(ct);
+                _accountAt = ctx.Utc;
+                return opened > 0 ? $"summon: {opened} Mystery shard(s)" : "";
+            }
             case EnergyStep.Run:
             {
                 var run = plan.Run!;
@@ -143,6 +207,20 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 _runsToday[run.Target.Id] = _runsToday.GetValueOrDefault(run.Target.Id) + 1;
                 if (outcome.Result == BattleResult.Victory) _wins++; else _losses++;
                 ctx.Event(AreaId, "battle", $"{outcome.Result} {where} [row {run.Target.Id}]. {outcome.Text}");
+                // Campaign drops sold when enough have come (the option; a failed sale stops only the sale, not the farm).
+                if (run.Target.Area == "Story" && s.SellGear.Enabled && outcome.Result == BattleResult.Victory)
+                {
+                    try
+                    {
+                        var sold = await game.SellCampaignGearAsync(s.SellGear, ctx.DryRun, ct);
+                        _sold += sold;
+                        if (sold > 0) ctx.Event(AreaId, "sell", $"sold {sold} Campaign drop(s)");
+                    }
+                    catch (PlayStopException e)
+                    {
+                        ctx.Event(AreaId, "sell", $"the Campaign gear sale stopped: {e.Message}");
+                    }
+                }
                 // What the run really took (the regeneration during it is under one energy for a short battle): learnt when not exported.
                 _account = await game.ReadAccountAsync(ct);
                 _accountAt = ctx.Utc;
@@ -187,6 +265,8 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         var s = ctx.Settings.Energy;
         var state = !s.Enabled ? AreaState.Off : decision.Act ? AreaState.Playing : decision.UntilUtc is null ? AreaState.Done : AreaState.Waiting;
         var counters = new Dictionary<string, int> { ["Wins"] = _wins, ["Losses"] = _losses, ["Refills"] = _refillsToday };
+        if (s.Targets.Any(t => t.Food)) { counters["Food ranked up"] = _rankedUp; counters["Mystery opened"] = _summoned; }
+        if (s.SellGear.Enabled) counters["Gear sold"] = _sold;
         foreach (var t in s.Targets) counters[$"{EnergyPlanner.Where(t)} runs"] = _runsToday.GetValueOrDefault(t.Id);
         var timers = new Dictionary<string, DateTime>();
         if (decision.UntilUtc is { } u) timers["Next try"] = u;

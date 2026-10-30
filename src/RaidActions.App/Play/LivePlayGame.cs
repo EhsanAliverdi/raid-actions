@@ -239,7 +239,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 var left = GameText.TimeLeft(b.FreeRefreshText);
                 return new ArenaBoard(DateTime.UtcNow, [.. rows.DistinctBy(r => r.UserId).Select(r => new ArenaOpponentInfo(r.UserId, r.Name, r.Power,
                     r.Status switch { 1 => OpponentStatus.Defeated, 2 => OpponentStatus.Won, _ => OpponentStatus.None }, r.Playable && !r.Quarantined))],
-                    b.FreeRefreshAvailable == true, left);
+                    b.FreeRefreshAvailable == true, left, await MyArenaPower(ct));
             }
             await Task.Delay(500, ct);
         }
@@ -273,8 +273,9 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     /// <summary>Waits for the battle to end (no input but the Auto button, once, when auto is off); the result screen's read, if any.</summary>
     private async Task<PlayScan?> WaitBattle(CancellationToken ct, string resultView = PlayTargets.ArenaResultView)
     {
-        var until = DateTime.UtcNow + TimeSpan.FromMinutes(12);
+        var until = DateTime.UtcNow + TimeSpan.FromMinutes(20); // dungeon runs took 9-10 minutes at x1 (2026-10-30)
         var autoTried = false;
+        var speedTries = 0;
         while (DateTime.UtcNow < until)
         {
             await Task.Delay(1500, ct);
@@ -297,9 +298,45 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 }
                 else if (play.AutoOn == true) autoTried = true;
             }
+            // Battle speed x2 (Ehsan 2026-10-30: the most the game offers); tried twice at most, a battle never stops for it.
+            if (speedTries < 2 && Has(s, PlayTargets.BattleHudView) && !s.UiBlocked)
+            {
+                var (_, targets, _) = await Read(ct);
+                var speed = targets.FirstOrDefault(t => t.Kind == "battle-speed");
+                if (speed is null || AtX2(speed.Note)) speedTries = 2;
+                else if (speed.NotClickable is not null) { speedTries = 2; log($"autoplay: the speed button is not identified ({speed.Note}; {speed.NotClickable})"); }
+                else
+                {
+                    speedTries++;
+                    try
+                    {
+                        await Click("battle-speed", null, (_, lazy) => AtX2(lazy().Targets.FirstOrDefault(t => t.Kind == "battle-speed")?.Note), "speed x2", ct,
+                            view: PlayTargets.BattleHudView, within: TimeSpan.FromSeconds(4));
+                        log("autoplay: speed x2");
+                        speedTries = 2;
+                    }
+                    catch (PlayStopException e) { log($"autoplay: speed not set to x2 ({e.Message})"); }
+                }
+            }
         }
-        throw new PlayStopException("The battle did not end in 12 minutes.");
+        throw new PlayStopException("The battle did not end in 20 minutes.");
     }
+
+    private (DateTime At, int? Power) _myArenaPower;
+
+    /// <summary>My Classic Arena defense team's power from the account (read at most every 30 minutes; null when it cannot be read).</summary>
+    private async Task<int?> MyArenaPower(CancellationToken ct)
+    {
+        if (DateTime.UtcNow - _myArenaPower.At < TimeSpan.FromMinutes(30)) return _myArenaPower.Power;
+        int? power = null;
+        try { power = (await game.Account.ReadAsync(ct)).Progress?.ClassicArena?.DefensePower; }
+        catch (Exception e) when (e is not OperationCanceledException) { log($"autoplay: my arena power not read ({e.Message})"); }
+        _myArenaPower = (DateTime.UtcNow, power);
+        return power;
+    }
+
+    /// <summary>The speed button's note says x2 ("speed x2 (2)"; the string's form to confirm live).</summary>
+    private static bool AtX2(string? note) => note is { } n && System.Text.RegularExpressions.Regex.IsMatch(n, @"^speed \S*2");
 
     /// <summary>A result screen left by its way back (the arena's tap bar; else its back/return element, never Replay or Next).</summary>
     private async Task LeaveResult(CancellationToken ct, string view = PlayTargets.ArenaResultView)

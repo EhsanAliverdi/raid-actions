@@ -225,8 +225,10 @@ public sealed partial class LivePlayGame : IEnergyGame
         if (box.Note == (wanted ? "on" : "off")) return;
         if (box.Note is not ("on" or "off"))
         {
-            if (!wanted) return;
-            throw new PlayStopException($"Super Raid cannot be ticked here: the box is {box.Note}.");
+            // Not offered now (seen 2026-10-31 on Campaign and Dragon's Lair: "unavailable", Super Raid seems to come and go with events):
+            // a normal run instead of no run at all.
+            if (wanted) log($"autoplay: Super Raid is {box.Note} here now: a normal run");
+            return;
         }
         log($"autoplay: STEP Super Raid {(wanted ? "on" : "off")}");
         await Click("super-raid", t => t.Path == box.Path, (_, scan) => scan().Targets.Any(t => t.Kind == "super-raid" && t.Path == box.Path && t.Note == (wanted ? "on" : "off")),

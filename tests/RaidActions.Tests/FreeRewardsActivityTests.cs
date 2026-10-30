@@ -27,11 +27,13 @@ public class FreeRewardsActivityTests
 
         public int QuestCalls { get; private set; }
 
-        public Task<int> ClaimQuestRewardsAsync(bool dryRun, CancellationToken ct)
+        public List<QuestRead> Quests { get; set; } = [];
+
+        public Task<QuestPass> QuestPassAsync(bool claim, bool dryRun, CancellationToken ct)
         {
             QuestCalls++;
             if (Fail) throw new PlayStopException("the quests button is not recognised");
-            return Task.FromResult(0);
+            return Task.FromResult(new QuestPass(0, Quests));
         }
     }
 
@@ -66,5 +68,23 @@ public class FreeRewardsActivityTests
         await engine.RunAsync(once: false, Limit());
         Assert.InRange(game.Calls, 2, 3);
         Assert.All(host.Events.Where(e => e.Area == FreeRewardsActivity.AreaId), e => Assert.Equal("error", e.Kind));
+    }
+
+    [Fact]
+    public async Task The_quest_pass_turns_the_open_quests_into_needs_for_the_other_areas()
+    {
+        var (host, game, engine) = Make(TimeSpan.FromMinutes(5));
+        game.Quests =
+        [
+            new(1, "Daily", "Win 5 Classic Arena battles", "WinArenaBattles", "2/5", false, false),
+            new(2, "Advanced", "Defeat a Faction Wars boss", "FractionWarsMapTransition", "0/1", false, false),
+            new(3, "Daily", "Purchase an item in the Market", "PurchaseItemInMagicShop", "0/1", false, false),
+            new(4, "Daily", "Summon a champion", "SummonHero", "1/1", true, true),
+        ];
+        await engine.RunAsync(once: false, Limit());
+        var ev = host.Events.Single(e => e.Kind == "quest-plan");
+        Assert.Contains("ArenaWin ×3", ev.Text);
+        Assert.Contains("FactionWarsBoss ×1", ev.Text);
+        Assert.Contains("given up: 1", ev.Text);
     }
 }

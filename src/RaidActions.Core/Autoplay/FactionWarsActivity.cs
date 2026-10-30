@@ -128,6 +128,12 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
             {
                 var c = step.Crypt!;
                 var stage = Stage(c, s);
+                // A quest asks for a Faction Wars boss (Ehsan 2026-10-31): the lowest boss stage already beaten (7, 14, 21), the safest win.
+                if (ctx.QuestLeft(QuestNeedKind.FactionWarsBoss) > 0 && c.HighestPassed >= 7)
+                {
+                    stage = 7;
+                    ctx.Event(AreaId, "quest", $"{c.Name}: a quest asks for a boss: stage {stage}");
+                }
                 var outcome = await game.FightCryptAsync(c, stage, ctx.DryRun, ct);
                 if (outcome.Result == BattleResult.NotStarted)
                 {
@@ -137,7 +143,13 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
                     return "";
                 }
                 _battles++;
-                if (outcome.Result == BattleResult.Victory) { _wins++; _defeatsInARow[c.Name] = 0; }
+                if (outcome.Result == BattleResult.Victory)
+                {
+                    _wins++;
+                    _defeatsInARow[c.Name] = 0;
+                    // The quest is met for now (the next quest pass reads the real progress).
+                    if (stage % 7 == 0) ctx.QuestNeeds.RemoveAll(n => n.Kind == QuestNeedKind.FactionWarsBoss && n.Remaining <= 1);
+                }
                 else
                 {
                     _losses++;

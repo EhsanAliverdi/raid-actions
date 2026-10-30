@@ -44,6 +44,15 @@ public sealed class PlayContext(AutoplaySettings settings, IPlayGame game, IAuto
 
     public GameResources? LastResources { get; private set; }
 
+    /// <summary>
+    /// The open quests as needs (plan/quests.md), read by Free rewards' quest pass; the other areas play them first. Empty when quests are
+    /// switched off or not read yet.
+    /// </summary>
+    public List<QuestNeed> QuestNeeds { get; set; } = [];
+
+    /// <summary>What is left of a quest kind now (0: no open quest asks it, or quests are off).</summary>
+    public int QuestLeft(QuestNeedKind kind) => Settings.Quests.Enabled ? QuestPlanner.Left(QuestNeeds, kind) : 0;
+
     /// <summary>Reads the resources and feeds the clocks.</summary>
     public async Task<GameResources> ReadResourcesAsync(CancellationToken ct)
     {

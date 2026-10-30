@@ -123,13 +123,35 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             ctx.Utc - _inboxAt < InboxRecheck, a.Champions, a.MysteryShards, _closedToday);
     }
 
-    /// <summary>The settings the planner sees: rows shown in a dry run left out, a food step that did nothing switched off for a while.</summary>
+    /// <summary>Mystery shards a quest's summon needs now (0: none asked, no shard to spare, or summons paused).</summary>
+    private int QuestSummon(PlayContext ctx)
+    {
+        var left = ctx.QuestLeft(QuestNeedKind.Summon);
+        if (left <= 0 || _account is null || ctx.Utc < _summonBlockedUntil) return 0;
+        return Math.Min(left, Math.Max(0, (_account.MysteryShards ?? 0) - ctx.Settings.Energy.Food.KeepMysteryShards));
+    }
+
+    /// <summary>
+    /// Rows the open quests add before the list (plan/quests.md): a dungeon boss (Dragon's Lair, the highest Normal stage beaten), a
+    /// Campaign boss (12-7 Normal); as many runs as the quest has left. Energy quests and Campaign stages are met by the list itself.
+    /// </summary>
+    private static List<EnergyTarget> QuestRows(PlayContext ctx)
+    {
+        var rows = new List<EnergyTarget>();
+        if (ctx.QuestLeft(QuestNeedKind.DungeonBoss) > 0)
+            rows.Add(new EnergyTarget { Id = "quest-dungeon", Area = "Dungeon", Region = "DragonsLair", Difficulty = "Normal" });
+        if (ctx.QuestLeft(QuestNeedKind.CampaignBoss) > 0)
+            rows.Add(new EnergyTarget { Id = "quest-campaign-boss", Area = "Story", Region = "Region12", Difficulty = "Normal", Stage = 7 });
+        return rows;
+    }
+
+    /// <summary>The settings the planner sees: quest rows first, rows shown in a dry run left out, a food step that did nothing switched off for a while.</summary>
     private EnergyPlaySettings Effective(PlayContext ctx)
     {
         var s = ctx.Settings.Energy;
         return s with
         {
-            Targets = [.. s.Targets.Where(t => !_dryShown.Contains(t.Id))],
+            Targets = [.. QuestRows(ctx).Where(t => !_dryShown.Contains(t.Id)), .. s.Targets.Where(t => !_dryShown.Contains(t.Id))],
             Food = s.Food with
             {
                 RankUp = s.Food.RankUp && ctx.Utc >= _rankUpBlockedUntil,
@@ -144,6 +166,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         var s = ctx.Settings.Energy;
         if (!s.Targets.Any(t => t.Enabled)) return Decision.Off("no place in the list is switched on");
         if (_account is null) return Decision.Now("reading the account");
+        if (QuestSummon(ctx) > 0) return Decision.Now("a quest asks for a summon: Mystery shards");
         var plan = EnergyPlanner.Plan(Effective(ctx), World(ctx, _account, expected: true));
         _plan = plan;
         switch (plan.Step)
@@ -168,6 +191,25 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         var s = ctx.Settings.Energy;
         _account = await game.ReadAccountAsync(ct);
         _accountAt = ctx.Utc;
+        // A quest's summon first (Ehsan 2026-10-31: quests first): Mystery shards only, never another kind.
+        if (QuestSummon(ctx) is var want and > 0)
+        {
+            int got;
+            try { got = await game.SummonMysteryAsync(want, ctx.DryRun, ct); }
+            catch (Exception e) when (e is not OperationCanceledException)
+            {
+                _summonBlockedUntil = ctx.Local.Date.AddDays(1).ToUniversalTime();
+                ctx.Event(AreaId, "error", $"the quest's summon paused until tomorrow: {e.Message}");
+                return "";
+            }
+            if (got == 0) _summonBlockedUntil = ctx.Utc + TimeSpan.FromHours(1);
+            _summoned += got;
+            ctx.QuestNeeds = [.. ctx.QuestNeeds.Select(n => n.Kind == QuestNeedKind.Summon ? n with { Remaining = n.Remaining - got } : n).Where(n => n.Remaining > 0)];
+            if (got > 0) ctx.Event(AreaId, "summon", $"opened {got} Mystery shard(s) for a quest");
+            _account = await game.ReadAccountAsync(ct);
+            _accountAt = ctx.Utc;
+            return got > 0 ? $"quest summon: {got}" : "";
+        }
         var plan = EnergyPlanner.Plan(Effective(ctx), World(ctx, _account, expected: false));
         _plan = plan;
         switch (plan.Step)
@@ -242,6 +284,12 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 _runsToday[run.Target.Id] = _runsToday.GetValueOrDefault(run.Target.Id) + 1;
                 if (outcome.Result == BattleResult.Victory) _wins++; else _losses++;
                 ctx.Event(AreaId, "battle", $"{outcome.Result} {where} [row {run.Target.Id}]. {outcome.Text}");
+                // A quest row's win counts against its quest at once (the next quest pass reads the real progress).
+                if (outcome.Result == BattleResult.Victory && run.Target.Id.StartsWith("quest-", StringComparison.Ordinal))
+                {
+                    var kind = run.Target.Id == "quest-dungeon" ? QuestNeedKind.DungeonBoss : QuestNeedKind.CampaignBoss;
+                    ctx.QuestNeeds = [.. ctx.QuestNeeds.Select(n => n.Kind == kind ? n with { Remaining = n.Remaining - 1 } : n).Where(n => n.Remaining > 0)];
+                }
                 // Campaign drops sold when enough have come (the option; a failed sale stops only the sale, not the farm).
                 if (run.Target.Area == "Story" && s.SellGear.Enabled && outcome.Result == BattleResult.Victory)
                 {

@@ -7,14 +7,20 @@ public interface IFreeRewardsGame
 {
     Task<int> CollectPlaytimeGiftsAsync(bool dryRun, CancellationToken ct);
 
-    /// <summary>Every quest tab's Claim all pressed where the game says a reward waits; how many tabs were claimed.</summary>
-    Task<int> ClaimQuestRewardsAsync(bool dryRun, CancellationToken ct);
+    /// <summary>
+    /// The quests window: every tab read (the quests, their progress) and, when <paramref name="claim"/>, its Claim all pressed where the
+    /// game says a reward waits. How many tabs were claimed, and the quests read.
+    /// </summary>
+    Task<QuestPass> QuestPassAsync(bool claim, bool dryRun, CancellationToken ct);
 }
 
 /// <summary>
 /// Free rewards (Auto Play, plan/free-rewards.md): every <see cref="FreeRewardsSettings.CheckEveryMinutes"/> the playtime gifts that are
 /// ready are collected. Nothing is spent. A check that fails is tried again at the next check, never in a loop.
 /// </summary>
+/// <summary>A quests window visit: tabs claimed, the quests read.</summary>
+public sealed record QuestPass(int Claimed, List<QuestRead> Quests);
+
 public sealed class FreeRewardsActivity(IFreeRewardsGame game) : IActivity
 {
     public const string AreaId = "free-rewards";
@@ -22,6 +28,7 @@ public sealed class FreeRewardsActivity(IFreeRewardsGame game) : IActivity
     public string Name => "Free rewards";
 
     private DateTime _checkedAt = DateTime.MinValue;
+    private string? _lastQuestText;
     private int _collected;
     private bool _dryShown;
 
@@ -36,7 +43,7 @@ public sealed class FreeRewardsActivity(IFreeRewardsGame game) : IActivity
     public Decision Decide(PlayContext ctx)
     {
         if (_dryShown) return Decision.Off("shown in this dry run");
-        if (!ctx.Settings.FreeRewards.PlaytimeGifts && !ctx.Settings.FreeRewards.Quests) return Decision.Off("nothing switched on");
+        if (!ctx.Settings.FreeRewards.PlaytimeGifts && !ctx.Settings.FreeRewards.Quests && !ctx.Settings.Quests.Enabled) return Decision.Off("nothing switched on");
         var next = _checkedAt + Every(ctx);
         return ctx.Utc >= next ? Decision.Now("checking the free rewards") : Decision.Wait(next, "next check of the free rewards");
     }
@@ -60,18 +67,32 @@ public sealed class FreeRewardsActivity(IFreeRewardsGame game) : IActivity
             }
             catch (PlayStopException e) { ctx.Event(AreaId, "error", $"playtime gifts not collected (tried again at the next check): {e.Message}"); }
         }
-        if (s.Quests)
+        if (s.Quests || ctx.Settings.Quests.Enabled)
         {
             try
             {
-                var tabs = await game.ClaimQuestRewardsAsync(ctx.DryRun, ct);
-                if (tabs > 0 && !ctx.DryRun)
+                var claim = s.Quests && ctx.Settings.Quests.ClaimRewards;
+                var pass = await game.QuestPassAsync(claim, ctx.DryRun, ct);
+                if (pass.Claimed > 0 && !ctx.DryRun)
                 {
-                    ctx.Event(AreaId, "quests", $"claimed the quest rewards of {tabs} tab(s)");
-                    done.Add($"quests: {tabs} tab(s)");
+                    ctx.Event(AreaId, "quests", $"claimed the quest rewards of {pass.Claimed} tab(s)");
+                    done.Add($"quests: {pass.Claimed} tab(s)");
+                }
+                if (pass.Quests.Count > 0)
+                {
+                    ctx.QuestNeeds = QuestPlanner.Needs(pass.Quests, ctx.Settings.Quests);
+                    var open = ctx.QuestNeeds.Where(n => n.Playable).ToList();
+                    var text = open.Count == 0 ? "no open quest the bot can play"
+                        : string.Join("; ", open.Select(n => $"{n.Tab} {n.Kind} ×{n.Remaining}"));
+                    var given = ctx.QuestNeeds.Count(n => !n.Playable);
+                    if (text != _lastQuestText)
+                    {
+                        _lastQuestText = text;
+                        ctx.Event(AreaId, "quest-plan", text + (given > 0 ? $" (given up: {given} the bot cannot do)" : ""));
+                    }
                 }
             }
-            catch (PlayStopException e) { ctx.Event(AreaId, "error", $"quest rewards not claimed (tried again at the next check): {e.Message}"); }
+            catch (PlayStopException e) { ctx.Event(AreaId, "error", $"quests not read (tried again at the next check): {e.Message}"); }
         }
         if (ctx.DryRun) { _dryShown = true; ctx.Event(AreaId, "dry-run", "free rewards shown"); return ""; }
         return string.Join("; ", done);

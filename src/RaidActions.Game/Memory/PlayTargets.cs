@@ -40,14 +40,14 @@ public sealed record RankUpItemRead(int HeroId, bool? Active, List<int> FoodIds,
 public sealed record PlayScan(List<UiTarget> Targets, ArenaBoardRead? Arena, bool? AutoOn, ArenaResultRead? Result, List<HudResource> Hud,
     List<InboxEntry> Inbox, List<string> Notes, List<CryptRead>? Crypts = null, List<StageRead>? Stages = null, List<int>? TeamIds = null,
     PveResultRead? Pve = null, List<CcMapRead>? CcLevels = null, List<TeamPickRead>? Picks = null, int? CcDifficulty = null,
-    List<RankUpItemRead>? RankUps = null, int? SelectedShard = null, string? ClanDamage = null)
+    List<RankUpItemRead>? RankUps = null, int? SelectedShard = null, string? ClanDamage = null, List<RaidExtractor.Autoplay.QuestRead>? Quests = null)
 {
     public static PlayScan Empty => new([], null, null, null, [], [], []);
 
     public PlayScan Merge(PlayScan o) => new([.. Targets, .. o.Targets], Arena ?? o.Arena, AutoOn ?? o.AutoOn, Result ?? o.Result, [.. Hud, .. o.Hud],
         [.. Inbox, .. o.Inbox], [.. Notes, .. o.Notes], [.. Crypts ?? [], .. o.Crypts ?? []], [.. Stages ?? [], .. o.Stages ?? []],
         [.. TeamIds ?? [], .. o.TeamIds ?? []], Pve ?? o.Pve, [.. CcLevels ?? [], .. o.CcLevels ?? []], [.. Picks ?? [], .. o.Picks ?? []], CcDifficulty ?? o.CcDifficulty,
-        [.. RankUps ?? [], .. o.RankUps ?? []], SelectedShard ?? o.SelectedShard, ClanDamage ?? o.ClanDamage);
+        [.. RankUps ?? [], .. o.RankUps ?? []], SelectedShard ?? o.SelectedShard, ClanDamage ?? o.ClanDamage, [.. Quests ?? [], .. o.Quests ?? []]);
 }
 
 /// <summary>
@@ -146,6 +146,20 @@ public static partial class PlayTargets
     private const string GiftPrize = "Client.ViewModel.Contextes.HourlyGiftPrizeContext";
     private const string QuestClaimAll = "Client.ViewModel.Contextes.Quests.QuestClaimAllButtonContext";
     private const string QuestsDialog = "Client.ViewModel.Contextes.Quests.QuestsDialogContext";
+    private const string QuestItem = "Client.ViewModel.Contextes.Quests.QuestItemContext";
+    private const string PeriodicQuest = "Client.ViewModel.Contextes.Quests.PeriodicQuestItemContext";
+    private const string AdvancedQuest = "Client.ViewModel.Contextes.Quests.Advanced.AdvancedQuestsItemContext";
+
+    /// <summary>PeriodicQuestPrototypeId (from the dump): the daily, weekly and monthly quests' types.</summary>
+    private static readonly Dictionary<int, string> QuestPrototypes = new()
+    {
+        [110000] = "SummonHero", [110001] = "AscendHero", [110002] = "SkillUpHero", [110003] = "LevelUpHero", [110004] = "RankUpHero",
+        [110005] = "SummonThreeStarHero", [110006] = "AscendHeroToSpecificGrade", [110100] = "FightInArenaBattles", [110101] = "WinArenaBattles",
+        [110102] = "ClearScenario", [110103] = "DefeatStoryBoss", [110104] = "DefeatDungeonBoss", [110200] = "PurchaseItemInMagicShop",
+        [110201] = "CollectFreeShard", [110202] = "UseEnergy", [110203] = "UpgradeArtifacts", [110204] = "UpgradeArtifactsToSpecificLevel",
+        [110300] = "PerformPack", [110301] = "CompleteQuests",
+    };
+    private static readonly string[] QuestTabs = ["Daily", "Weekly", "Monthly", "Advanced"];
     private const string IntProperty = "Client.MVVM.Base.ViewModel.Properties.IntProperty";
     private const string BoolProperty = "Client.MVVM.Base.ViewModel.Properties.BoolProperty";
     private const string StringProperty = "Client.MVVM.Base.ViewModel.Properties.StringProperty";
@@ -203,6 +217,7 @@ public static partial class PlayTargets
         int? selectedShard = null;
         string? clanDamage = null;
         int? questTab = null;
+        var quests = new List<RaidExtractor.Autoplay.QuestRead>();
 
         IEnumerable<UiNode> Below(int i)
         {
@@ -447,6 +462,29 @@ public static partial class PlayTargets
                 case QuestsDialog:
                     questTab = Try(() => IntValue(g, g.Ref(c.Address, QuestsDialog, "_activeTabIndex")), null, notes, "QuestsDialogContext._activeTabIndex");
                     break;
+                case PeriodicQuest or AdvancedQuest:
+                {
+                    // A quest row (plan/quests.md): its words, progress, done; its type (a periodic quest's prototype, an advanced quest's
+                    // transition: the screen that does it).
+                    var text = Try(() => StringValue(g, g.Ref(c.Address, QuestItem, "ConditionName")), null, notes, "QuestItemContext.ConditionName");
+                    if (string.IsNullOrWhiteSpace(text)) break;
+                    var progress = Try(() => StringValue(g, g.Ref(c.Address, QuestItem, "ProgressString")), null, notes, "QuestItemContext.ProgressString");
+                    var done = Try(() => BoolValue(g, g.Ref(c.Address, QuestItem, "IsCompleted")), null, notes, "QuestItemContext.IsCompleted") == true;
+                    var id = Try(() => (int?)g.Int(c.Address, QuestItem, "_QuestId_k__BackingField"), null, notes, "QuestItemContext._QuestId") ?? 0;
+                    string? type = null;
+                    if (c.Class == PeriodicQuest)
+                    {
+                        var proto = Try(() => (int?)g.Int(c.Address, PeriodicQuest, "_questPrototypeId"), null, notes, "PeriodicQuestItemContext._questPrototypeId");
+                        type = proto is { } pid ? QuestPrototypes.GetValueOrDefault(pid, pid.ToString(System.Globalization.CultureInfo.InvariantCulture)) : null;
+                    }
+                    else
+                    {
+                        var tr = Try(() => g.Ref(c.Address, AdvancedQuest, "_transition"), 0UL, notes, "AdvancedQuestsItemContext._transition");
+                        type = tr == 0 ? null : Try(() => g.ClassName(tr), null, notes, "the transition's class")?.Split('.')[^1];
+                    }
+                    quests.Add(new RaidExtractor.Autoplay.QuestRead(id, c.Class == AdvancedQuest ? "Advanced" : "?", text.Trim(), type, progress, done, false));
+                    break;
+                }
                 case GiftPrize:
                 {
                     // A playtime gift (HourlyGiftItemState: 0 collected, 1 ready to collect, 2 on going).
@@ -820,7 +858,8 @@ public static partial class PlayTargets
 
         if (rows is not null || free is not null || tab is not null) arena = new ArenaBoardRead(rows ?? [], free, freeText, loading, tab);
         return new PlayScan(targets, arena, auto, result, hud, inbox, notes.Distinct().ToList(), crypts, stages, team?.Distinct().ToList(), pve, ccLevels, picks, ccDifficulty,
-            rankUps, selectedShard, clanDamage);
+            rankUps, selectedShard, clanDamage,
+            [.. quests.Select(q => q.Tab == "?" ? q with { Tab = questTab is { } k && k >= 0 && k < QuestTabs.Length ? QuestTabs[k] : "Daily" } : q)]);
     }
 
     /// <summary>An inbox entry that holds Classic Arena tokens (not Tag/Live arena tokens or auto-battle tickets), by its text and icon.</summary>

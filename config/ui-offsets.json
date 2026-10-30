@@ -1265,6 +1265,73 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.Quests.QuestItemContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "ConditionName": {
+          "offset": "0x58",
+          "type": "StringProperty",
+          "field": "ConditionName",
+          "source": "field",
+          "status": "direct"
+        },
+        "ProgressString": {
+          "offset": "0x60",
+          "type": "StringProperty",
+          "field": "ProgressString",
+          "source": "field",
+          "status": "direct"
+        },
+        "IsCompleted": {
+          "offset": "0x78",
+          "type": "BoolProperty",
+          "field": "IsCompleted",
+          "source": "field",
+          "status": "direct"
+        },
+        "ButtonState": {
+          "offset": "0x70",
+          "type": "IntProperty",
+          "field": "ButtonState",
+          "source": "field",
+          "status": "direct"
+        },
+        "_QuestId_k__BackingField": {
+          "offset": "0x90",
+          "type": "int",
+          "field": "_QuestId_k__BackingField",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.Quests.PeriodicQuestItemContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_questPrototypeId": {
+          "offset": "0x9C",
+          "type": "PeriodicQuestPrototypeId",
+          "field": "_questPrototypeId",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.Quests.Advanced.AdvancedQuestsItemContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_transition": {
+          "offset": "0xC8",
+          "type": "QuestTransition",
+          "field": "_transition",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.AllianceActivityMap.AllianceActivityMapContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

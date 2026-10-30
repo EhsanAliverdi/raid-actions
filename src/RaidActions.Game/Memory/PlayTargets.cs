@@ -632,12 +632,14 @@ public static partial class PlayTargets
         // RegionTypeId name ("DragonsLair" at the building, 0x0), placed where the scene shows it (off screen until the map is dragged).
         // The target is a small square on that point; the click is checked by the stage list opening.
         if (t.View == DungeonsMapView)
-            foreach (var x in nodes.Where(x => x.ActiveInHierarchy && x.Screen is { Width: 0, Height: 0 } && x.BindingPath == x.Name))
+            // The Iron Twins' point is "DoubleAscendDungeon" bound to "DoubleAscend" (seen 2026-10-31).
+            foreach (var x in nodes.Where(x => x.ActiveInHierarchy && x.Screen is { Width: 0, Height: 0 }
+                && (x.BindingPath == x.Name || x.Name == "DoubleAscendDungeon" && x.BindingPath == "DoubleAscend")))
             {
                 var (px, py) = (x.Screen!.Value.X, x.Screen.Value.Y);
                 var inside = px > 30 && py > 30 && px < t.ClientWidth - 30 && py < t.ClientHeight - 30;
-                targets.Add(new UiTarget("dungeon-region", $"dungeons: {x.Name}", null, t.View, new ClientRect(px - 25, py - 25, 50, 50), true, true, inside, false, x.Path,
-                    $"region ({x.Name})", ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
+                targets.Add(new UiTarget("dungeon-region", $"dungeons: {x.BindingPath}", null, t.View, new ClientRect(px - 25, py - 25, 50, 50), true, true, inside, false, x.Path,
+                    $"region ({x.BindingPath})", ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
             }
 
         // The campaign map (view "Map", seen live 2026-10-30) is a 3D scene like the dungeons': each chapter is a 0x0 point
@@ -670,6 +672,8 @@ public static partial class PlayTargets
         if (IsTeamView(t.View))
         {
             var start = nodes.Where(x => x.Name == "Default_h" && x.Interactable is not null && x.ActiveInHierarchy).ToList();
+            // The Iron Twins' Start (Fortress Keys) is "DoubleAscend_h" (seen 2026-10-31); "AutoBattleButton_h" above it is never Start.
+            if (start.Count == 0) start = nodes.Where(x => x.Name == "DoubleAscend_h" && x.Interactable is not null && x.ActiveInHierarchy).ToList();
             if (start.Count >= 1)
                 targets.Add(Make("team-start", "team selection: Start", start[0], start.Count == 1 ? start[0] : null,
                     start.Count == 1 ? null : $"{start.Count} elements named Default_h"));

@@ -470,7 +470,9 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
 
     private static bool IsPurchase(string view) =>
         view.Contains("Bank", StringComparison.Ordinal) || view.Contains("Offer", StringComparison.Ordinal) || view.Contains("Shop", StringComparison.Ordinal)
-        || view == PlayTargets.RefillView || view.Contains("Purchase", StringComparison.Ordinal);
+        || view == PlayTargets.RefillView || view.Contains("Purchase", StringComparison.Ordinal)
+        // A location that is closed today offers to open it for gems (seen 2026-10-31 on Void Keep): never paid, only closed.
+        || view.Contains("Paid", StringComparison.Ordinal);
 
     private async Task<(UiState State, List<UiTarget> Targets, PlayScan Play)> Read(CancellationToken ct)
     {

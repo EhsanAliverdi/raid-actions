@@ -24,6 +24,14 @@ public sealed partial class LivePlayGame : IEnergyGame
     /// <summary>The dungeon whose stage list this bot opened (as Faction Wars' crypt: a list it did not open is never trusted).</summary>
     private string? _openDungeon;
 
+    /// <summary>A dungeon closed today offers to open it for gems (never paid): the window is closed and the row waits for another day.</summary>
+    private const string PaidLocationView = "PaidLocationOpeningOverlay";
+
+    private sealed class ClosedTodayException(string region) : Exception($"{region} is closed today")
+    {
+        public string Region => region;
+    }
+
     /// <summary>The dungeons screen the battle menu's Dungeons card opens (seen live 2026-10-30).</summary>
     private const string DungeonsView = "DungeonsHUD";
 
@@ -37,8 +45,15 @@ public sealed partial class LivePlayGame : IEnergyGame
         if (story) await OpenCampaign(run.Region, run.Difficulty, run.StageId, ct);
         else
         {
-            await OpenDungeon(run.Region, ct);
-            await SetDifficulty(run.Difficulty, run.StageId, ct);
+            try { await OpenDungeon(run.Region, ct); }
+            catch (ClosedTodayException) { return new BattleOutcome(BattleResult.NotStarted, "closed today (the game offers to open it for gems: never)"); }
+            try { await SetDifficulty(run.Difficulty, run.StageId, ct); }
+            catch (ClosedTodayException)
+            {
+                await Back(Top(await ReadState(ct))!, ct);
+                _openDungeon = null;
+                return new BattleOutcome(BattleResult.NotStarted, "not open today (the screen shows another day's stages)");
+            }
         }
 
         var stage = await FindStage(run.Number, ct, "dungeon-stage", run.StageId);
@@ -62,6 +77,7 @@ public sealed partial class LivePlayGame : IEnergyGame
             var (_, targets, _) = await Read(ct);
             var start = targets.FirstOrDefault(t => t.Kind == "team-start" && t.View == teamView);
             if (start?.Rect is { } r) Shot($"autoplay: WOULD CLICK Start, {where} (dry run: NOT pressed)", r, always: true);
+            else log($"autoplay: Start not identified on {teamView}. Screen dump: {DumpScreen("team start")}");
             await Back(teamView, ct);
             return new BattleOutcome(BattleResult.NotStarted, start?.NotClickable is null && start is not null ? "Start shown, not pressed" : $"Start not identified: {start?.Note ?? "no team-start target"}");
         }
@@ -92,6 +108,18 @@ public sealed partial class LivePlayGame : IEnergyGame
         return new BattleOutcome(outcome, $"{(DateTime.UtcNow - started).TotalSeconds:0} s");
     }
 
+    /// <summary>The dungeon map's point name for a region (RegionTypeId name) where they differ (seen live 2026-10-31).</summary>
+    private static string MapPoint(string region) => region switch
+    {
+        "IceGolemCave" => "IceGolemsPeak",
+        "FireGolemCave" => "FireKnightsCastle",
+        "SpiderCave" => "SpidersKeep",
+        "ArtifactAscendDungeon" => "ArtifactAscend",
+        "AccessoryAscendDungeon" => "AccessoryAscend",
+        _ when region.EndsWith("DoubleAscendDungeon", StringComparison.Ordinal) => "DoubleAscend",
+        _ => region,
+    };
+
     /// <summary>The dungeon's stage list on top, from wherever the game is (village → Battle → Dungeons → the dungeon's tile).</summary>
     private async Task OpenDungeon(string region, CancellationToken ct)
     {
@@ -110,15 +138,22 @@ public sealed partial class LivePlayGame : IEnergyGame
                 await Back(Top(s)!, ct); // a stage list this bot did not open (or another dungeon's): back to the dungeons
                 continue;
             }
-            // The dungeon's tile: its note names the region ("region 206 (DragonsLair)").
-            bool Mine(UiTarget t) => t.Note?.Contains($"({region})", StringComparison.Ordinal) == true;
+            // The dungeon's tile: its note names the map point ("region (DragonsLair)"); some points have their own names (seen 2026-10-31).
+            var point = MapPoint(region);
+            bool Mine(UiTarget t) => t.Note?.Contains($"({point})", StringComparison.Ordinal) == true;
             if (targets.Any(t => t.Kind == "dungeon-region"))
             {
                 if (!targets.Any(t => t.Kind == "dungeon-region" && Mine(t)))
                     throw new PlayStopException($"{region}: no such dungeon tile ({string.Join(", ", targets.Where(t => t.Kind == "dungeon-region").Select(t => t.Name))}). Screen dump: {DumpScreen("dungeon-region not found")}");
                 await DragIntoView("dungeon-region", ct, Mine);
-                await Click("dungeon-region", Mine, (s2, scan) => !Has(s2, DungeonsView) || scan().Targets.Any(t => t.Kind == "dungeon-stage"), $"{region}'s stages open", ct, within: TimeSpan.FromSeconds(15));
+                await Click("dungeon-region", Mine, (s2, scan) => !Has(s2, DungeonsView) || Top(s2) == PaidLocationView || scan().Targets.Any(t => t.Kind == "dungeon-stage"),
+                    $"{region}'s stages open", ct, within: TimeSpan.FromSeconds(15));
                 await Task.Delay(800, ct);
+                if (Top(await ReadState(ct)) == PaidLocationView)
+                {
+                    await Back(PaidLocationView, ct);
+                    throw new ClosedTodayException(region);
+                }
                 if (!(await Read(ct)).Item2.Any(t => t.Kind == "dungeon-stage"))
                     throw new PlayStopException($"{region} opened but no stage is recognised. Screen dump: {DumpScreen("dungeon stages not recognised")}");
                 _openDungeon = region;
@@ -149,7 +184,9 @@ public sealed partial class LivePlayGame : IEnergyGame
         for (var tries = 0; tries < 4; tries++)
         {
             var (_, targets, _) = await Read(ct);
-            if (targets.Any(t => t.Kind == "dungeon-stage" && t.Id == sid)) return;
+            // A stage of the same difficulty in view is enough (stage ids are region, difficulty, number: 2062004 is Hard 4, 2069004 Normal 4); the wanted
+            // stage may be further down the list (seen 2026-10-31: Void Keep 20, no difficulty switch at all).
+            if (targets.Any(t => t.Kind == "dungeon-stage" && t.Id is { } id && id / 1000 == sid / 1000)) return;
             var item = targets.FirstOrDefault(t => t.Kind == "cc-difficulty-item" && t.NotClickable is null && SameName(t.Note, difficulty));
             if (item is not null)
             {
@@ -159,6 +196,10 @@ public sealed partial class LivePlayGame : IEnergyGame
                 await Task.Delay(800, ct);
                 continue;
             }
+            // No difficulty switch and other stages shown: the screen is another dungeon's day (Iron Twins: one fortress a day; seen
+            // 2026-10-31), so this one is not open today.
+            if (!targets.Any(t => t.Kind == "dungeon-dropdown" && t.NotClickable is null) && targets.Any(t => t.Kind == "dungeon-stage"))
+                throw new ClosedTodayException($"stage id {sid}");
             await Click("dungeon-dropdown", null, (_, scan) => scan().Targets.Any(t => t.Kind == "cc-difficulty-item"), "the difficulty list opens", ct, within: TimeSpan.FromSeconds(8));
             await Task.Delay(500, ct);
         }

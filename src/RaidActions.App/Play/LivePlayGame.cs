@@ -287,6 +287,15 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 return play;
             }
             if (!s.InBattle) return null; // the battle ended somewhere else (the game moved on)
+            // Another battle's result screen (a name not known for this battle; 2026-10-31 the Iron Twins' waited 20 minutes): the end too.
+            if (Top(s) is { } other && other.StartsWith("BattleFinish", StringComparison.Ordinal) && other != resultView)
+            {
+                log($"autoplay: the battle ended on {other} (expected {resultView})");
+                await Task.Delay(1200, ct);
+                var (_, _, play) = await Read(ct);
+                await LeaveResult(ct, other);
+                return play with { Pve = play.Pve ?? new PveResultRead(null, null, null, null) };
+            }
             if (!autoTried && Has(s, PlayTargets.BattleHudView) && !s.UiBlocked)
             {
                 var (_, _, play) = await Read(ct);
@@ -341,6 +350,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     /// <summary>A result screen left by its way back (the arena's tap bar; else its back/return element, never Replay or Next).</summary>
     private async Task LeaveResult(CancellationToken ct, string view = PlayTargets.ArenaResultView)
     {
+        if (!Has(await ReadState(ct), view)) return; // already left (WaitBattle leaves a result screen it did not expect)
         var (_, now, _) = await Read(ct);
         var kind = now.Any(x => x.Kind == "result-close" && x.View == view) ? "result-close" : "back";
         // Up to three taps, a little longer apart each time (a tap during the result's animations can be ignored).

@@ -41,7 +41,8 @@ public sealed partial class LivePlayGame : IEnergyGame
         var where = EnergyPlanner.Describe(run);
         log($"autoplay: STEP going to {where}");
         var story = run.Target.Area == "Story";
-        var resultView = story ? PlayTargets.StoryResultView : PlayTargets.DungeonResultView;
+        var resultView = story ? PlayTargets.StoryResultView
+            : run.Region.EndsWith("DoubleAscendDungeon", StringComparison.Ordinal) ? PlayTargets.TwinsResultView : PlayTargets.DungeonResultView;
         if (story) await OpenCampaign(run.Region, run.Difficulty, run.StageId, ct);
         else
         {
@@ -139,6 +140,7 @@ public sealed partial class LivePlayGame : IEnergyGame
             var s = await Settled(ct);
             if (s.InBattle && !Has(s, PlayTargets.DungeonResultView)) { await WaitBattle(ct, PlayTargets.DungeonResultView); continue; }
             if (Has(s, PlayTargets.DungeonResultView)) { await LeaveResult(ct, PlayTargets.DungeonResultView); continue; }
+            if (Has(s, PlayTargets.TwinsResultView)) { await LeaveResult(ct, PlayTargets.TwinsResultView); continue; }
             if (Top(s) is { } top && PlayTargets.IsTeamView(top)) { await Back(top, ct); continue; }
             var (_, targets, _) = await Read(ct);
             if (targets.Any(t => t.Kind == "dungeon-stage"))

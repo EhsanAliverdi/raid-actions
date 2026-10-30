@@ -69,6 +69,8 @@ public static partial class PlayTargets
         CcHudView = "CursedCityHUD",
         // The dungeon's result (from BattleFinishDungeonDialogContext's name, as the other results; to confirm live).
         DungeonResultView = "BattleFinishDungeonDialog",
+        // The Iron Twins' result (seen live 2026-10-31).
+        TwinsResultView = "BattleFinishDoubleAscendDungeonDialog",
         // The dungeon map (the 3D scene under DungeonsHUD; seen live 2026-10-30).
         DungeonsMapView = "DungeonsMap",
         // A dungeon's stage list (seen live 2026-10-30).
@@ -104,6 +106,7 @@ public static partial class PlayTargets
     private const string DungeonRegionItem = "Client.ViewModel.Contextes.DungeonMap.DungeonRegionItemContext";
     private const string DungeonStage = "Client.ViewModel.Contextes.RegionDialog.DungeonStageContext";
     private const string DungeonResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishDungeonDialogContext";
+    private const string TwinsResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishDoubleAscendDungeonDialogContext";
     // The PvE team screen's Super Raid box (seen live 2026-10-30: "Checkbox" under the 'MultiRun' block, no Toggle; its tick fades, so
     // its state is read from MultiRunContext._active, which the team context keeps as MultiRun).
     private const string PveTeam = "Client.ViewModel.Contextes.HeroesSelectionDialog.HeroesSelectionPveDialogContext";
@@ -554,7 +557,7 @@ public static partial class PlayTargets
                     targets.Add(Make("portal-summon1", "portal: Summon x1", n, button, $"selected shard {selectedShard}" + (why is null ? "" : "; " + why)));
                     break;
                 }
-                case FwResult or CcResult or DungeonResult or StoryResult:
+                case FwResult or CcResult or DungeonResult or StoryResult or TwinsResult:
                     pve = new PveResultRead(
                         Try(() => IntValue(g, g.Ref(c.Address, PveResult, "_battleResultType")), null, notes, "BattleFinishPveDialogContext._battleResultType"),
                         Try(() => IntValue(g, g.Ref(c.Address, PveResult, "_stars")), null, notes, "BattleFinishPveDialogContext._stars"),
@@ -734,7 +737,7 @@ public static partial class PlayTargets
 
         // The arena result closes on a tap (seen 2026-10-29: "CloseBlock", a click area with no button, over the lower part of the
         // screen with the champion avatars on it): the target is a strip at its bottom, clear of the avatars.
-        if (t.View is ArenaResultView or FwResultView or DungeonResultView or StoryResultView or ClanResultView or HydraResultView)
+        if (t.View is ArenaResultView or FwResultView or DungeonResultView or StoryResultView or ClanResultView or HydraResultView or TwinsResultView)
             foreach (var cb in nodes.Where(x => x.Name == "CloseBlock" && x.ActiveInHierarchy && x.Screen is not null).Take(1))
             {
                 // Its "Content" child is the RETURN TO ARENA bar (seen 2026-10-29): the middle of that bar.

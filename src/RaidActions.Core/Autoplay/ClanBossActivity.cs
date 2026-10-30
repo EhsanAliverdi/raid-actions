@@ -12,6 +12,75 @@ public interface IClanBossGame
 
     /// <summary>One key spent on the difficulty with the team the game shows (Quick Battle when asked); a dry run shows Start only.</summary>
     Task<BattleOutcome> FightClanBossAsync(string difficulty, bool quick, bool dryRun, CancellationToken ct);
+
+    /// <summary>The Hydra's keys and best damage (the same alliance map).</summary>
+    Task<ClanBossAccount> ReadHydraAsync(CancellationToken ct);
+
+    /// <summary>One Hydra key spent on the difficulty with the team the game shows; a dry run shows Start only.</summary>
+    Task<BattleOutcome> FightHydraAsync(string difficulty, bool dryRun, CancellationToken ct);
+}
+
+/// <summary>
+/// Hydra (Auto Play, plan/clan-boss.md): every Hydra key above the ones kept goes to one difficulty (the setting, else the best damage
+/// so far); off unless switched on. Keys come weekly, so it checks again every half hour; a turn is one battle.
+/// </summary>
+public sealed class HydraActivity(IClanBossGame game) : IActivity
+{
+    public const string AreaId = "hydra";
+    public string Id => AreaId;
+    public string Name => "Hydra";
+
+    private static readonly TimeSpan Recheck = TimeSpan.FromMinutes(30);
+    private ClanBossAccount? _account;
+    private DateTime _readAt = DateTime.MinValue;
+    private bool _dryShown;
+    private int _battles;
+    private string _last = "";
+
+    public bool IsEnabled(AutoplaySettings settings) => settings.Hydra.Enabled;
+
+    private bool HasKey(PlayContext ctx) => _account is { } a && Math.Floor(a.Keys) >= 1 + Math.Max(0, ctx.Settings.Hydra.KeepKeys);
+
+    public Decision Decide(PlayContext ctx)
+    {
+        if (_dryShown) return Decision.Off("shown in this dry run");
+        if (_account is null || ctx.Utc - _readAt >= Recheck) return Decision.Now("reading the keys");
+        if (HasKey(ctx)) return Decision.Now($"{Math.Floor(_account.Keys)} key(s): {HydraRules.Pick(ctx.Settings.Hydra, _account.BestDamage)}");
+        return Decision.Wait(_readAt + Recheck, $"no key to spend ({_account.Keys:0.##}, keeping {ctx.Settings.Hydra.KeepKeys})");
+    }
+
+    public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
+    {
+        _account = await game.ReadHydraAsync(ct);
+        _readAt = ctx.Utc;
+        if (!HasKey(ctx)) return "";
+        var difficulty = HydraRules.Pick(ctx.Settings.Hydra, _account.BestDamage);
+        await ctx.ThinkAsync(ct);
+        var outcome = await game.FightHydraAsync(difficulty, ctx.DryRun, ct);
+        if (outcome.Result is BattleResult.NotStarted)
+        {
+            _dryShown = ctx.DryRun;
+            ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", $"{difficulty}: {outcome.Text}");
+            return "";
+        }
+        _battles++;
+        _last = $"{difficulty}: {outcome.Text}";
+        ctx.Event(AreaId, "battle", _last);
+        _account = await game.ReadHydraAsync(ct);
+        _readAt = ctx.Utc;
+        return _last;
+    }
+
+    public AreaStatus Status(PlayContext ctx, Decision decision)
+    {
+        var s = ctx.Settings.Hydra;
+        var state = !s.Enabled ? AreaState.Off : decision.Act ? AreaState.Playing : decision.UntilUtc is null ? AreaState.Done : AreaState.Waiting;
+        var counters = new Dictionary<string, int> { ["Battles"] = _battles };
+        if (_account is { } a) counters["Keys"] = (int)Math.Floor(a.Keys);
+        var timers = new Dictionary<string, DateTime>();
+        if (decision.UntilUtc is { } u) timers["Next check"] = u;
+        return new AreaStatus(Id, Name, s.Enabled, state, _last.Length > 0 ? $"{decision.Why} · last: {_last}" : decision.Why, decision.UntilUtc, counters, timers);
+    }
 }
 
 /// <summary>

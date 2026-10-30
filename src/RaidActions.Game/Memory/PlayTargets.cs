@@ -78,6 +78,7 @@ public static partial class PlayTargets
         CampaignMapView = "Map",
         // Clan Boss (plan/clan-boss.md; from the dump 2026-10-31, names to confirm live).
         ClanMapView = "AllianceActivityMap", ClanDialogView = "AllianceBossesDialog", ClanResultView = "BattleFinishAllianceBossDialog",
+        HydraResultView = "BattleFinishAllianceHydraDialog",
         StoryResultView = "BattleFinishStoryDialog", TavernView = "HeroesDevelopmentDialog", FastRankUpView = "FastRankUpOverlay";
 
     /// <summary>A team screen (the views where a squad is picked before a battle).</summary>
@@ -136,6 +137,8 @@ public static partial class PlayTargets
     private const string ClanEnemy = "Client.ViewModel.Contextes.AllianceEnemies.EnemyItem.AllianceEnemyItemContext";
     private const string ClanResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishAllianceBossDialogContext";
     private const string ClanEnemyResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishAllianceEnemyDialogContext";
+    private const string HydraResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishAllianceHydraDialogContext";
+    private const string ClanDialog = "Client.ViewModel.Contextes.AllianceEnemies.Dialog.AllianceEnemiesDialogContext";
     // Free rewards (plan/free-rewards.md; from the dump 2026-10-31): the village's playtime gifts.
     private const string GiftPrize = "Client.ViewModel.Contextes.HourlyGiftPrizeContext";
     private const string QuestClaimAll = "Client.ViewModel.Contextes.Quests.QuestClaimAllButtonContext";
@@ -153,7 +156,7 @@ public static partial class PlayTargets
         "mode-dungeon", "dungeon-region", "dungeon-stage", "dungeon-difficulty", "dungeon-dropdown", "super-raid",
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
-        "mode-clan", "clan-demonlord", "clan-difficulty", "clan-battle",
+        "mode-clan", "clan-demonlord", "clan-hydra", "clan-difficulty", "clan-battle",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all",
     };
 
@@ -239,9 +242,12 @@ public static partial class PlayTargets
         }
 
         // Pass 1: contexts that point at other elements (the arena map's classic arena item, the alliance map's Demon Lord).
-        ulong classic = 0, demonLord = 0;
+        ulong classic = 0, demonLord = 0, hydra = 0;
         foreach (var n in nodes.Where(n => n.Context?.Class == ClanMap))
+        {
             demonLord = Try(() => g.Ref(n.Context!.Address, ClanMap, "_demonLord"), 0UL, notes, "AllianceActivityMapContext._demonLord");
+            hydra = Try(() => g.Ref(n.Context!.Address, ClanMap, "_hydra"), 0UL, notes, "AllianceActivityMapContext._hydra");
+        }
         foreach (var n in nodes.Where(n => n.Context?.Class == ArenaMap))
             classic = Try(() => g.Ref(n.Context!.Address, ArenaMap, "_arena1x1"), 0UL, notes, "ArenaMapContext._arena1x1");
 
@@ -407,6 +413,9 @@ public static partial class PlayTargets
                 case ClanMapItem when demonLord != 0 && c.Address == demonLord:
                     targets.Add(Make("clan-demonlord", "clan: Demon Lord", n, Own(i), null));
                     break;
+                case ClanMapItem when hydra != 0 && c.Address == hydra:
+                    targets.Add(Make("clan-hydra", "clan: Hydra", n, Own(i), null));
+                    break;
                 case ClanEnemy:
                 {
                     // A Clan Boss difficulty in the Demon Lord's list (its name, unlocked, selected, its stage id; enemy type 1 the Clan Boss).
@@ -443,7 +452,7 @@ public static partial class PlayTargets
                     targets.Add(Make("gift-prize", $"playtime gift: {title}", n, Own(i), $"state {state}", id: targets.Count(x => x.Kind == "gift-prize")));
                     break;
                 }
-                case ClanResult:
+                case ClanResult or HydraResult:
                     clanDamage = Try(() => StringValue(g, g.Ref(c.Address, ClanEnemyResult, "_damageDealt")), null, notes, "BattleFinishAllianceEnemyDialogContext._damageDealt");
                     break;
                 case MapRegionItem:
@@ -677,6 +686,7 @@ public static partial class PlayTargets
                 // The battle menu's Clan Boss card (AllianceActivityModeContext, field _allianceActivity; binding to confirm live).
                 (BattleMenuView, "ClanActivity") => ("mode-clan", "battle menu: Clan Boss"), // seen live 2026-10-31
                 (ClanMapView, var b) when b.Contains("DemonLord", StringComparison.OrdinalIgnoreCase) => ("clan-demonlord", "clan: Demon Lord"),
+                (ClanMapView, var b) when b.Contains("Hydra", StringComparison.OrdinalIgnoreCase) => ("clan-hydra", "clan: Hydra"),
                 // The battle menu's Arena card (seen 2026-10-29: "Arena" bound to Arenas, its clickable Panel below).
                 (BattleMenuView, "Arenas") => ("mode-arena", "battle menu: Arena"),
                 // The battle menu's Faction Wars card: bound like the Arena card (name to confirm live: Fraction/Faction).
@@ -724,7 +734,7 @@ public static partial class PlayTargets
 
         // The arena result closes on a tap (seen 2026-10-29: "CloseBlock", a click area with no button, over the lower part of the
         // screen with the champion avatars on it): the target is a strip at its bottom, clear of the avatars.
-        if (t.View is ArenaResultView or FwResultView or DungeonResultView or StoryResultView or ClanResultView)
+        if (t.View is ArenaResultView or FwResultView or DungeonResultView or StoryResultView or ClanResultView or HydraResultView)
             foreach (var cb in nodes.Where(x => x.Name == "CloseBlock" && x.ActiveInHierarchy && x.Screen is not null).Take(1))
             {
                 // Its "Content" child is the RETURN TO ARENA bar (seen 2026-10-29): the middle of that bar.
@@ -765,7 +775,7 @@ public static partial class PlayTargets
             }
 
         // The Demon Lord's Battle button (in AllianceEnemiesDialog, by its name; to confirm live).
-        if (t.View == ClanDialogView)
+        if (t.View == ClanDialogView || nodes.Any(x => x.Context?.Class == ClanDialog))
             foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null && FightName().IsMatch(x.Name)
                 && !NotFightName().IsMatch(x.Name)).Take(1))
                 targets.Add(Make("clan-battle", "clan boss: Battle", x, x, x.Path));

@@ -11,7 +11,7 @@ namespace RaidActions.App.Play;
 /// </summary>
 public sealed partial class LivePlayGame : IClanBossGame
 {
-    private bool _clanDumped;
+    private readonly HashSet<string> _clanDumped = [];
 
     public async Task<ClanBossAccount> ReadClanBossAsync(CancellationToken ct)
     {
@@ -20,19 +20,37 @@ public sealed partial class LivePlayGame : IClanBossGame
         return new ClanBossAccount(data.Account.Resources.GetValueOrDefault(ClanBossRules.Key), clan?.ClanBossBestDamage ?? [], clan?.ClanBossMaxQuickBattle);
     }
 
-    public async Task<BattleOutcome> FightClanBossAsync(string difficulty, bool quick, bool dryRun, CancellationToken ct)
+    public Task<BattleOutcome> FightClanBossAsync(string difficulty, bool quick, bool dryRun, CancellationToken ct)
+    {
+        if (quick) log("autoplay: Quick Battle asked: not explored yet, a normal battle");
+        return FightAllianceAsync("Clan Boss", "clan-demonlord", 1, PlayTargets.ClanResultView, difficulty, dryRun, ct);
+    }
+
+    public async Task<ClanBossAccount> ReadHydraAsync(CancellationToken ct)
+    {
+        var (data, _, _, _) = await Account(ct);
+        var clan = data.Progress?.Clan;
+        return new ClanBossAccount(data.Account.Resources.GetValueOrDefault(HydraRules.Key), clan?.HydraBestDamage ?? [], clan?.HydraMaxQuickBattle);
+    }
+
+    public Task<BattleOutcome> FightHydraAsync(string difficulty, bool dryRun, CancellationToken ct) =>
+        FightAllianceAsync("Hydra", "clan-hydra", 2, PlayTargets.HydraResultView, difficulty, dryRun, ct);
+
+    /// <summary>One alliance boss battle: the map item (Demon Lord, Hydra), the row of its enemy type and difficulty, Battle, Start, result.</summary>
+    private async Task<BattleOutcome> FightAllianceAsync(string label, string mapKind, int enemyType, string resultView, string difficulty, bool dryRun, CancellationToken ct)
     {
         var started = DateTime.UtcNow;
-        log($"autoplay: STEP Clan Boss {difficulty}{(quick ? " (Quick Battle asked: not explored yet, a normal battle)" : "")}");
-        await OpenDemonLord(ct);
+        log($"autoplay: STEP {label} {difficulty}");
+        await OpenAllianceEnemy(mapKind, resultView, ct);
 
         // The difficulty: its row in the Demon Lord's list, selected (the list may need dragging).
-        bool Mine(UiTarget t) => t.Kind == "clan-difficulty" && ClanBossRules.Same(difficulty, t.Name.Replace("clan boss: ", "", StringComparison.Ordinal));
+        bool Mine(UiTarget t) => t.Kind == "clan-difficulty" && t.Note?.Contains($"type {enemyType}", StringComparison.Ordinal) == true
+            && ClanBossRules.Same(difficulty, t.Name.Replace("clan boss: ", "", StringComparison.Ordinal));
         var (_, targets, _) = await Read(ct);
-        if (!_clanDumped) { _clanDumped = true; log($"autoplay: the Demon Lord's list. Screen dump: {DumpScreen("clan boss list")}"); }
+        if (!_clanDumped.Contains(mapKind)) { _clanDumped.Add(mapKind); log($"autoplay: the {label} list. Screen dump: {DumpScreen($"{label} list")}"); }
         var row = targets.FirstOrDefault(Mine);
         if (row is null)
-            throw new PlayStopException($"No Clan Boss row named {difficulty} ({string.Join(", ", targets.Where(t => t.Kind == "clan-difficulty").Select(t => t.Name))}). Screen dump: {DumpScreen("clan difficulty")}");
+            throw new PlayStopException($"No {label} row named {difficulty} ({string.Join(", ", targets.Where(t => t.Kind == "clan-difficulty").Select(t => t.Name))}). Screen dump: {DumpScreen("clan difficulty")}");
         if (row.Note?.Contains("locked", StringComparison.Ordinal) == true && row.Note.Contains("; locked", StringComparison.Ordinal))
             return new BattleOutcome(BattleResult.NotStarted, $"{difficulty} is locked in the game");
         if (row.Note?.Contains("; selected", StringComparison.Ordinal) != true)
@@ -48,15 +66,15 @@ public sealed partial class LivePlayGame : IClanBossGame
         if (Top(after) == PlayTargets.RefillView)
         {
             await Back(PlayTargets.RefillView, ct);
-            return new BattleOutcome(BattleResult.NotStarted, "no Clan Boss key (the refill offer was closed)");
+            return new BattleOutcome(BattleResult.NotStarted, $"no {label} key (the refill offer was closed)");
         }
         var teamView = Top(after) ?? "";
-        if (!PlayTargets.IsTeamView(teamView)) await Refuse(after, $"Clan Boss {difficulty}", ct);
+        if (!PlayTargets.IsTeamView(teamView)) await Refuse(after, $"{label} {difficulty}", ct);
         if (dryRun)
         {
             var (_, t2, _) = await Read(ct);
             var start = t2.FirstOrDefault(t => t.Kind == "team-start" && t.View == teamView);
-            if (start?.Rect is { } r) Shot($"autoplay: WOULD CLICK Start, Clan Boss {difficulty} (dry run: NOT pressed)", r, always: true);
+            if (start?.Rect is { } r) Shot($"autoplay: WOULD CLICK Start, {label} {difficulty} (dry run: NOT pressed)", r, always: true);
             else log($"autoplay: Start not identified on {teamView}. Screen dump: {DumpScreen("clan team start")}");
             await Back(teamView, ct);
             return new BattleOutcome(BattleResult.NotStarted, start?.NotClickable is null && start is not null ? "Start shown, not pressed" : $"Start not identified: {start?.Note ?? "no team-start target"}");
@@ -68,41 +86,44 @@ public sealed partial class LivePlayGame : IClanBossGame
         {
             await Back(PlayTargets.RefillView, ct);
             await Back(teamView, ct);
-            return new BattleOutcome(BattleResult.NotStarted, "no Clan Boss key (the refill offer was closed)");
+            return new BattleOutcome(BattleResult.NotStarted, $"no {label} key (the refill offer was closed)");
         }
-        if (!inBattle.Active.Any(v => BattleViews.Contains(v.Name))) await Refuse(inBattle, $"Start Clan Boss {difficulty}", ct);
-        log($"autoplay: Clan Boss {difficulty} started");
-        var result = await WaitBattle(ct, PlayTargets.ClanResultView);
+        if (!inBattle.Active.Any(v => BattleViews.Contains(v.Name))) await Refuse(inBattle, $"Start {label} {difficulty}", ct);
+        log($"autoplay: {label} {difficulty} started");
+        var result = await WaitBattle(ct, resultView);
         var damage = result?.ClanDamage;
-        await LeaveResult(ct, PlayTargets.ClanResultView);
-        // The Clan Boss is never "won": the battle ends when the team falls or the turns run out; its result is the damage.
+        await LeaveResult(ct, resultView);
+        // An alliance boss is never "won": the battle ends when the team falls or the turns run out; its result is the damage.
         return new BattleOutcome(BattleResult.Victory, $"damage {damage?.Replace(" Damage Dealt", "", StringComparison.OrdinalIgnoreCase) ?? "?"}, {(DateTime.UtcNow - started).TotalSeconds:0} s");
     }
 
-    /// <summary>The Demon Lord's difficulty list on top, from wherever the game is.</summary>
-    private async Task OpenDemonLord(CancellationToken ct)
+    /// <summary>An alliance boss's difficulty list on top (the map item <paramref name="mapKind"/>), from wherever the game is.</summary>
+    private async Task OpenAllianceEnemy(string mapKind, string resultView, CancellationToken ct)
     {
         _nav.FitWindow();
         for (var hop = 0; hop < 10; hop++)
         {
             var s = await Settled(ct);
-            if (s.InBattle && !Has(s, PlayTargets.ClanResultView)) { await WaitBattle(ct, PlayTargets.ClanResultView); continue; }
-            if (Has(s, PlayTargets.ClanResultView)) { await LeaveResult(ct, PlayTargets.ClanResultView); continue; }
+            if (s.InBattle && !Has(s, resultView)) { await WaitBattle(ct, resultView); continue; }
+            if (Has(s, resultView)) { await LeaveResult(ct, resultView); continue; }
             if (Top(s) is { } top && PlayTargets.IsTeamView(top)) { await Back(top, ct); continue; }
             var (_, targets, _) = await Read(ct);
-            if (targets.Any(t => t.Kind == "clan-difficulty")) return;
-            if (targets.Any(t => t.Kind == "clan-demonlord"))
+            // The list of the wanted boss: its rows' enemy type (a list of the other boss is left).
+            var want = mapKind == "clan-hydra" ? "type 2" : "type 1";
+            if (targets.Any(t => t.Kind == "clan-difficulty" && t.Note?.Contains(want, StringComparison.Ordinal) == true)) return;
+            if (targets.Any(t => t.Kind == "clan-difficulty")) { await Back(Top(s)!, ct); continue; }
+            if (targets.Any(t => t.Kind == mapKind))
             {
-                await Click("clan-demonlord", null, (_, scan) => scan().Targets.Any(t => t.Kind == "clan-difficulty"), "the Demon Lord opens", ct, within: TimeSpan.FromSeconds(12));
+                await Click(mapKind, null, (_, scan) => scan().Targets.Any(t => t.Kind == "clan-difficulty"), $"{mapKind} opens", ct, within: TimeSpan.FromSeconds(12));
                 await Task.Delay(800, ct);
                 continue;
             }
             if (Has(s, PlayTargets.ClanMapView))
-                throw new PlayStopException($"The alliance map is open but the Demon Lord is not recognised. Screen dump: {DumpScreen("demon lord")}");
+                throw new PlayStopException($"The alliance map is open but {mapKind} is not recognised. Screen dump: {DumpScreen(mapKind)}");
             if (Top(s) == PlayTargets.BattleMenuView)
             {
                 await DragIntoView("mode-clan", ct);
-                await Click("mode-clan", null, (s2, scan) => Has(s2, PlayTargets.ClanMapView) || scan().Targets.Any(t => t.Kind is "clan-demonlord" or "clan-difficulty"),
+                await Click("mode-clan", null, (s2, scan) => Has(s2, PlayTargets.ClanMapView) || scan().Targets.Any(t => t.Kind is "clan-demonlord" or "clan-hydra" or "clan-difficulty"),
                     "the alliance map opens", ct, within: TimeSpan.FromSeconds(12));
                 await Task.Delay(800, ct);
                 continue;
@@ -110,6 +131,6 @@ public sealed partial class LivePlayGame : IClanBossGame
             if (!Input.NavigatingDriver.AtVillage(s)) { await _nav.GoHome(Action("to the village"), ct); continue; }
             await Click("village-battle", null, (s2, _) => Has(s2, PlayTargets.BattleMenuView), "the battle menu opens", ct);
         }
-        throw new PlayStopException($"The Demon Lord was not reached in 10 steps. Screen dump: {DumpScreen("clan boss not reached")}");
+        throw new PlayStopException($"{mapKind} was not reached in 10 steps. Screen dump: {DumpScreen("clan boss not reached")}");
     }
 }

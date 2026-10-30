@@ -1275,6 +1275,13 @@
           "field": "_demonLord",
           "source": "field",
           "status": "direct"
+        },
+        "_hydra": {
+          "offset": "0x68",
+          "type": "AllianceEnemyMapItemContext",
+          "field": "_hydra",
+          "source": "field",
+          "status": "direct"
         }
       }
     },

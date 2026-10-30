@@ -34,4 +34,18 @@ public sealed class FakeClanBossGame(Func<DateTime> now) : IClanBossGame
         Calls.Add($"fight {difficulty}{(quick ? " quick" : "")}");
         return Task.FromResult(new BattleOutcome(BattleResult.Victory, "damage 20,000,000"));
     }
+
+    public double HydraKeys { get; set; } = 3;
+
+    public Task<ClanBossAccount> ReadHydraAsync(CancellationToken ct) =>
+        Task.FromResult(new ClanBossAccount(HydraKeys, new Dictionary<string, long> { ["Normal"] = 776_000 }, null));
+
+    public Task<BattleOutcome> FightHydraAsync(string difficulty, bool dryRun, CancellationToken ct)
+    {
+        if (dryRun) { Calls.Add($"show hydra {difficulty}"); return Task.FromResult(new BattleOutcome(BattleResult.NotStarted, "Start shown, not pressed")); }
+        if (HydraKeys < 1) throw new PlayStopException("no hydra key");
+        HydraKeys--;
+        Calls.Add($"hydra {difficulty}");
+        return Task.FromResult(new BattleOutcome(BattleResult.Victory, "damage 800,000"));
+    }
 }

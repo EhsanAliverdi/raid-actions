@@ -45,4 +45,16 @@ public class ClanBossActivityTests
         Assert.Equal(["show Nightmare"], game.Calls);
         Assert.Equal(2, game.Keys);
     }
+
+    [Fact]
+    public async Task Hydra_keys_go_to_its_best_damage_difficulty_only_when_switched_on()
+    {
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 }, Hydra = new HydraSettings { Enabled = true, KeepKeys = 1 } } };
+        var game = new FakeClanBossGame(() => host.UtcNow);
+        host.OnDelay = h => { if (h.UtcNow - Start >= TimeSpan.FromHours(1)) h.Stop = true; };
+        await new AutoplayEngine([new HydraActivity(game)], new FakeArenaGame(() => host.UtcNow), host, false).RunAsync(once: false, Limit());
+        Assert.Equal(["hydra Normal", "hydra Normal"], game.Calls);
+        Assert.Equal(1, game.HydraKeys);
+        Assert.False(new HydraActivity(game).IsEnabled(new AutoplaySettings()));      // off by default
+    }
 }

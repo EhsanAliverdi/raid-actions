@@ -40,14 +40,15 @@ public sealed record RankUpItemRead(int HeroId, bool? Active, List<int> FoodIds,
 public sealed record PlayScan(List<UiTarget> Targets, ArenaBoardRead? Arena, bool? AutoOn, ArenaResultRead? Result, List<HudResource> Hud,
     List<InboxEntry> Inbox, List<string> Notes, List<CryptRead>? Crypts = null, List<StageRead>? Stages = null, List<int>? TeamIds = null,
     PveResultRead? Pve = null, List<CcMapRead>? CcLevels = null, List<TeamPickRead>? Picks = null, int? CcDifficulty = null,
-    List<RankUpItemRead>? RankUps = null, int? SelectedShard = null, string? ClanDamage = null, List<RaidExtractor.Autoplay.QuestRead>? Quests = null)
+    List<RankUpItemRead>? RankUps = null, int? SelectedShard = null, string? ClanDamage = null, List<RaidExtractor.Autoplay.QuestRead>? Quests = null,
+    ArenaBoardRead? Tag = null)
 {
     public static PlayScan Empty => new([], null, null, null, [], [], []);
 
     public PlayScan Merge(PlayScan o) => new([.. Targets, .. o.Targets], Arena ?? o.Arena, AutoOn ?? o.AutoOn, Result ?? o.Result, [.. Hud, .. o.Hud],
         [.. Inbox, .. o.Inbox], [.. Notes, .. o.Notes], [.. Crypts ?? [], .. o.Crypts ?? []], [.. Stages ?? [], .. o.Stages ?? []],
         [.. TeamIds ?? [], .. o.TeamIds ?? []], Pve ?? o.Pve, [.. CcLevels ?? [], .. o.CcLevels ?? []], [.. Picks ?? [], .. o.Picks ?? []], CcDifficulty ?? o.CcDifficulty,
-        [.. RankUps ?? [], .. o.RankUps ?? []], SelectedShard ?? o.SelectedShard, ClanDamage ?? o.ClanDamage, [.. Quests ?? [], .. o.Quests ?? []]);
+        [.. RankUps ?? [], .. o.RankUps ?? []], SelectedShard ?? o.SelectedShard, ClanDamage ?? o.ClanDamage, [.. Quests ?? [], .. o.Quests ?? []], Tag ?? o.Tag);
 }
 
 /// <summary>
@@ -146,6 +147,9 @@ public static partial class PlayTargets
     private const string GiftPrize = "Client.ViewModel.Contextes.HourlyGiftPrizeContext";
     private const string QuestClaimAll = "Client.ViewModel.Contextes.Quests.QuestClaimAllButtonContext";
     private const string QuestsDialog = "Client.ViewModel.Contextes.Quests.QuestsDialogContext";
+    // Tag Team Arena (plan/tag-arena.md; from the dump 2026-10-31).
+    private const string TagOpponent = "Client.ViewModel.Contextes.Arena3x3Dialog.Tabs.Battle.Arena3x3BattleOpponentItemContext";
+    private const string TagTab = "Client.ViewModel.Contextes.Arena3x3Dialog.Tabs.Battle.Arena3x3BattleTabContext";
     private const string QuestItem = "Client.ViewModel.Contextes.Quests.QuestItemContext";
     private const string PeriodicQuest = "Client.ViewModel.Contextes.Quests.PeriodicQuestItemContext";
     private const string AdvancedQuest = "Client.ViewModel.Contextes.Quests.Advanced.AdvancedQuestsItemContext";
@@ -175,6 +179,7 @@ public static partial class PlayTargets
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-demonlord", "clan-hydra", "clan-difficulty", "clan-battle",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all",
+        "arena-tag", "tag-opponent", "tag-refresh",
     };
 
     [GeneratedRegex(@"Vault|Storage", RegexOptions.IgnoreCase)] private static partial Regex VaultName();
@@ -266,8 +271,15 @@ public static partial class PlayTargets
             demonLord = Try(() => g.Ref(n.Context!.Address, ClanMap, "_demonLord"), 0UL, notes, "AllianceActivityMapContext._demonLord");
             hydra = Try(() => g.Ref(n.Context!.Address, ClanMap, "_hydra"), 0UL, notes, "AllianceActivityMapContext._hydra");
         }
+        ulong tagItem = 0;
         foreach (var n in nodes.Where(n => n.Context?.Class == ArenaMap))
+        {
             classic = Try(() => g.Ref(n.Context!.Address, ArenaMap, "_arena1x1"), 0UL, notes, "ArenaMapContext._arena1x1");
+            tagItem = Try(() => g.Ref(n.Context!.Address, ArenaMap, "_arena3x3"), 0UL, notes, "ArenaMapContext._arena3x3");
+        }
+        List<ArenaRow>? tagRows = null;
+        bool? tagFree = null;
+        string? tagFreeText = null;
 
         List<ArenaRow>? rows = null;
         bool? free = null, loading = null;
@@ -335,6 +347,42 @@ public static partial class PlayTargets
                 case ArenaMapItem when classic != 0 && c.Address == classic:
                     targets.Add(Make("arena-classic", "arena map: Classic Arena", n, Own(i), null));
                     break;
+                case ArenaMapItem when tagItem != 0 && c.Address == tagItem:
+                    targets.Add(Make("arena-tag", "arena map: Tag Team Arena", n, Own(i), null));
+                    break;
+                case TagTab:
+                {
+                    tagFree = Try(() => BoolValue(g, g.Ref(c.Address, TagTab, "_freeRefreshAvailable")), null, notes, "Arena3x3BattleTabContext._freeRefreshAvailable");
+                    tagFreeText = Try(() => StringValue(g, g.Ref(c.Address, TagTab, "_freeRefreshTimeLeft")), null, notes, "Arena3x3BattleTabContext._freeRefreshTimeLeft");
+                    // The free refresh as the Classic Arena's (FreeResfreshAvailable_h's BTN_1; to confirm live); the paid one is never clicked.
+                    var tagFreeButtons = SelfAndBelow(i).Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Path.Contains("FreeResfreshAvailable", StringComparison.Ordinal)
+                        && x.Name.StartsWith("BTN", StringComparison.Ordinal)).ToList();
+                    targets.Add(Make("tag-refresh", "tag arena: Refresh (free)", n, tagFreeButtons.Count == 1 ? tagFreeButtons[0] : null,
+                        (tagFree == true ? "free now" : "not free now") + (tagFreeButtons.Count == 1 ? "" : $"; {tagFreeButtons.Count} free refresh buttons shown")));
+                    foreach (var paid in SelfAndBelow(i).Where(x => x.Interactable is not null && x.Path.Contains("FreeResfreshNotAvailable", StringComparison.Ordinal)))
+                        targets.Add(Make("forbidden", "tag arena: paid refresh (gems, never)", paid, paid, null) with { Forbidden = true });
+                    tagRows ??= [];
+                    break;
+                }
+                case TagOpponent:
+                {
+                    var o = Try(() => g.Ref(c.Address, TagOpponent, "_arenaOpponent"), 0UL, notes, "Arena3x3BattleOpponentItemContext._arenaOpponent");
+                    if (o == 0) break;
+                    var id = Try(() => g.Long(o, Opponent, "UserId"), 0L, notes, "ArenaOpponent.UserId");
+                    if (id == 0) break;
+                    var name = Try(() => g.String(o, Opponent, "Name"), null, notes, "ArenaOpponent.Name");
+                    var teamText = Try(() => StringValue(g, g.Ref(c.Address, TagOpponent, "_teamPower")), null, notes, "Arena3x3BattleOpponentItemContext._teamPower");
+                    var power = RaidExtractor.Autoplay.GameText.Power(teamText) is { } tp ? (int)tp : 0;
+                    var status = Try(() => IntValue(g, g.Ref(c.Address, TagOpponent, "_opponentStatusId")), null, notes, "Arena3x3BattleOpponentItemContext._opponentStatusId")
+                        ?? Try(() => g.Int(o, Opponent, "Status"), -1, notes, "ArenaOpponent.Status");
+                    var quarantine = Try(() => BoolValue(g, g.Ref(c.Address, TagOpponent, "_onQuarantine")), null, notes, "Arena3x3BattleOpponentItemContext._onQuarantine") == true;
+                    var (button, why) = Named(i, FightName(), NotFightName());
+                    var target = Make("tag-opponent", $"tag arena: Battle {name ?? "?"} ({power:N0})", n, button,
+                        $"user {id}, teams power {power:N0}, status {status}" + (why is null ? "" : "; " + why), key: id);
+                    targets.Add(target);
+                    (tagRows ??= []).Add(new ArenaRow(id, name, power, status, button is not null && !quarantine, quarantine, teamText, target));
+                    break;
+                }
                 case ArenaDialog:
                     tab = Try(() => IntValue(g, g.Ref(c.Address, ArenaDialog, "_tabIndex")), null, notes, "ArenaDialogContext._tabIndex");
                     break;
@@ -738,6 +786,7 @@ public static partial class PlayTargets
                 (BattleMenuView, var b) when b.Contains("Dungeon", StringComparison.OrdinalIgnoreCase) => ("mode-dungeon", "battle menu: Dungeons"),
                 // The arena map's buildings: labels that follow the 3D scene (a canvas inside the view); Arena1x1 is the Classic Arena.
                 (ArenaMapView, "Arena1x1") => ("arena-classic", "arena map: Classic Arena"),
+                (ArenaMapView, "Arena3x3") => ("arena-tag", "arena map: Tag Team Arena"),
                 _ => ((string?)null, (string?)null),
             };
             if (byPath.Item1 is not { } kind) continue;
@@ -859,7 +908,8 @@ public static partial class PlayTargets
         if (rows is not null || free is not null || tab is not null) arena = new ArenaBoardRead(rows ?? [], free, freeText, loading, tab);
         return new PlayScan(targets, arena, auto, result, hud, inbox, notes.Distinct().ToList(), crypts, stages, team?.Distinct().ToList(), pve, ccLevels, picks, ccDifficulty,
             rankUps, selectedShard, clanDamage,
-            [.. quests.Select(q => q.Tab == "?" ? q with { Tab = questTab is { } k && k >= 0 && k < QuestTabs.Length ? QuestTabs[k] : "Daily" } : q)]);
+            [.. quests.Select(q => q.Tab == "?" ? q with { Tab = questTab is { } k && k >= 0 && k < QuestTabs.Length ? QuestTabs[k] : "Daily" } : q)],
+            tagRows is not null || tagFree is not null ? new ArenaBoardRead(tagRows ?? [], tagFree, tagFreeText, null, null) : null);
     }
 
     /// <summary>An inbox entry that holds Classic Arena tokens (not Tag/Live arena tokens or auto-battle tickets), by its text and icon.</summary>

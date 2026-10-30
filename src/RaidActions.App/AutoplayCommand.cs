@@ -36,6 +36,7 @@ public static class AutoplayCommand
         var enableCb = args.Contains("--enable-cb");
         var enableGifts = args.Contains("--enable-gifts");
         var enableHydra = args.Contains("--enable-hydra");
+        var enableTag = args.Contains("--enable-tag");
         var noYield = args.Contains("--no-yield");
         // --cc-difficulty Normal|Hard: the Cursed City difficulty to play; --cc-risky: also risky levels (whatever the settings say).
         var ccAt = Array.IndexOf(args, "--cc-difficulty");
@@ -50,12 +51,13 @@ public static class AutoplayCommand
             if (enableCb) s = s with { Enabled = true, ClanBoss = s.ClanBoss with { Enabled = true } };
             if (enableGifts) s = s with { Enabled = true, FreeRewards = s.FreeRewards with { Enabled = true } };
             if (enableHydra) s = s with { Enabled = true, Hydra = s.Hydra with { Enabled = true } };
+            if (enableTag) s = s with { Enabled = true, TagArena = s.TagArena with { Enabled = true } };
             if (ccDifficulty is not null) s = s with { CursedCity = s.CursedCity with { Difficulty = ccDifficulty } };
             if (ccRisky) s = s with { CursedCity = s.CursedCity with { TryRisky = true } };
             if (noYield) s = s with { Pacing = s.Pacing with { YieldToPersonMinutes = 0 } };
             return s;
         }
-        Func<AutoplaySettings, AutoplaySettings>? force = enable || enableFw || enableCc || enableEnergy || enableCb || enableGifts || enableHydra || noYield || ccDifficulty is not null || ccRisky ? Force : null;
+        Func<AutoplaySettings, AutoplaySettings>? force = enable || enableFw || enableCc || enableEnergy || enableCb || enableGifts || enableHydra || enableTag || noYield || ccDifficulty is not null || ccRisky ? Force : null;
 
         using var hold = BotLock.TakeAutoplay();
         if (hold is null)
@@ -119,7 +121,8 @@ public static class AutoplayCommand
             giftsActivity.Restore(LiveAutoplayHost.Today(dir), DateOnly.FromDateTime(DateTime.Now));
             // Free rewards first: a check is a few clicks every 20 minutes (plan/free-rewards.md).
             var hydraActivity = new HydraActivity(game);
-            IActivity[] activities = [giftsActivity, arena, cbActivity, hydraActivity, energyActivity, fwActivity, ccActivity];
+            var tagActivity = new TagArenaActivity(game);
+            IActivity[] activities = [giftsActivity, arena, tagActivity, cbActivity, hydraActivity, energyActivity, fwActivity, ccActivity];
             host.GameBlocked = game.SessionTaken;
             Print($"Auto Play{(dry ? " (DRY RUN: nothing that spends is pressed)" : "")}. Settings and status: {dir}\\autoplay. Overlays: {folder}. Stop: the app, or Ctrl+Alt+Esc.");
             var engine = new AutoplayEngine(activities, game, host, dry);

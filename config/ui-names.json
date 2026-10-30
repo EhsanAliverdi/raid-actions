@@ -138,7 +138,7 @@
                                                                     ],
                   "Client.ViewModel.Contextes.ArenaMap.ArenaMapContext":  [
                                                                               "_arena1x1"
-                                                                          ],
+                                                                          , "_arena3x3"],
                   "Client.ViewModel.Contextes.ArenaDialog.ArenaBattleTabContext":  [
                                                                                        "_freeRefreshAvailable",
                                                                                        "_isLoading",
@@ -232,6 +232,8 @@
                   "Client.ViewModel.Contextes.HourlyGiftPrizeContext":  [ "_state", "_title" ],
                   "Client.ViewModel.Contextes.Quests.QuestClaimAllButtonContext":  [ "_available" ],
                   "Client.ViewModel.Contextes.Quests.QuestsDialogContext":  [ "_activeTabIndex" ],
+                  "Client.ViewModel.Contextes.Arena3x3Dialog.Tabs.Battle.Arena3x3BattleOpponentItemContext":  [ "_arenaOpponent", "_teamPower", "_opponentStatusId", "_onQuarantine" ],
+                  "Client.ViewModel.Contextes.Arena3x3Dialog.Tabs.Battle.Arena3x3BattleTabContext":  [ "_freeRefreshAvailable", "_freeRefreshTimeLeft" ],
                   "Client.ViewModel.Contextes.Quests.QuestItemContext":  [ "ConditionName", "ProgressString", "IsCompleted", "ButtonState", "_QuestId_k__BackingField" ],
                   "Client.ViewModel.Contextes.Quests.PeriodicQuestItemContext":  [ "_questPrototypeId" ],
                   "Client.ViewModel.Contextes.Quests.Advanced.AdvancedQuestsItemContext":  [ "_transition" ],

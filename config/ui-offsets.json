@@ -640,6 +640,13 @@
           "field": "_arena1x1",
           "source": "field",
           "status": "direct"
+        },
+        "_arena3x3": {
+          "offset": "0x68",
+          "type": "ArenaMapItemContext",
+          "field": "_arena3x3",
+          "source": "field",
+          "status": "direct"
         }
       }
     },
@@ -1260,6 +1267,60 @@
           "offset": "0x70",
           "type": "IntProperty",
           "field": "_activeTabIndex",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.Arena3x3Dialog.Tabs.Battle.Arena3x3BattleOpponentItemContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_arenaOpponent": {
+          "offset": "0xE8",
+          "type": "ArenaOpponent",
+          "field": "_arenaOpponent",
+          "source": "field",
+          "status": "direct"
+        },
+        "_teamPower": {
+          "offset": "0xD0",
+          "type": "StringProperty",
+          "field": "_teamPower",
+          "source": "field",
+          "status": "direct"
+        },
+        "_opponentStatusId": {
+          "offset": "0xB0",
+          "type": "IntProperty",
+          "field": "_opponentStatusId",
+          "source": "field",
+          "status": "direct"
+        },
+        "_onQuarantine": {
+          "offset": "0xB8",
+          "type": "BoolProperty",
+          "field": "_onQuarantine",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.Arena3x3Dialog.Tabs.Battle.Arena3x3BattleTabContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_freeRefreshAvailable": {
+          "offset": "0x68",
+          "type": "BoolProperty",
+          "field": "_freeRefreshAvailable",
+          "source": "field",
+          "status": "direct"
+        },
+        "_freeRefreshTimeLeft": {
+          "offset": "0x78",
+          "type": "StringProperty",
+          "field": "_freeRefreshTimeLeft",
           "source": "field",
           "status": "direct"
         }

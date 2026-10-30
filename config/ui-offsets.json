@@ -1380,6 +1380,40 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.RecommendedQuests.RecommendedQuestItemContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_description": {
+          "offset": "0x98",
+          "type": "StringProperty",
+          "field": "_description",
+          "source": "field",
+          "status": "direct"
+        },
+        "_state": {
+          "offset": "0xC0",
+          "type": "IntProperty",
+          "field": "_state",
+          "source": "field",
+          "status": "direct"
+        },
+        "_progressValue": {
+          "offset": "0xA0",
+          "type": "StringProperty",
+          "field": "_progressValue",
+          "source": "field",
+          "status": "direct"
+        },
+        "_questId": {
+          "offset": "0xD8",
+          "type": "int",
+          "field": "_questId",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.Quests.Advanced.AdvancedQuestsItemContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

@@ -93,6 +93,38 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
             }
         }
         await _nav.GoHome(Action("from the quests"), ct);
+        // The village's Missions: read, and each completed one collected (a click on it) when claiming.
+        try
+        {
+            var (_, vt, _) = await Read(ct);
+            if (vt.Any(t => t.Kind == "village-missions" && t.NotClickable is null))
+            {
+                await Click("village-missions", null, (_, scan) => scan().Targets.Any(t => t.Kind == "mission-item"), "the missions open", ct, within: TimeSpan.FromSeconds(8));
+                await Task.Delay(800, ct);
+                for (var i = 0; i < 8; i++)
+                {
+                    var (sm, mt, mp) = await Read(ct);
+                    foreach (var q in mp.Quests ?? []) read[(q.Tab, q.Id, q.Text)] = q;
+                    var done = mt.FirstOrDefault(t => t.Kind == "mission-item" && t.Note == "state 2" && t.NotClickable is null);
+                    if (!claim || done is null) break;
+                    if (dryRun)
+                    {
+                        if (done.Rect is { } r) Shot($"autoplay: WOULD CLICK {done.Name} (dry run: NOT pressed)", r, always: true);
+                        break;
+                    }
+                    var topM = Top(sm);
+                    await Click("mission-item", t => t.Path == done.Path, (s3, scan) => Top(s3) != topM || !scan().Targets.Any(t => t.Path == done.Path && t.Note == "state 2"),
+                        $"{done.Name} collected", ct, within: TimeSpan.FromSeconds(8));
+                    claimed++;
+                    log($"autoplay: collected {done.Name}");
+                    await Task.Delay(1500, ct);
+                    var s4 = await Settled(ct);
+                    if (Top(s4) is { } t4 && t4 != topM) await Back(t4, ct);
+                }
+                await _nav.GoHome(Action("from the missions"), ct);
+            }
+        }
+        catch (PlayStopException e) { log($"autoplay: missions not read: {e.Message}"); }
         log($"autoplay: quests read: {read.Count} ({string.Join("; ", read.Values.Select(q => $"{q.Tab} {q.Type}: {q.Text} {q.Progress}{(q.Completed ? " done" : "")}"))})");
         return new QuestPass(claimed, [.. read.Values]);
     }

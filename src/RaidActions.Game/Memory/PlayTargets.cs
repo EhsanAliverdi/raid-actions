@@ -153,6 +153,8 @@ public static partial class PlayTargets
     private const string QuestItem = "Client.ViewModel.Contextes.Quests.QuestItemContext";
     private const string PeriodicQuest = "Client.ViewModel.Contextes.Quests.PeriodicQuestItemContext";
     private const string AdvancedQuest = "Client.ViewModel.Contextes.Quests.Advanced.AdvancedQuestsItemContext";
+    // The village's Missions (the game's recommended quests; from the dump 2026-10-31).
+    private const string MissionItem = "Client.ViewModel.Contextes.RecommendedQuests.RecommendedQuestItemContext";
 
     /// <summary>PeriodicQuestPrototypeId (from the dump): the daily, weekly and monthly quests' types.</summary>
     private static readonly Dictionary<int, string> QuestPrototypes = new()
@@ -178,7 +180,7 @@ public static partial class PlayTargets
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-demonlord", "clan-hydra", "clan-difficulty", "clan-battle",
-        "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all",
+        "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
     };
 
@@ -510,6 +512,18 @@ public static partial class PlayTargets
                 case QuestsDialog:
                     questTab = Try(() => IntValue(g, g.Ref(c.Address, QuestsDialog, "_activeTabIndex")), null, notes, "QuestsDialogContext._activeTabIndex");
                     break;
+                case MissionItem:
+                {
+                    // A mission (RecommendedQuestState: 1 active, 2 completed: a click collects it).
+                    var text = Try(() => StringValue(g, g.Ref(c.Address, MissionItem, "_description")), null, notes, "RecommendedQuestItemContext._description");
+                    var state = Try(() => IntValue(g, g.Ref(c.Address, MissionItem, "_state")), null, notes, "RecommendedQuestItemContext._state");
+                    var progress = Try(() => StringValue(g, g.Ref(c.Address, MissionItem, "_progressValue")), null, notes, "RecommendedQuestItemContext._progressValue");
+                    var id = Try(() => (int?)g.Int(c.Address, MissionItem, "_questId"), null, notes, "RecommendedQuestItemContext._questId") ?? 0;
+                    targets.Add(Make("mission-item", $"mission: {text}", n, Own(i), $"state {state}", id: id));
+                    if (!string.IsNullOrWhiteSpace(text) && state is 1 or 2)
+                        quests.Add(new RaidExtractor.Autoplay.QuestRead(id, "Mission", text.Trim(), null, progress, state == 2, state == 2));
+                    break;
+                }
                 case PeriodicQuest or AdvancedQuest:
                 {
                     // A quest row (plan/quests.md): its words, progress, done; its type (a periodic quest's prototype, an advanced quest's
@@ -768,6 +782,7 @@ public static partial class PlayTargets
                 (VillageHudView, var b) when b.Contains("Tavern", StringComparison.OrdinalIgnoreCase) => ("village-tavern", "village: Tavern"),
                 (VillageHudView, "HeroesInfo") => ("village-heroes", "village: Champions"),
                 (VillageHudView, "HourlyGifts") => ("village-gifts", "village: playtime gifts"),
+                (VillageHudView, "RecommendedQuests") => ("village-missions", "village: Missions"),
                 (VillageHudView, var b) when b.Contains("Portal", StringComparison.OrdinalIgnoreCase) => ("village-portal", "village: Portal"),
                 // The battle menu's Campaign card (AdventureModeContext, field _adventure: binding to confirm live).
                 (BattleMenuView, var b) when b.Contains("Adventure", StringComparison.OrdinalIgnoreCase) || b.Contains("Campaign", StringComparison.OrdinalIgnoreCase)

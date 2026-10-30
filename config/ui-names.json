@@ -236,6 +236,7 @@
                   "Client.ViewModel.Contextes.Arena3x3Dialog.Tabs.Battle.Arena3x3BattleTabContext":  [ "_freeRefreshAvailable", "_freeRefreshTimeLeft" ],
                   "Client.ViewModel.Contextes.Quests.QuestItemContext":  [ "ConditionName", "ProgressString", "IsCompleted", "ButtonState", "_QuestId_k__BackingField" ],
                   "Client.ViewModel.Contextes.Quests.PeriodicQuestItemContext":  [ "_questPrototypeId" ],
+                  "Client.ViewModel.Contextes.RecommendedQuests.RecommendedQuestItemContext":  [ "_description", "_state", "_progressValue", "_questId" ],
                   "Client.ViewModel.Contextes.Quests.Advanced.AdvancedQuestsItemContext":  [ "_transition" ],
                   "Client.ViewModel.Contextes.AllianceActivityMap.AllianceActivityMapContext":  [ "_demonLord", "_hydra" ],
                   "Client.ViewModel.Contextes.AllianceEnemies.EnemyItem.AllianceEnemyItemContext":  [ "_name", "_unlocked", "_selected", "_StageId_k__BackingField", "_enemyType" ],

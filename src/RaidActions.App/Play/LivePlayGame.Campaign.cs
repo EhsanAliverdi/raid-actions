@@ -145,20 +145,23 @@ public sealed partial class LivePlayGame
         log($"autoplay: STEP food rank-ups: {string.Join(", ", rankUps.Select(r => $"{Who(r.HeroId)} {r.Rank}* with {string.Join("+", r.FoodIds.Select(Who))}"))}");
         await OpenFastRankUp(ct);
         var done = 0;
+        var levels = (await Account(ct)).Data.Champions.ToDictionary(c => c.Id, c => c.Level);
         await FoodVaultOff(ct);
         foreach (var grade in rankUps.Select(r => r.Rank).Distinct().Order())
         {
             await SelectGrade(grade, ct);
             // Only food: every champion the game ticked, and every food it picked, must be in the pool; anything else is unticked.
-            // Champions only a team screen refused (state 99) are still food here.
+            // Champions only a team screen refused (state 99) are still food here. The food the game picked must never have been levelled
+            // (Ehsan 2026-10-31: it took a level 16 common for a rank-up): any other is unticked with its rank-up.
             bool Food(int id) => pool.Contains(id) || _notPickable.Contains(id);
-            bool Fine(RankUpItemRead r) => Food(r.HeroId) && r.FoodIds.Count > 0 && r.FoodIds.All(Food);
+            bool Eatable(int id) => Food(id) && levels.TryGetValue(id, out var lv) && lv <= 1;
+            bool Fine(RankUpItemRead r) => Food(r.HeroId) && r.FoodIds.Count > 0 && r.FoodIds.All(Eatable);
             for (var i = 0; i < 12; i++)
             {
                 var (_, _, play) = await Read(ct);
                 var wrong = (play.RankUps ?? []).FirstOrDefault(r => r.Active == true && !Fine(r));
                 if (wrong is null) break;
-                log($"autoplay: {Who(wrong.HeroId)} (food {string.Join(", ", wrong.FoodIds.Select(Who))}) is not food: unticked");
+                log($"autoplay: {Who(wrong.HeroId)} (food {string.Join(", ", wrong.FoodIds.Select(id => $"{Who(id)} L{levels.GetValueOrDefault(id)}"))}) is not food or eats levelled food: unticked");
                 await Click("fastrankup-item", t => t.Id == wrong.HeroId, (_, scan) => scan().RankUps?.FirstOrDefault(r => r.HeroId == wrong.HeroId)?.Active != true,
                     $"{Who(wrong.HeroId)} unticked", ct);
             }

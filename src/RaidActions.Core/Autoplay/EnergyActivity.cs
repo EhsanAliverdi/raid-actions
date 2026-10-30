@@ -88,6 +88,10 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 if (e.Text.StartsWith("Victory", StringComparison.Ordinal)) _wins++; else _losses++;
             }
             if (e.Kind == "refill" && e.Text.StartsWith("bought", StringComparison.Ordinal)) _refillsToday++;
+            // Dungeons seen closed today ("Iron Twins (Void) Normal stage 5: ...: not open today"): kept across a restart.
+            if (e.Kind is "skip" or "dry-run" && (e.Text.Contains("closed today", StringComparison.Ordinal) || e.Text.Contains("not open today", StringComparison.Ordinal))
+                && EnergyPlaces.All.FirstOrDefault(p => e.Text.StartsWith(p.Name + " ", StringComparison.Ordinal)) is { } closedPlace)
+                _closedToday.Add(closedPlace.Region);
             // Today's food rank-ups and summons ("ranked up 3 food champion(s)", "opened 2 Mystery shard(s)").
             if (e.Kind == "rankup" && System.Text.RegularExpressions.Regex.Match(e.Text, @"^ranked up (\d+)") is { Success: true } r) _rankedUp += int.Parse(r.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
             if (e.Kind == "summon" && System.Text.RegularExpressions.Regex.Match(e.Text, @"^opened (\d+)") is { Success: true } o) _summoned += int.Parse(o.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);

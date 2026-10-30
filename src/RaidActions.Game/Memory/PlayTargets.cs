@@ -534,6 +534,8 @@ public static partial class PlayTargets
                     var selected = Try(() => BoolValue(g, g.Ref(c.Address, ShardItem, "_isSelected")), null, notes, "ShardItemContext._isSelected");
                     targets.Add(Make("portal-shard", $"portal: {g.EnumName("SharedModel.Meta.Shards.ShardTypeId", type.Value) ?? $"shard {type}"} shards", n, Own(i),
                         $"type {type}, count {count}, {(selected == true ? "selected" : "not selected")}", id: type));
+                    // The summon tab's own context is not bound on a node (seen 2026-10-31): the selected shard is the row marked selected.
+                    if (selected == true) selectedShard ??= type;
                     break;
                 }
                 case SummonTab:
@@ -767,6 +769,22 @@ public static partial class PlayTargets
             foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null && FightName().IsMatch(x.Name)
                 && !NotFightName().IsMatch(x.Name)).Take(1))
                 targets.Add(Make("clan-battle", "clan boss: Battle", x, x, x.Path));
+
+        // The Portal's single summon (seen 2026-10-31: "SingleSummon", next to "MultiSummon_h", never clicked).
+        if (t.View == "PortalDialog" && !targets.Any(x => x.Kind == "portal-summon1"))
+            foreach (var x in nodes.Where(x => x.Name == "SingleSummon" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                targets.Add(Make("portal-summon1", "portal: Summon x1", x, x, "SingleSummon"));
+
+        // The village's Portal is a 3D building with no UI element to click (seen 2026-10-31): on the default village view it stands at the
+        // upper left (its purple swirl at about 23% across, 34% down). The target is that spot; the click is checked by the Portal's
+        // shards opening, and anything else that opens is closed.
+        if (t.View == VillageHudView && !targets.Any(x => x.Kind == "village-portal"))
+        {
+            var (w, h) = (t.ClientWidth, t.ClientHeight);
+            if (w > 0 && h > 0)
+                targets.Add(new UiTarget("village-portal", "village: Portal (the building's spot)", null, t.View, new ClientRect(w * 0.215f, h * 0.30f, w * 0.035f, h * 0.07f),
+                    true, true, true, false, "VillageHUD/(Portal building)", "a fixed spot on the default village view", ClientWidth: w, ClientHeight: h));
+        }
 
         // The village's Quests button (seen 2026-10-31: "QuestButton", no binding, bottom bar) and the quests dialog's tabs (toggles, in order).
         if (t.View == VillageHudView)

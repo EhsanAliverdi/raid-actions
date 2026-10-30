@@ -86,6 +86,9 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 if (e.Text.StartsWith("Victory", StringComparison.Ordinal)) _wins++; else _losses++;
             }
             if (e.Kind == "refill" && e.Text.StartsWith("bought", StringComparison.Ordinal)) _refillsToday++;
+            // Today's food rank-ups and summons ("ranked up 3 food champion(s)", "opened 2 Mystery shard(s)").
+            if (e.Kind == "rankup" && System.Text.RegularExpressions.Regex.Match(e.Text, @"^ranked up (\d+)") is { Success: true } r) _rankedUp += int.Parse(r.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+            if (e.Kind == "summon" && System.Text.RegularExpressions.Regex.Match(e.Text, @"^opened (\d+)") is { Success: true } o) _summoned += int.Parse(o.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
             if (e.Kind == "cost" && System.Text.RegularExpressions.Regex.Match(e.Text, @"^(\S+) costs ([\d.]+)") is { Success: true } c
                 && double.TryParse(c.Groups[2].Value, System.Globalization.CultureInfo.InvariantCulture, out var v))
                 _learnt[c.Groups[1].Value] = v;
@@ -169,7 +172,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 await ctx.ThinkAsync(ct);
                 int done;
                 try { done = await game.RankUpFoodAsync(plan.Food!.RankUps, pool, ctx.DryRun, ct); }
-                catch (PlayStopException e)
+                catch (Exception e) when (e is not OperationCanceledException)
                 {
                     // A rank-up that cannot be done (a screen not as expected) pauses rank-ups, never the farm or the other areas.
                     _rankUpBlockedUntil = ctx.Utc + TimeSpan.FromHours(1);
@@ -193,7 +196,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 await ctx.ThinkAsync(ct);
                 int opened;
                 try { opened = await game.SummonMysteryAsync(Math.Min(count, 10), ctx.DryRun, ct); }
-                catch (PlayStopException e)
+                catch (Exception e) when (e is not OperationCanceledException)
                 {
                     _summonBlockedUntil = ctx.Local.Date.AddDays(1).ToUniversalTime();
                     ctx.Event(AreaId, "error", $"Mystery shards paused until tomorrow: {e.Message}");

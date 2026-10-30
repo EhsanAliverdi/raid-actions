@@ -316,16 +316,28 @@ public sealed partial class LivePlayGame
                 "a champion summoned", ct, within: TimeSpan.FromSeconds(20), shot: true,
                 before: p => p.SelectedShard == Mystery ? null : $"the selected shard is {p.SelectedShard}, not Mystery");
             opened++;
-            // The summon's show: taps and backs until the summon tab is back (a new champion's card, "summon again", ...).
-            for (var i = 0; i < 6; i++)
+            await Task.Delay(2500, ct); // the summon's show starts after the click
+            // The new champion's card (PortalHeroInfoDialog, seen 2026-10-31) slides in: its close is tried until it is on screen.
+            for (var i = 0; i < 10; i++)
             {
                 await Task.Delay(1500, ct);
                 var (s2, t2, _) = await Read(ct);
-                if (t2.Any(t => t.Kind == "portal-summon1" && t.NotClickable is null)) break;
-                if (Top(s2) is { } top) await Back(top, ct);
+                if (Top(s2) == "PortalDialog" && t2.Any(t => t.Kind == "portal-summon1" && t.NotClickable is null)) break;
+                if (Top(s2) is { } top && top != "PortalDialog")
+                {
+                    try { await Back(top, ct); }
+                    catch (PlayStopException e) { log($"autoplay: {top} not closed yet ({e.Message}); trying again"); }
+                }
             }
         }
-        await _nav.GoHome(Action("from the Portal"), ct);
+        // Home again; the last champion's card may still be sliding in: one more try after a pause.
+        try { await _nav.GoHome(Action("from the Portal"), ct); }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            log($"autoplay: going home from the Portal failed once ({e.Message}); trying again");
+            await Task.Delay(2500, ct);
+            await _nav.GoHome(Action("from the Portal"), ct);
+        }
         return opened;
     }
 
@@ -364,7 +376,23 @@ public sealed partial class LivePlayGame
             var (_, targets, _) = await Read(ct);
             if (targets.Any(t => t.Kind == "portal-shard")) return;
             if (!Input.NavigatingDriver.AtVillage(s)) { await _nav.GoHome(Action("to the village"), ct); continue; }
-            await Click("village-portal", null, (_, scan) => scan().Targets.Any(t => t.Kind == "portal-shard"), "the Portal opens", ct, within: TimeSpan.FromSeconds(15));
+            try
+            {
+                await Click("village-portal", null, (s2, scan) => !Input.NavigatingDriver.AtVillage(s2) || scan().Targets.Any(t => t.Kind == "portal-shard"), "the Portal opens", ct,
+                    within: TimeSpan.FromSeconds(15), shot: true);
+            }
+            catch (PlayStopException) { }
+            await Task.Delay(1500, ct);
+            var (s3, t3, _) = await Read(ct);
+            if (t3.Any(t => t.Kind == "portal-shard")) return;
+            // The spot opened something else (the village was scrolled?): closed, and no more tries.
+            if (!Input.NavigatingDriver.AtVillage(s3) && Top(s3) is { } other)
+            {
+                var dump = DumpScreen("portal spot opened something else");
+                await Back(other, ct);
+                throw new PlayStopException($"The Portal's spot opened {other}, not the Portal (closed). Screen dump: {dump}");
+            }
+            throw new PlayStopException($"A click on the Portal's spot opened nothing. Screen dump: {DumpScreen("portal spot")}");
         }
         throw new PlayStopException($"The Portal's shards were not reached. Screen dump: {DumpScreen("portal not reached")}");
     }

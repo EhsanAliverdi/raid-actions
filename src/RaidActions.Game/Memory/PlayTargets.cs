@@ -40,14 +40,14 @@ public sealed record RankUpItemRead(int HeroId, bool? Active, List<int> FoodIds,
 public sealed record PlayScan(List<UiTarget> Targets, ArenaBoardRead? Arena, bool? AutoOn, ArenaResultRead? Result, List<HudResource> Hud,
     List<InboxEntry> Inbox, List<string> Notes, List<CryptRead>? Crypts = null, List<StageRead>? Stages = null, List<int>? TeamIds = null,
     PveResultRead? Pve = null, List<CcMapRead>? CcLevels = null, List<TeamPickRead>? Picks = null, int? CcDifficulty = null,
-    List<RankUpItemRead>? RankUps = null, int? SelectedShard = null)
+    List<RankUpItemRead>? RankUps = null, int? SelectedShard = null, string? ClanDamage = null)
 {
     public static PlayScan Empty => new([], null, null, null, [], [], []);
 
     public PlayScan Merge(PlayScan o) => new([.. Targets, .. o.Targets], Arena ?? o.Arena, AutoOn ?? o.AutoOn, Result ?? o.Result, [.. Hud, .. o.Hud],
         [.. Inbox, .. o.Inbox], [.. Notes, .. o.Notes], [.. Crypts ?? [], .. o.Crypts ?? []], [.. Stages ?? [], .. o.Stages ?? []],
         [.. TeamIds ?? [], .. o.TeamIds ?? []], Pve ?? o.Pve, [.. CcLevels ?? [], .. o.CcLevels ?? []], [.. Picks ?? [], .. o.Picks ?? []], CcDifficulty ?? o.CcDifficulty,
-        [.. RankUps ?? [], .. o.RankUps ?? []], SelectedShard ?? o.SelectedShard);
+        [.. RankUps ?? [], .. o.RankUps ?? []], SelectedShard ?? o.SelectedShard, ClanDamage ?? o.ClanDamage);
 }
 
 /// <summary>
@@ -76,6 +76,8 @@ public static partial class PlayTargets
         // Campaign (plan/campaign.md; from the dump 2026-10-30, names to confirm live): the stage's result, the Tavern, its Fast Rank Up.
         // The campaign map: the 3D scene under MapHUD (seen live 2026-10-30).
         CampaignMapView = "Map",
+        // Clan Boss (plan/clan-boss.md; from the dump 2026-10-31, names to confirm live).
+        ClanMapView = "AllianceActivityMap", ClanDialogView = "AllianceBossesDialog", ClanResultView = "BattleFinishAllianceBossDialog",
         StoryResultView = "BattleFinishStoryDialog", TavernView = "HeroesDevelopmentDialog", FastRankUpView = "FastRankUpOverlay";
 
     /// <summary>A team screen (the views where a squad is picked before a battle).</summary>
@@ -128,6 +130,12 @@ public static partial class PlayTargets
     private const string RankUpFood = "Client.ViewModel.Contextes.FastRankUpOverlay.FoodItemContext";
     private const string ShardItem = "Client.ViewModel.Contextes.PortalDialog.Summon.ShardItemContext";
     private const string SummonTab = "Client.ViewModel.Contextes.PortalDialog.Summon.SummonTabContext";
+    // Clan Boss (plan/clan-boss.md; from the dump 2026-10-31).
+    private const string ClanMap = "Client.ViewModel.Contextes.AllianceActivityMap.AllianceActivityMapContext";
+    private const string ClanMapItem = "Client.ViewModel.Contextes.AllianceActivityMap.AllianceEnemyMapItemContext";
+    private const string ClanEnemy = "Client.ViewModel.Contextes.AllianceEnemies.EnemyItem.AllianceEnemyItemContext";
+    private const string ClanResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishAllianceBossDialogContext";
+    private const string ClanEnemyResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishAllianceEnemyDialogContext";
     private const string IntProperty = "Client.MVVM.Base.ViewModel.Properties.IntProperty";
     private const string BoolProperty = "Client.MVVM.Base.ViewModel.Properties.BoolProperty";
     private const string StringProperty = "Client.MVVM.Base.ViewModel.Properties.StringProperty";
@@ -141,6 +149,7 @@ public static partial class PlayTargets
         "mode-dungeon", "dungeon-region", "dungeon-stage", "dungeon-difficulty", "dungeon-dropdown", "super-raid",
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
+        "mode-clan", "clan-demonlord", "clan-difficulty", "clan-battle",
     };
 
     [GeneratedRegex(@"Vault|Storage", RegexOptions.IgnoreCase)] private static partial Regex VaultName();
@@ -181,6 +190,7 @@ public static partial class PlayTargets
         int? ccDifficulty = null;
         List<RankUpItemRead>? rankUps = null;
         int? selectedShard = null;
+        string? clanDamage = null;
 
         IEnumerable<UiNode> Below(int i)
         {
@@ -222,8 +232,10 @@ public static partial class PlayTargets
                 Forbidden: false, b.Path, note, ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight, Key: key);
         }
 
-        // Pass 1: contexts that point at other elements (the arena map's classic arena item).
-        ulong classic = 0;
+        // Pass 1: contexts that point at other elements (the arena map's classic arena item, the alliance map's Demon Lord).
+        ulong classic = 0, demonLord = 0;
+        foreach (var n in nodes.Where(n => n.Context?.Class == ClanMap))
+            demonLord = Try(() => g.Ref(n.Context!.Address, ClanMap, "_demonLord"), 0UL, notes, "AllianceActivityMapContext._demonLord");
         foreach (var n in nodes.Where(n => n.Context?.Class == ArenaMap))
             classic = Try(() => g.Ref(n.Context!.Address, ArenaMap, "_arena1x1"), 0UL, notes, "ArenaMapContext._arena1x1");
 
@@ -386,6 +398,30 @@ public static partial class PlayTargets
                     (stages ??= []).Add(new StageRead(sid, name, state, buttonState, target));
                     break;
                 }
+                case ClanMapItem when demonLord != 0 && c.Address == demonLord:
+                    targets.Add(Make("clan-demonlord", "clan: Demon Lord", n, Own(i), null));
+                    break;
+                case ClanEnemy:
+                {
+                    // A Clan Boss difficulty in the Demon Lord's list (its name, unlocked, selected, its stage id; enemy type 1 the Clan Boss).
+                    var name = Try(() => StringValue(g, g.Ref(c.Address, ClanEnemy, "_name")), null, notes, "AllianceEnemyItemContext._name");
+                    var unlocked = Try(() => BoolValue(g, g.Ref(c.Address, ClanEnemy, "_unlocked")), null, notes, "AllianceEnemyItemContext._unlocked");
+                    var selected = Try(() => BoolValue(g, g.Ref(c.Address, ClanEnemy, "_selected")), null, notes, "AllianceEnemyItemContext._selected");
+                    var stage = Try(() => (int?)g.Int(c.Address, ClanEnemy, "_StageId_k__BackingField"), null, notes, "AllianceEnemyItemContext._StageId");
+                    var type = Try(() => IntValue(g, g.Ref(c.Address, ClanEnemy, "_enemyType")), null, notes, "AllianceEnemyItemContext._enemyType");
+                    // The row is selected by a click on the row itself (its only button, BTN_1, is the reward list; seen 2026-10-31): the
+                    // target is the row's left part, clear of that button.
+                    if (n.Screen is not { } row) break;
+                    var inside = row.Y >= 60 && row.Y + row.Height <= t.ClientHeight - 10;
+                    targets.Add(new UiTarget("clan-difficulty", $"clan boss: {name ?? $"stage {stage}"}", stage, t.View,
+                        new ClientRect(row.X + row.Width * 0.1f, row.Y + row.Height * 0.25f, row.Width * 0.5f, row.Height * 0.5f), n.ActiveInHierarchy, true, inside, false, n.Path,
+                        $"{name}; {(selected == true ? "selected" : "not selected")}; {(unlocked == false ? "locked" : "unlocked")}; type {type}",
+                        ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
+                    break;
+                }
+                case ClanResult:
+                    clanDamage = Try(() => StringValue(g, g.Ref(c.Address, ClanEnemyResult, "_damageDealt")), null, notes, "BattleFinishAllianceEnemyDialogContext._damageDealt");
+                    break;
                 case MapRegionItem:
                 {
                     // A Campaign chapter on the campaign map (RegionTypeId 101..112 = Region1..Region12).
@@ -611,6 +647,9 @@ public static partial class PlayTargets
                 // The battle menu's Campaign card (AdventureModeContext, field _adventure: binding to confirm live).
                 (BattleMenuView, var b) when b.Contains("Adventure", StringComparison.OrdinalIgnoreCase) || b.Contains("Campaign", StringComparison.OrdinalIgnoreCase)
                     => ("mode-campaign", "battle menu: Campaign"),
+                // The battle menu's Clan Boss card (AllianceActivityModeContext, field _allianceActivity; binding to confirm live).
+                (BattleMenuView, "ClanActivity") => ("mode-clan", "battle menu: Clan Boss"), // seen live 2026-10-31
+                (ClanMapView, var b) when b.Contains("DemonLord", StringComparison.OrdinalIgnoreCase) => ("clan-demonlord", "clan: Demon Lord"),
                 // The battle menu's Arena card (seen 2026-10-29: "Arena" bound to Arenas, its clickable Panel below).
                 (BattleMenuView, "Arenas") => ("mode-arena", "battle menu: Arena"),
                 // The battle menu's Faction Wars card: bound like the Arena card (name to confirm live: Fraction/Faction).
@@ -658,7 +697,7 @@ public static partial class PlayTargets
 
         // The arena result closes on a tap (seen 2026-10-29: "CloseBlock", a click area with no button, over the lower part of the
         // screen with the champion avatars on it): the target is a strip at its bottom, clear of the avatars.
-        if (t.View is ArenaResultView or FwResultView or DungeonResultView or StoryResultView)
+        if (t.View is ArenaResultView or FwResultView or DungeonResultView or StoryResultView or ClanResultView)
             foreach (var cb in nodes.Where(x => x.Name == "CloseBlock" && x.ActiveInHierarchy && x.Screen is not null).Take(1))
             {
                 // Its "Content" child is the RETURN TO ARENA bar (seen 2026-10-29): the middle of that bar.
@@ -698,6 +737,12 @@ public static partial class PlayTargets
                     targets.Add(Make("tavern-fast-rankup", "tavern: Fast Rank Up", x, x, null));
             }
 
+        // The Demon Lord's Battle button (in AllianceEnemiesDialog, by its name; to confirm live).
+        if (t.View == ClanDialogView)
+            foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null && FightName().IsMatch(x.Name)
+                && !NotFightName().IsMatch(x.Name)).Take(1))
+                targets.Add(Make("clan-battle", "clan boss: Battle", x, x, x.Path));
+
         // The arena dialog's tabs (toggles in the ArenaDialog view, in their order): tab 0 is the battle tab.
         if (t.View == ArenaDialogView)
         {
@@ -708,7 +753,7 @@ public static partial class PlayTargets
 
         if (rows is not null || free is not null || tab is not null) arena = new ArenaBoardRead(rows ?? [], free, freeText, loading, tab);
         return new PlayScan(targets, arena, auto, result, hud, inbox, notes.Distinct().ToList(), crypts, stages, team?.Distinct().ToList(), pve, ccLevels, picks, ccDifficulty,
-            rankUps, selectedShard);
+            rankUps, selectedShard, clanDamage);
     }
 
     /// <summary>An inbox entry that holds Classic Arena tokens (not Tag/Live arena tokens or auto-battle tickets), by its text and icon.</summary>

@@ -1219,6 +1219,100 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.AllianceActivityMap.AllianceActivityMapContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_demonLord": {
+          "offset": "0x60",
+          "type": "AllianceEnemyMapItemContext",
+          "field": "_demonLord",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.AllianceEnemies.EnemyItem.AllianceEnemyItemContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_name": {
+          "offset": "0x68",
+          "type": "StringProperty",
+          "field": "_name",
+          "source": "field",
+          "status": "direct"
+        },
+        "_unlocked": {
+          "offset": "0xC0",
+          "type": "BoolProperty",
+          "field": "_unlocked",
+          "source": "field",
+          "status": "direct"
+        },
+        "_selected": {
+          "offset": "0xB8",
+          "type": "BoolProperty",
+          "field": "_selected",
+          "source": "field",
+          "status": "direct"
+        },
+        "_StageId_k__BackingField": {
+          "offset": "0xF4",
+          "type": "int",
+          "field": "_StageId_k__BackingField",
+          "source": "field",
+          "status": "direct"
+        },
+        "_enemyType": {
+          "offset": "0xA0",
+          "type": "IntProperty",
+          "field": "_enemyType",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishAllianceEnemyDialogContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_damageDealt": {
+          "offset": "0x108",
+          "type": "StringProperty",
+          "field": "_damageDealt",
+          "source": "field",
+          "status": "direct"
+        },
+        "_stageName": {
+          "offset": "0xF8",
+          "type": "StringProperty",
+          "field": "_stageName",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.HeroesSelectionDialog.QuickBattle.AllianceBossQuickBattleCheckboxContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_active": {
+          "offset": "0x58",
+          "type": "BoolProperty",
+          "field": "_active",
+          "source": "field",
+          "status": "direct"
+        },
+        "_locked": {
+          "offset": "0x60",
+          "type": "BoolProperty",
+          "field": "_locked",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.FastRankUpOverlay.GradeItemContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

@@ -150,7 +150,9 @@ public sealed partial class LivePlayGame
         {
             await SelectGrade(grade, ct);
             // Only food: every champion the game ticked, and every food it picked, must be in the pool; anything else is unticked.
-            bool Fine(RankUpItemRead r) => pool.Contains(r.HeroId) && r.FoodIds.Count > 0 && r.FoodIds.All(pool.Contains);
+            // Champions only a team screen refused (state 99) are still food here.
+            bool Food(int id) => pool.Contains(id) || _notPickable.Contains(id);
+            bool Fine(RankUpItemRead r) => Food(r.HeroId) && r.FoodIds.Count > 0 && r.FoodIds.All(Food);
             for (var i = 0; i < 12; i++)
             {
                 var (_, _, play) = await Read(ct);

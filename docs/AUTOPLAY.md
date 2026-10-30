@@ -32,7 +32,18 @@ again by `status.json` (fresh and its process alive).
 - Energy (raid-extractor plan/energy.md): one activity for every place that spends energy; its settings are a priority list of rows
   (place, difficulty, stage or highest beaten, runs per day or unlimited, Super Raid) and sources per resource (keep, inbox, gem
   refills off unless switched on, with per-day / price / gems-to-keep limits). `EnergyPlanner` (raid-extractor Core) is pure and
-  tested; the live dungeon route (`LivePlayGame.Energy.cs`) is built from the dump and **not run yet**.
+  tested; the live dungeon route (`LivePlayGame.Energy.cs`) **plays** (2026-10-30: Dragon's Lair Hard 4 Super Raid, 5 wins). Seen
+  live: the dungeon map is a 3D scene (`DungeonsMap`, each dungeon a 0x0 point named and bound by its RegionTypeId name, dragged
+  into view: `dungeon-region`); the stage list is `DungeonsDialog` (`dungeon-stage` rows); the difficulty is its `Dropdown`
+  (`dungeon-dropdown`; the items are the `cc-difficulty-item` kind), the right one shown when the wanted stage id is in the list;
+  the team screen `HeroesSelectionDialogToDungeons` has the Super Raid `Checkbox` under the `MultiRun` block (`super-raid`, state
+  from `HeroesSelectionPveDialogContext.MultiRun` → `MultiRunContext._active`, "locked"/"unavailable" stop a row that wants it);
+  the result `BattleFinishDungeonDialog` is left by `LobbyButton`.
+- Battles: auto on, then speed x2 (`battle-speed`, `BattleHUDContext._speedString`/`_speedInt`; Ehsan: x2 is the game's most;
+  button name to confirm live; never stops a battle). A battle may take 20 minutes (dungeon runs took 9-10 at x1).
+- Classic Arena "Up to my power" (`ClassicArenaSettings.UpToMyPower`): the limit is my defense team's power
+  (`progress.classicArena.defensePower`, `ArenaDefenseTeamSetup.CombatPower`; 18,459 on 2026-10-30, while the bot beat 41,873 the
+  day before, so it is off by default). A free refresh's event says why the rest of the board is skipped.
 - `--once`: stops when nothing is to be done now (dry runs, tests). `--dry-run`: the game shows (overlay picture) and does not press
   anything that spends or changes the account (Start, Refresh, Collect).
 

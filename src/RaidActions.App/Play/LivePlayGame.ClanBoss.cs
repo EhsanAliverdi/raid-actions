@@ -70,6 +70,16 @@ public sealed partial class LivePlayGame : IClanBossGame
         }
         var teamView = Top(after) ?? "";
         if (!PlayTargets.IsTeamView(teamView)) await Refuse(after, $"{label} {difficulty}", ct);
+        // An empty team screen (no team ever saved there; seen 2026-10-31 on the Hydra): nothing to start with, the row waits.
+        if (((await Read(ct)).Play.TeamIds ?? []).Count == 0)
+        {
+            await Task.Delay(1000, ct);
+            if (((await Read(ct)).Play.TeamIds ?? []).Count == 0)
+            {
+                await Back(teamView, ct);
+                return new BattleOutcome(BattleResult.NotStarted, "no team saved there: set one in the game once");
+            }
+        }
         if (dryRun)
         {
             var (_, t2, _) = await Read(ct);

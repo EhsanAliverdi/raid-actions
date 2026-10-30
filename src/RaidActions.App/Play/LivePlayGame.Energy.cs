@@ -72,6 +72,16 @@ public sealed partial class LivePlayGame : IEnergyGame
         if (run.Team is { Count: > 0 } team && !await SetRunTeam(team, teamView, ct))
             return new BattleOutcome(BattleResult.Retry, $"food not pickable here, left out from now on: {string.Join(", ", _notPickable.Select(Who))}");
         await SetSuperRaid(run.Target.SuperRaid, teamView, ct);
+        // An empty team screen (no team ever saved there; seen 2026-10-31 on the Hydra): nothing to start with, the row waits.
+        if (((await Read(ct)).Play.TeamIds ?? []).Count == 0)
+        {
+            await Task.Delay(1000, ct);
+            if (((await Read(ct)).Play.TeamIds ?? []).Count == 0)
+            {
+                await Back(teamView, ct);
+                return new BattleOutcome(BattleResult.NotStarted, "no team saved there: set one in the game once");
+            }
+        }
         if (dryRun)
         {
             var (_, targets, _) = await Read(ct);

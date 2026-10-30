@@ -61,6 +61,7 @@ public sealed class HydraActivity(IClanBossGame game) : IActivity
         {
             _dryShown = ctx.DryRun;
             ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", $"{difficulty}: {outcome.Text}");
+            _readAt = ctx.Utc; // tried again after the recheck, not at once
             return "";
         }
         _battles++;

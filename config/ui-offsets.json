@@ -1239,6 +1239,32 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.Quests.QuestClaimAllButtonContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_available": {
+          "offset": "0x50",
+          "type": "BoolProperty",
+          "field": "_available",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.Quests.QuestsDialogContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_activeTabIndex": {
+          "offset": "0x70",
+          "type": "IntProperty",
+          "field": "_activeTabIndex",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.AllianceActivityMap.AllianceActivityMapContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

@@ -138,6 +138,8 @@ public static partial class PlayTargets
     private const string ClanEnemyResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishAllianceEnemyDialogContext";
     // Free rewards (plan/free-rewards.md; from the dump 2026-10-31): the village's playtime gifts.
     private const string GiftPrize = "Client.ViewModel.Contextes.HourlyGiftPrizeContext";
+    private const string QuestClaimAll = "Client.ViewModel.Contextes.Quests.QuestClaimAllButtonContext";
+    private const string QuestsDialog = "Client.ViewModel.Contextes.Quests.QuestsDialogContext";
     private const string IntProperty = "Client.MVVM.Base.ViewModel.Properties.IntProperty";
     private const string BoolProperty = "Client.MVVM.Base.ViewModel.Properties.BoolProperty";
     private const string StringProperty = "Client.MVVM.Base.ViewModel.Properties.StringProperty";
@@ -152,7 +154,7 @@ public static partial class PlayTargets
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-demonlord", "clan-difficulty", "clan-battle",
-        "village-gifts", "gift-prize",
+        "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all",
     };
 
     [GeneratedRegex(@"Vault|Storage", RegexOptions.IgnoreCase)] private static partial Regex VaultName();
@@ -194,6 +196,7 @@ public static partial class PlayTargets
         List<RankUpItemRead>? rankUps = null;
         int? selectedShard = null;
         string? clanDamage = null;
+        int? questTab = null;
 
         IEnumerable<UiNode> Below(int i)
         {
@@ -422,6 +425,16 @@ public static partial class PlayTargets
                         ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
                     break;
                 }
+                case QuestClaimAll:
+                {
+                    // A quest tab's Claim all (available only when a quest's reward waits).
+                    var available = Try(() => BoolValue(g, g.Ref(c.Address, QuestClaimAll, "_available")), null, notes, "QuestClaimAllButtonContext._available");
+                    targets.Add(Make("quest-claim-all", "quests: Claim all", n, Own(i), available == true ? "available" : "not available"));
+                    break;
+                }
+                case QuestsDialog:
+                    questTab = Try(() => IntValue(g, g.Ref(c.Address, QuestsDialog, "_activeTabIndex")), null, notes, "QuestsDialogContext._activeTabIndex");
+                    break;
                 case GiftPrize:
                 {
                     // A playtime gift (HourlyGiftItemState: 0 collected, 1 ready to collect, 2 on going).
@@ -754,6 +767,17 @@ public static partial class PlayTargets
             foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null && FightName().IsMatch(x.Name)
                 && !NotFightName().IsMatch(x.Name)).Take(1))
                 targets.Add(Make("clan-battle", "clan boss: Battle", x, x, x.Path));
+
+        // The village's Quests button (seen 2026-10-31: "QuestButton", no binding, bottom bar) and the quests dialog's tabs (toggles, in order).
+        if (t.View == VillageHudView)
+            foreach (var x in nodes.Where(x => x.Name == "QuestButton" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                targets.Add(Make("village-quests", "village: Quests", x, x, null));
+        if (nodes.Any(x => x.Context?.Class == QuestsDialog))
+        {
+            var toggles = nodes.Where(x => x.IsOn is not null && x.ActiveInHierarchy && x.Screen is not null && x.Path.Contains("Tab", StringComparison.OrdinalIgnoreCase)).ToList();
+            for (var k = 0; k < toggles.Count; k++)
+                targets.Add(Make("quest-tab", $"quests: tab {k} ({toggles[k].Name})", toggles[k], toggles[k], toggles[k].IsOn == true ? "on" : "off", id: k));
+        }
 
         // The arena dialog's tabs (toggles in the ArenaDialog view, in their order): tab 0 is the battle tab.
         if (t.View == ArenaDialogView)

@@ -24,6 +24,15 @@ public class FreeRewardsActivityTests
             Ready = 0;
             return Task.FromResult(n);
         }
+
+        public int QuestCalls { get; private set; }
+
+        public Task<int> ClaimQuestRewardsAsync(bool dryRun, CancellationToken ct)
+        {
+            QuestCalls++;
+            if (Fail) throw new PlayStopException("the quests button is not recognised");
+            return Task.FromResult(0);
+        }
     }
 
     private static (FakeHost Host, FakeGifts Game, AutoplayEngine Engine) Make(TimeSpan runFor, bool dryRun = false)

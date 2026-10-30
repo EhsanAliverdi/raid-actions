@@ -43,4 +43,52 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
         await _nav.GoHome(Action("from the playtime gifts"), ct);
         return got;
     }
+
+    public async Task<int> ClaimQuestRewardsAsync(bool dryRun, CancellationToken ct)
+    {
+        _nav.FitWindow();
+        var s = await Settled(ct);
+        if (!Input.NavigatingDriver.AtVillage(s)) await _nav.GoHome(Action("to the village"), ct);
+        var (_, targets, _) = await Read(ct);
+        if (!targets.Any(t => t.Kind == "village-quests" && t.NotClickable is null))
+            throw new PlayStopException($"The village's Quests button is not recognised. Screen dump: {DumpScreen("village quests")}");
+        await Click("village-quests", null, (_, scan) => scan().Targets.Any(t => t.Kind == "quest-tab"), "the quests open", ct, within: TimeSpan.FromSeconds(8));
+        await Task.Delay(800, ct);
+        var claimed = 0;
+        var tabs = (await Read(ct)).Item2.Where(t => t.Kind == "quest-tab").Select(t => t.Id ?? -1).Where(k => k >= 0).Distinct().Order().ToList();
+        foreach (var k in tabs)
+        {
+            var (_, now, _) = await Read(ct);
+            var tab = now.FirstOrDefault(t => t.Kind == "quest-tab" && t.Id == k);
+            if (tab is null || tab.NotClickable is not null) continue;
+            if (tab.Note != "on")
+            {
+                await Click("quest-tab", t => t.Id == k, (_, scan) => scan().Targets.Any(t => t.Kind == "quest-tab" && t.Id == k && t.Note == "on"), $"quest tab {k}", ct);
+                await Task.Delay(800, ct);
+            }
+            var (s2, after, _) = await Read(ct);
+            var claim = after.FirstOrDefault(t => t.Kind == "quest-claim-all" && t.Note == "available" && t.NotClickable is null);
+            if (claim is null) continue;
+            if (dryRun)
+            {
+                if (claim.Rect is { } r) Shot($"autoplay: WOULD CLICK Claim all on quest tab {k} (dry run: NOT pressed)", r, always: true);
+                continue;
+            }
+            var top = Top(s2);
+            await Click("quest-claim-all", t => t.Path == claim.Path, (s3, scan) => Top(s3) != top || !scan().Targets.Any(t => t.Kind == "quest-claim-all" && t.Note == "available"),
+                $"quest tab {k}'s rewards claimed", ct, within: TimeSpan.FromSeconds(10));
+            claimed++;
+            log($"autoplay: claimed the rewards of quest tab {k}");
+            await Task.Delay(1500, ct);
+            // The rewards shown over the quests: closed by their own close.
+            for (var i = 0; i < 3; i++)
+            {
+                var s4 = await Settled(ct);
+                if (Top(s4) is not { } t4 || t4 == top) break;
+                await Back(t4, ct);
+            }
+        }
+        await _nav.GoHome(Action("from the quests"), ct);
+        return claimed;
+    }
 }

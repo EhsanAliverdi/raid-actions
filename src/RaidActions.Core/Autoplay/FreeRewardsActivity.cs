@@ -6,6 +6,9 @@ namespace RaidActions.Autoplay;
 public interface IFreeRewardsGame
 {
     Task<int> CollectPlaytimeGiftsAsync(bool dryRun, CancellationToken ct);
+
+    /// <summary>Every quest tab's Claim all pressed where the game says a reward waits; how many tabs were claimed.</summary>
+    Task<int> ClaimQuestRewardsAsync(bool dryRun, CancellationToken ct);
 }
 
 /// <summary>
@@ -33,28 +36,45 @@ public sealed class FreeRewardsActivity(IFreeRewardsGame game) : IActivity
     public Decision Decide(PlayContext ctx)
     {
         if (_dryShown) return Decision.Off("shown in this dry run");
-        if (!ctx.Settings.FreeRewards.PlaytimeGifts) return Decision.Off("nothing switched on");
+        if (!ctx.Settings.FreeRewards.PlaytimeGifts && !ctx.Settings.FreeRewards.Quests) return Decision.Off("nothing switched on");
         var next = _checkedAt + Every(ctx);
-        return ctx.Utc >= next ? Decision.Now("checking the playtime gifts") : Decision.Wait(next, "next check of the playtime gifts");
+        return ctx.Utc >= next ? Decision.Now("checking the free rewards") : Decision.Wait(next, "next check of the free rewards");
     }
 
     public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
     {
         _checkedAt = ctx.Utc;
-        int got;
-        try { got = await game.CollectPlaytimeGiftsAsync(ctx.DryRun, ct); }
-        catch (PlayStopException e)
+        var s = ctx.Settings.FreeRewards;
+        var done = new List<string>();
+        if (s.PlaytimeGifts)
         {
-            ctx.Event(AreaId, "error", $"playtime gifts not collected (tried again at the next check): {e.Message}");
-            return "";
+            try
+            {
+                var got = await game.CollectPlaytimeGiftsAsync(ctx.DryRun, ct);
+                if (got > 0 && !ctx.DryRun)
+                {
+                    _collected += got;
+                    ctx.Event(AreaId, "collect", $"collected {got} playtime gift(s)");
+                    done.Add($"playtime gifts: {got}");
+                }
+            }
+            catch (PlayStopException e) { ctx.Event(AreaId, "error", $"playtime gifts not collected (tried again at the next check): {e.Message}"); }
         }
-        if (ctx.DryRun) { _dryShown = true; ctx.Event(AreaId, "dry-run", "playtime gifts shown"); return ""; }
-        if (got > 0)
+        if (s.Quests)
         {
-            _collected += got;
-            ctx.Event(AreaId, "collect", $"collected {got} playtime gift(s)");
+            try
+            {
+                var tabs = await game.ClaimQuestRewardsAsync(ctx.DryRun, ct);
+                if (tabs > 0 && !ctx.DryRun)
+                {
+                    ctx.Event(AreaId, "quests", $"claimed the quest rewards of {tabs} tab(s)");
+                    done.Add($"quests: {tabs} tab(s)");
+                }
+            }
+            catch (PlayStopException e) { ctx.Event(AreaId, "error", $"quest rewards not claimed (tried again at the next check): {e.Message}"); }
         }
-        return got > 0 ? $"playtime gifts: {got}" : "";
+        if (ctx.DryRun) { _dryShown = true; ctx.Event(AreaId, "dry-run", "free rewards shown"); return ""; }
+        return string.Join("; ", done);
     }
 
     public AreaStatus Status(PlayContext ctx, Decision decision)

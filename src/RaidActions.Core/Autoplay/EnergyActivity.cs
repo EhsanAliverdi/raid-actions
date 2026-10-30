@@ -198,6 +198,12 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 await ctx.ThinkAsync(ct);
                 var outcome = await game.RunStageAsync(run, ctx.DryRun, ct);
                 var where = EnergyPlanner.Describe(run);
+                if (outcome.Result is BattleResult.Retry)
+                {
+                    // Nothing fought; the game showed something the plan takes in first (a team member it will not take).
+                    ctx.Event(AreaId, "skip", $"{where}: {outcome.Text}");
+                    return "";
+                }
                 if (outcome.Result is BattleResult.NotStarted)
                 {
                     _dryShown.Add(run.Target.Id);

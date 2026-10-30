@@ -27,9 +27,7 @@
                   "Client.ViewModel.DTO.ViewKey",
                   "Client.RaidApp.ViewVisibility",
                   "Client.RaidApp.ViewState",
-                  "SharedModel.Meta.Battle.Arena.ArenaOpponentStatus",
-                  "SharedModel.Meta.Stages.RegionTypeId",
-                  "SharedModel.Meta.Shards.ShardTypeId"
+                  "SharedModel.Meta.Battle.Arena.ArenaOpponentStatus"
               ],
     "reviewed":  {
 

@@ -15,7 +15,9 @@ public sealed partial class LivePlayGame : IEnergyGame
     public async Task<EnergyAccount> ReadAccountAsync(CancellationToken ct)
     {
         var (data, _, _, _) = await Account(ct);
-        return new EnergyAccount(data.Account.Resources, data.Progress?.StageCosts ?? [], data.Progress?.Areas ?? [], 2, data.Champions,
+        // Champions a team screen refused count as locked (never food) for this run.
+        var champions = data.Champions.Select(c => _notPickable.Contains(c.Id) ? c with { Locked = true } : c).ToList();
+        return new EnergyAccount(data.Account.Resources, data.Progress?.StageCosts ?? [], data.Progress?.Areas ?? [], 2, champions,
             data.Inventory?.Shards.GetValueOrDefault("Mystery"));
     }
 
@@ -32,9 +34,12 @@ public sealed partial class LivePlayGame : IEnergyGame
         log($"autoplay: STEP going to {where}");
         var story = run.Target.Area == "Story";
         var resultView = story ? PlayTargets.StoryResultView : PlayTargets.DungeonResultView;
-        if (story) await OpenCampaign(run.Region, ct);
-        else await OpenDungeon(run.Region, ct);
-        await SetDifficulty(run.Difficulty, run.StageId, ct);
+        if (story) await OpenCampaign(run.Region, run.Difficulty, run.StageId, ct);
+        else
+        {
+            await OpenDungeon(run.Region, ct);
+            await SetDifficulty(run.Difficulty, run.StageId, ct);
+        }
 
         var stage = await FindStage(run.Number, ct, "dungeon-stage", run.StageId);
         await Click("dungeon-stage", t => t.Id == stage.Id, (s2, _) => s2.Top?.Name is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView),
@@ -49,7 +54,8 @@ public sealed partial class LivePlayGame : IEnergyGame
         var teamView = Top(after) ?? "";
         if (!PlayTargets.IsTeamView(teamView)) await Refuse(after, where, ct);
 
-        if (run.Team is { Count: > 0 } team) await SetRunTeam(team, teamView, ct);
+        if (run.Team is { Count: > 0 } team && !await SetRunTeam(team, teamView, ct))
+            return new BattleOutcome(BattleResult.Retry, $"food not pickable here, left out from now on: {string.Join(", ", _notPickable.Select(Who))}");
         await SetSuperRaid(run.Target.SuperRaid, teamView, ct);
         if (dryRun)
         {
@@ -166,6 +172,8 @@ public sealed partial class LivePlayGame : IEnergyGame
     /// <summary>The team screen's Super Raid box set as the row says (none shown: fine only when the row does not want it).</summary>
     private async Task SetSuperRaid(bool wanted, string teamView, CancellationToken ct)
     {
+        // The box's state settles after the team screen opens (2026-10-30, Campaign: read "on", then "unavailable"): read after a pause.
+        await Task.Delay(1200, ct);
         var (_, targets, _) = await Read(ct);
         var box = targets.FirstOrDefault(t => t.Kind == "super-raid" && t.View == teamView);
         if (box is null)

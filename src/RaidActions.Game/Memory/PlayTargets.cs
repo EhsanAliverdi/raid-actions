@@ -74,7 +74,9 @@ public static partial class PlayTargets
         // A dungeon's stage list (seen live 2026-10-30).
         DungeonsDialogView = "DungeonsDialog",
         // Campaign (plan/campaign.md; from the dump 2026-10-30, names to confirm live): the stage's result, the Tavern, its Fast Rank Up.
-        StoryResultView = "BattleFinishStorylineDialog", TavernView = "HeroesDevelopmentDialog", FastRankUpView = "FastRankUpOverlay";
+        // The campaign map: the 3D scene under MapHUD (seen live 2026-10-30).
+        CampaignMapView = "Map",
+        StoryResultView = "BattleFinishStoryDialog", TavernView = "HeroesDevelopmentDialog", FastRankUpView = "FastRankUpOverlay";
 
     /// <summary>A team screen (the views where a squad is picked before a battle).</summary>
     public static bool IsTeamView(string view) => view.StartsWith("HeroesSelectionDialog", StringComparison.Ordinal) || view.EndsWith("HeroesSelectionDialog", StringComparison.Ordinal);
@@ -118,6 +120,8 @@ public static partial class PlayTargets
     private const string StoryRegionDialog = "Client.ViewModel.Contextes.RegionDialog.StorylineRegionDialogContext";
     private const string StoryResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishStorylineDialogContext";
     private const string TavernBuilding = "Client.ViewModel.Contextes.Village.TavernBuildingContext";
+    // The champion screen's Tavern button (the village's Tavern is a 3D building with no screen rect; seen 2026-10-30).
+    private const string TavernButton = "Client.ViewModel.Contextes.HeroesInfoDialog.SelectedHero.TavernButtonContext";
     private const string FastRankUp = "Client.ViewModel.Contextes.FastRankUpOverlay.FastRankUpOverlayContext";
     private const string RankUpGrade = "Client.ViewModel.Contextes.FastRankUpOverlay.GradeItemContext";
     private const string RankUpItem = "Client.ViewModel.Contextes.FastRankUpOverlay.HeroRankUpItemContext";
@@ -135,8 +139,8 @@ public static partial class PlayTargets
         "battle-auto", "battle-speed", "inbox-collect", "result-close", "mode-fw", "fw-crypt", "fw-stage", "mode-cc", "cc-level", "team-pick", "team-slot",
         "cc-difficulty", "cc-difficulty-item", "team-filter", "team-filter-vault", "filter-hide",
         "mode-dungeon", "dungeon-region", "dungeon-stage", "dungeon-difficulty", "dungeon-dropdown", "super-raid",
-        "mode-campaign", "campaign-region", "village-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
-        "fastrankup-go", "village-portal", "portal-shard", "portal-summon1",
+        "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
+        "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
     };
 
     [GeneratedRegex(@"Vault|Storage", RegexOptions.IgnoreCase)] private static partial Regex VaultName();
@@ -260,7 +264,7 @@ public static partial class PlayTargets
                     targets.Add(Make("cc-difficulty", "cursed city: difficulty dropdown", nodes[i], nodes[i], null));
                 // A dungeon's difficulty dropdown (bottom left of DungeonsDialog, under the set list; seen live 2026-10-30); its open
                 // items are the same "Item <index>: <text>" kind as Cursed City's.
-                else if ((t.View == DungeonsDialogView || storyDialog) && nodes[i].Name == "Dropdown" && nodes[i].Screen is not null)
+                else if ((t.View is DungeonsDialogView or "MapHUD" || storyDialog) && nodes[i].Name == "Dropdown" && nodes[i].Screen is not null)
                     targets.Add(Make("dungeon-dropdown", "dungeon: difficulty dropdown", nodes[i], nodes[i], null));
                 else if (DropdownItem().Match(nodes[i].Name) is { Success: true } m && nodes[i].Screen is not null)
                     targets.Add(Make("cc-difficulty-item", $"cursed city: difficulty {m.Groups[2].Value}", nodes[i], nodes[i], m.Groups[2].Value,
@@ -402,6 +406,9 @@ public static partial class PlayTargets
                     var state = Try(() => IntValue(g, g.Ref(c.Address, StageCtx, "_state")), null, notes, "StageContext._state");
                     var buttonState = Try(() => IntValue(g, g.Ref(c.Address, StageCtx, "_buttonState")), null, notes, "StageContext._buttonState");
                     var (button, why) = Named(i, FightName(), NotFightName());
+                    // The row's battle button is "DefaultButton_h" (seen live 2026-10-30, with the reward and enemy avatars around it).
+                    if (button is null && SelfAndBelow(i).Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Name is "DefaultButton_h" or "DefaulCostButton_h").ToList() is [var only])
+                        (button, why) = (only, null);
                     var target = Make("dungeon-stage", $"campaign: {name ?? $"stage {sid}"}", n, button, $"stage id {sid}, state {state}, button state {buttonState}" + (why is null ? "" : "; " + why), id: sid);
                     targets.Add(target);
                     (stages ??= []).Add(new StageRead(sid, name, state, buttonState, target));
@@ -409,6 +416,9 @@ public static partial class PlayTargets
                 }
                 case TavernBuilding:
                     targets.Add(Make("village-tavern", "village: Tavern", n, Own(i), null));
+                    break;
+                case TavernButton:
+                    targets.Add(Make("champion-tavern", "champion screen: Tavern", n, Own(i), null));
                     break;
                 case RankUpGrade:
                 {
@@ -443,6 +453,13 @@ public static partial class PlayTargets
                 }
                 case FastRankUp:
                 {
+                    // Its Filter (bottom left; seen 2026-10-31): the food filter panel, where the vaults are included or not.
+                    foreach (var f in SelfAndBelow(i).Where(x => x.Name == "FilterButton" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                        targets.Add(Make("fastrankup-filter", "fast rank up: Filter", f, f, null));
+                    // The open filter panel (FoodFilterView) closes with its Apply.
+                    foreach (var f in SelfAndBelow(i).Where(x => x.Name == "ApplyButton" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null
+                        && x.Path.Contains("FoodFilterView", StringComparison.Ordinal)).Take(1))
+                        targets.Add(Make("food-filter-apply", "fast rank up: filter Apply", f, f, null));
                     var available = Try(() => BoolValue(g, g.Ref(c.Address, FastRankUp, "_rankUpAvailable")), null, notes, "FastRankUpOverlayContext._rankUpAvailable");
                     var price = Try(() => IntValue(g, g.Ref(c.Address, FastRankUp, "_rankUpPrice")), null, notes, "FastRankUpOverlayContext._rankUpPrice");
                     var (button, why) = Named(i, RankUpName(), NotRankUpName());
@@ -589,6 +606,7 @@ public static partial class PlayTargets
                 (VillageHudView, "Inbox") => ("village-inbox", "village: Inbox"),
                 // The village's Tavern and Portal (names to confirm live; the 3D buildings may only be reachable by their HUD buttons).
                 (VillageHudView, var b) when b.Contains("Tavern", StringComparison.OrdinalIgnoreCase) => ("village-tavern", "village: Tavern"),
+                (VillageHudView, "HeroesInfo") => ("village-heroes", "village: Champions"),
                 (VillageHudView, var b) when b.Contains("Portal", StringComparison.OrdinalIgnoreCase) => ("village-portal", "village: Portal"),
                 // The battle menu's Campaign card (AdventureModeContext, field _adventure: binding to confirm live).
                 (BattleMenuView, var b) when b.Contains("Adventure", StringComparison.OrdinalIgnoreCase) || b.Contains("Campaign", StringComparison.OrdinalIgnoreCase)
@@ -622,16 +640,17 @@ public static partial class PlayTargets
                     $"region ({x.Name})", ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
             }
 
-        // The campaign map may be a 3D scene like the dungeons' (not seen yet): a point named and bound "Region<N>" is chapter N
-        // (RegionTypeId 100 + N), when no MapRegionItemContext gave it already.
-        if (t.View != DungeonsMapView && !targets.Any(x => x.Kind == "campaign-region"))
-            foreach (var x in nodes.Where(x => x.ActiveInHierarchy && x.Screen is { Width: 0, Height: 0 } && x.BindingPath == x.Name))
+        // The campaign map (view "Map", seen live 2026-10-30) is a 3D scene like the dungeons': each chapter is a 0x0 point
+        // "MapRegionItem" bound to "Region<N>" (RegionTypeId 100 + N), placed where the scene shows it (off screen until dragged).
+        if (t.View == CampaignMapView && !targets.Any(x => x.Kind == "campaign-region"))
+            foreach (var x in nodes.Where(x => x.ActiveInHierarchy && x.Screen is { Width: 0, Height: 0 } && x.Name.StartsWith("MapRegionItem", StringComparison.Ordinal)))
             {
-                if (ChapterPoint().Match(x.Name) is not { Success: true } m) continue;
+                if (ChapterPoint().Match(x.BindingPath ?? "") is not { Success: true } m) continue;
                 var (px, py) = (x.Screen!.Value.X, x.Screen.Value.Y);
                 var inside = px > 30 && py > 30 && px < t.ClientWidth - 30 && py < t.ClientHeight - 30;
-                targets.Add(new UiTarget("campaign-region", $"campaign: {x.Name}", 100 + int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture),
-                    t.View, new ClientRect(px - 25, py - 25, 50, 50), true, true, inside, false, x.Path, $"region ({x.Name}), a map point", ClientWidth: t.ClientWidth,
+                // The point is the foot of the chapter's banner (seen 2026-10-30: a click there does nothing); the banner stands above it.
+                targets.Add(new UiTarget("campaign-region", $"campaign: {x.BindingPath}", 100 + int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture),
+                    t.View, new ClientRect(px - 25, py - 95, 50, 60), true, true, inside && py > 110, false, x.Path, $"region ({x.BindingPath}), a map point", ClientWidth: t.ClientWidth,
                     ClientHeight: t.ClientHeight));
             }
 
@@ -655,6 +674,14 @@ public static partial class PlayTargets
                 targets.Add(Make("team-start", "team selection: Start", start[0], start.Count == 1 ? start[0] : null,
                     start.Count == 1 ? null : $"{start.Count} elements named Default_h"));
         }
+
+        // The champion screen's Tavern button: a "Button_h" whose path names the Tavern (when its context is not bound on the node).
+        if (t.View == "HeroesInfoOverlay" && !targets.Any(x => x.Kind == "champion-tavern"))
+            foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null
+                && x.Path.Contains("Tavern", StringComparison.OrdinalIgnoreCase)).Take(1))
+                targets.Add(Make("champion-tavern", "champion screen: Tavern", x, x, x.Path));
+        if (t.View == "HeroesInfoOverlay" && !targets.Any(x => x.Kind == "champion-tavern"))
+            notes.Add("champion screen buttons: " + string.Join("; ", nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Name == "Button_h").Select(x => x.Path)));
 
         // The Tavern (HeroesDevelopmentDialog): its Rank Up tab (a toggle whose path says RankUp) and the tab's Fast Rank Up button.
         if (t.View == TavernView)

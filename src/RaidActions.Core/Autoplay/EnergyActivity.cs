@@ -62,6 +62,8 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     private readonly Dictionary<string, int> _runsToday = [];
     private readonly Dictionary<string, double> _learnt = [];
     private readonly HashSet<string> _dryShown = [];
+    /// <summary>Dungeons seen closed today (a Keep or Iron Twins fortress not open on this day): "whichever is open" rows skip them.</summary>
+    private readonly HashSet<string> _closedToday = [];
     private int _refillsToday, _wins, _losses;
     private DateOnly? _day;
     private DateTime _inboxAt = DateTime.MinValue;
@@ -102,6 +104,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         _day = today;
         _runsToday.Clear();
         _dryShown.Clear();
+        _closedToday.Clear();
         _refillsToday = 0;
     }
 
@@ -113,7 +116,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         else if (expected && resources.TryGetValue("Energy", out var read))
             resources["Energy"] = read + Math.Floor((ctx.Utc - _accountAt) / EnergyPeriod);
         return new EnergyWorld(resources, a.Costs, a.Progress, _runsToday, _learnt, a.SuperRaidMultiplier, _refillsToday,
-            ctx.Utc - _inboxAt < InboxRecheck, a.Champions, a.MysteryShards);
+            ctx.Utc - _inboxAt < InboxRecheck, a.Champions, a.MysteryShards, _closedToday);
     }
 
     /// <summary>The settings the planner sees: rows shown in a dry run left out, a food step that did nothing switched off for a while.</summary>
@@ -225,7 +228,10 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 }
                 if (outcome.Result is BattleResult.NotStarted)
                 {
-                    _dryShown.Add(run.Target.Id);
+                    // Closed today: remembered, and a "whichever is open today" row tries the next one of its group.
+                    var closed = outcome.Text.Contains("closed today", StringComparison.Ordinal) || outcome.Text.Contains("not open today", StringComparison.Ordinal);
+                    if (closed) _closedToday.Add(run.Region);
+                    if (!(closed && EnergyPlaces.Group(run.Target.Region) is not null)) _dryShown.Add(run.Target.Id);
                     ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", $"{where}: {outcome.Text}");
                     return "";
                 }

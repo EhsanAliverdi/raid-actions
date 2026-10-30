@@ -90,6 +90,17 @@ public sealed class HydraActivity(IClanBossGame game) : IActivity
 public sealed class ClanBossActivity(IClanBossGame game) : IActivity
 {
     public const string AreaId = "clan-boss";
+    /// <summary>Today's battles per difficulty (the key plan's counts), restored from today's events.</summary>
+    private readonly Dictionary<string, int> _today = [];
+    private DateOnly? _day;
+
+    private void NewDay(PlayContext ctx)
+    {
+        var d = DateOnly.FromDateTime(ctx.Local);
+        if (_day == d) return;
+        if (_day is not null) _today.Clear();
+        _day = d;
+    }
     public string Id => AreaId;
     public string Name => "Clan Boss";
 
@@ -102,16 +113,27 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
 
     public bool IsEnabled(AutoplaySettings settings) => settings.ClanBoss.Enabled;
 
-    public void Restore(IEnumerable<AutoplayEvent> events, DateOnly localDay) =>
-        _battles = events.Count(e => e.Area == AreaId && e.Kind == "battle" && DateOnly.FromDateTime(e.Utc.ToLocalTime()) == localDay);
+    public void Restore(IEnumerable<AutoplayEvent> events, DateOnly localDay)
+    {
+        _day = localDay;
+        foreach (var e in events.Where(e => e.Area == AreaId && e.Kind == "battle" && DateOnly.FromDateTime(e.Utc.ToLocalTime()) == localDay))
+        {
+            _battles++;
+            var d = e.Text.Split(':', ' ')[0];
+            _today[d] = _today.GetValueOrDefault(d) + 1;
+        }
+    }
 
     private bool HasKey(PlayContext ctx) => _account is { } a && Math.Floor(a.Keys) >= 1 + Math.Max(0, ctx.Settings.ClanBoss.KeepKeys);
 
     public Decision Decide(PlayContext ctx)
     {
+        NewDay(ctx);
         if (_dryShown) return Decision.Off("shown in this dry run");
+        if (_account is not null && ClanBossRules.Next(ctx.Settings.ClanBoss, _account.BestDamage, _today) is null)
+            return Decision.Wait(ctx.Local.Date.AddDays(1).ToUniversalTime(), "the key plan is done for today");
         if (_account is null || ctx.Utc - _readAt >= Recheck) return Decision.Now("reading the keys");
-        if (HasKey(ctx)) return Decision.Now($"{Math.Floor(_account.Keys)} key(s): {ClanBossRules.Pick(ctx.Settings.ClanBoss, _account.BestDamage)}");
+        if (HasKey(ctx)) return Decision.Now($"{Math.Floor(_account.Keys)} key(s): {ClanBossRules.Next(ctx.Settings.ClanBoss, _account.BestDamage, _today)}");
         return Decision.Wait(_readAt + Recheck, $"no key to spend ({_account.Keys:0.##}, keeping {ctx.Settings.ClanBoss.KeepKeys})");
     }
 
@@ -119,9 +141,10 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
     {
         _account = await game.ReadClanBossAsync(ct);
         _readAt = ctx.Utc;
+        NewDay(ctx);
         if (!HasKey(ctx)) return "";
         var s = ctx.Settings.ClanBoss;
-        var difficulty = ClanBossRules.Pick(s, _account.BestDamage);
+        if (ClanBossRules.Next(s, _account.BestDamage, _today) is not { } difficulty) return "";
         var quick = ClanBossRules.Quick(s, difficulty, _account.MaxQuick);
         await ctx.ThinkAsync(ct);
         var outcome = await game.FightClanBossAsync(difficulty, quick, ctx.DryRun, ct);
@@ -133,6 +156,7 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
             return "";
         }
         _battles++;
+        _today[difficulty] = _today.GetValueOrDefault(difficulty) + 1;
         _last = $"{difficulty}{(quick ? " (Quick Battle)" : "")}: {outcome.Text}";
         ctx.Event(AreaId, "battle", _last);
         _account = await game.ReadClanBossAsync(ct);
@@ -146,6 +170,7 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
         var state = !s.Enabled ? AreaState.Off : decision.Act ? AreaState.Playing : decision.UntilUtc is null ? AreaState.Done : AreaState.Waiting;
         var counters = new Dictionary<string, int> { ["Battles"] = _battles };
         if (_account is { } a) counters["Keys"] = (int)Math.Floor(a.Keys);
+        foreach (var (d, n) in _today) counters[$"{d} today"] = n;
         var timers = new Dictionary<string, DateTime>();
         if (decision.UntilUtc is { } u) timers["Next check"] = u;
         return new AreaStatus(Id, Name, s.Enabled, state, _last.Length > 0 ? $"{decision.Why} · last: {_last}" : decision.Why, decision.UntilUtc, counters, timers);

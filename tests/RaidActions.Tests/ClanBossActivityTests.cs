@@ -57,4 +57,14 @@ public class ClanBossActivityTests
         Assert.Equal(1, game.HydraKeys);
         Assert.False(new HydraActivity(game).IsEnabled(new AutoplaySettings()));      // off by default
     }
+
+    [Fact]
+    public async Task A_key_plan_plays_its_keys_per_difficulty_then_waits_for_tomorrow()
+    {
+        var (host, game, engine) = Make(new ClanBossSettings { Enabled = true, Plan = [new("Nightmare", 1), new("Brutal", 1)] }, TimeSpan.FromHours(1));
+        game.Keys = 4;
+        await engine.RunAsync(once: false, Limit());
+        Assert.Equal(["fight Nightmare", "fight Brutal"], game.Calls);
+        Assert.Equal(2, game.Keys);                                                     // the plan is done: the rest kept for tomorrow
+    }
 }

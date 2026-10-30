@@ -167,7 +167,16 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 var row = plan.Rows[^1].Target;
                 var pool = (_account.Champions ?? []).Where(c => FoodPlanner.IsFood(c, s.Food, row.Team)).Select(c => c.Id).ToHashSet();
                 await ctx.ThinkAsync(ct);
-                var done = await game.RankUpFoodAsync(plan.Food!.RankUps, pool, ctx.DryRun, ct);
+                int done;
+                try { done = await game.RankUpFoodAsync(plan.Food!.RankUps, pool, ctx.DryRun, ct); }
+                catch (PlayStopException e)
+                {
+                    // A rank-up that cannot be done (a screen not as expected) pauses rank-ups, never the farm or the other areas.
+                    _rankUpBlockedUntil = ctx.Utc + TimeSpan.FromHours(1);
+                    ctx.Event(AreaId, "error", $"food rank-ups paused for an hour: {e.Message}");
+                    await game.ReadAccountAsync(ct);
+                    return "";
+                }
                 _rankedUp += done;
                 var due = string.Join(", ", plan.Food.RankUps.Select(r => $"#{r.HeroId} {r.Rank}*"));
                 ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "rankup", done > 0
@@ -182,7 +191,14 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             {
                 var count = Math.Max(0, (_account.MysteryShards ?? 0) - s.Food.KeepMysteryShards);
                 await ctx.ThinkAsync(ct);
-                var opened = await game.SummonMysteryAsync(Math.Min(count, 10), ctx.DryRun, ct);
+                int opened;
+                try { opened = await game.SummonMysteryAsync(Math.Min(count, 10), ctx.DryRun, ct); }
+                catch (PlayStopException e)
+                {
+                    _summonBlockedUntil = ctx.Local.Date.AddDays(1).ToUniversalTime();
+                    ctx.Event(AreaId, "error", $"Mystery shards paused until tomorrow: {e.Message}");
+                    return "";
+                }
                 _summoned += opened;
                 ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "summon",
                     opened > 0 ? $"opened {opened} Mystery shard(s) for food" : $"no Mystery shard opened{(ctx.DryRun ? ": dry run" : "")}");

@@ -94,4 +94,19 @@ public class CampaignActivityTests
         await offEngine.RunAsync(once: false, new CancellationTokenSource(TimeSpan.FromSeconds(20)).Token);
         Assert.DoesNotContain(off.Calls, c => c.StartsWith("sell", StringComparison.Ordinal));
     }
+
+    [Fact]
+    public async Task A_summon_that_fails_pauses_only_the_summons_and_the_other_rows_play()
+    {
+        var dl = new EnergyTarget { Id = "dl", Area = "Dungeon", Region = "DragonsLair", Difficulty = "Hard", Stage = 5 };
+        var (host, game, engine) = Make(On(Farm, dl), TimeSpan.FromMinutes(20));
+        game.Energy = 100;
+        game.MysteryShards = 5;
+        game.FailSummon = true;
+        game.Champions = [Hero(Kael, 6, 60, "Rare", locked: true), Hero(10, 1, 1)];
+        await engine.RunAsync(once: false, new CancellationTokenSource(TimeSpan.FromSeconds(20)).Token);
+        Assert.Single(game.Calls, c => c.StartsWith("summon", StringComparison.Ordinal));
+        Assert.Contains(game.Calls, c => c.StartsWith("run Hard 5", StringComparison.Ordinal));
+        Assert.Contains(host.Events, e => e.Kind == "error" && e.Text.Contains("paused until tomorrow"));
+    }
 }

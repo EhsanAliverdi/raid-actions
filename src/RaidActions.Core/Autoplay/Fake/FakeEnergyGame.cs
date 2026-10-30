@@ -30,6 +30,7 @@ public sealed class FakeEnergyGame(Func<DateTime> now) : IEnergyGame
     /// <summary>The roster (Campaign food tests); null: not read.</summary>
     public List<ChampionOut>? Champions { get; set; }
     public int MysteryShards { get; set; }
+    public bool FailSummon { get; set; }
     /// <summary>Levels a run gives each team member.</summary>
     public int LevelsPerRun { get; set; } = 4;
 
@@ -101,6 +102,7 @@ public sealed class FakeEnergyGame(Func<DateTime> now) : IEnergyGame
     public Task<int> SummonMysteryAsync(int count, bool dryRun, CancellationToken ct)
     {
         Calls.Add(dryRun ? "show summon" : $"summon {count}");
+        if (FailSummon) throw new PlayStopException("the Portal was not reached");
         if (dryRun || Champions is null) return Task.FromResult(0);
         var n = Math.Min(count, MysteryShards);
         for (var k = 0; k < n; k++)

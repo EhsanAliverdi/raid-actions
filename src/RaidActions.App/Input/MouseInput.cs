@@ -141,7 +141,17 @@ public static class MouseInput
     public static string? Drag(GameWindowInfo w, float x1, float y1, float x2, float y2, int steps = 18)
     {
         if (x2 < 0 || y2 < 0 || x2 >= w.Client.Width || y2 >= w.Client.Height) return $"({x2:0},{y2:0}) is outside the client area.";
-        if (Prepare(w, x1, y1) is { } problem) return problem;
+        // A small window floating over the start (a screen recorder's; seen 2026-10-31): the same drag from a free point near it.
+        string? problem = null;
+        foreach (var (dx, dy) in new (float X, float Y)[] { (0, 0), (0, 70), (0, -70), (140, 0), (-140, 0), (140, 70), (-140, -70) })
+        {
+            var (nx1, ny1, nx2, ny2) = (x1 + dx, y1 + dy, x2 + dx, y2 + dy);
+            if (nx1 < 0 || ny1 < 0 || nx2 < 0 || ny2 < 0 || nx1 >= w.Client.Width || nx2 >= w.Client.Width || ny1 >= w.Client.Height || ny2 >= w.Client.Height) continue;
+            problem = Prepare(w, nx1, ny1);
+            if (problem is null) { (x1, y1, x2, y2) = (nx1, ny1, nx2, ny2); break; }
+            if (!problem.StartsWith("The window under", StringComparison.Ordinal)) return problem;
+        }
+        if (problem is not null) return problem;
         mouse_event(LeftDown, 0, 0, 0, IntPtr.Zero);
         Thread.Sleep(60);
         var old = SetThreadDpiAwarenessContext(new IntPtr(-4));

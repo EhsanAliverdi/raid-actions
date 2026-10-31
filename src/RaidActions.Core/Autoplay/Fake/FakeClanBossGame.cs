@@ -9,6 +9,11 @@ public sealed class FakeClanBossGame(Func<DateTime> now) : IClanBossGame
     public string? MaxQuick { get; set; } = "Brutal";
     public List<string> Calls { get; } = [];
 
+    /// <summary>What the game shows per difficulty; empty: not read.</summary>
+    public Dictionary<string, ClanStanding> Standing { get; } = [];
+
+    public Task<ClanStanding?> ReadClanStandingAsync(string difficulty, CancellationToken ct) => Task.FromResult(Standing.GetValueOrDefault(difficulty));
+
     /// <summary>The next battle spends its key, then fails as a screen the bot does not know would.</summary>
     public bool FailAfterSpend { get; set; }
     private DateTime _tick = now();

@@ -1400,6 +1400,53 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.AllianceEnemies.ScoreItem.AllianceEnemyScoreItemContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "IsSet": {
+          "offset": "0x50",
+          "type": "BoolProperty",
+          "field": "IsSet",
+          "source": "field",
+          "status": "direct"
+        },
+        "UserName": {
+          "offset": "0x80",
+          "type": "StringProperty",
+          "field": "UserName",
+          "source": "field",
+          "status": "direct"
+        },
+        "DamageDealt": {
+          "offset": "0x88",
+          "type": "StringProperty",
+          "field": "DamageDealt",
+          "source": "field",
+          "status": "direct"
+        },
+        "KeysSpent": {
+          "offset": "0x70",
+          "type": "IntProperty",
+          "field": "KeysSpent",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.GachaChest.AllianceEnemyRewardItem.AllianceEnemyRewardItemContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_chestCondition": {
+          "offset": "0x68",
+          "type": "StringProperty",
+          "field": "_chestCondition",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.Bank.Offers.StaticCommon.StaticCommonOfferContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

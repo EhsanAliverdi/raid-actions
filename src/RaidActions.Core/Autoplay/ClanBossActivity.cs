@@ -5,6 +5,15 @@ namespace RaidActions.Autoplay;
 /// <summary>What Clan Boss needs from the account: keys now, the best damage per difficulty, the highest Quick Battle difficulty.</summary>
 public sealed record ClanBossAccount(double Keys, IReadOnlyDictionary<string, long> BestDamage, string? MaxQuick);
 
+/// <summary>A difficulty's standing today, as the game shows it.</summary>
+/// <param name="Damage">My damage on it today.</param>
+/// <param name="KeysSpent">My keys on it today.</param>
+/// <param name="TopChest">The damage of its top chest; null when it could not be read.</param>
+public sealed record ClanStanding(long Damage, int KeysSpent, long? TopChest)
+{
+    public bool Full => TopChest is { } t && Damage > t;
+}
+
 /// <summary>What Clan Boss asks of the game (the live game: village → Battle → Clan Boss → Demon Lord → difficulty → team → Start).</summary>
 public interface IClanBossGame
 {
@@ -12,6 +21,9 @@ public interface IClanBossGame
 
     /// <summary>One key spent on the difficulty with the team the game shows (Quick Battle when asked); a dry run shows Start only.</summary>
     Task<BattleOutcome> FightClanBossAsync(string difficulty, bool quick, bool dryRun, CancellationToken ct);
+
+    /// <summary>The difficulty's standing today (its list and chest list opened, nothing spent); null when it cannot be read.</summary>
+    Task<ClanStanding?> ReadClanStandingAsync(string difficulty, CancellationToken ct) => Task.FromResult<ClanStanding?>(null);
 
     /// <summary>The Hydra's keys and best damage (the same alliance map).</summary>
     Task<ClanBossAccount> ReadHydraAsync(CancellationToken ct);
@@ -98,13 +110,18 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
     public const string AreaId = "clan-boss";
     /// <summary>Today's battles per difficulty (the key plan's counts), restored from today's events.</summary>
     private readonly Dictionary<string, int> _today = [];
+    private readonly HashSet<string> _topChest = [];
     private DateOnly? _day;
 
     private void NewDay(PlayContext ctx)
     {
         var d = ClanBossRules.Day(ctx.Utc);
         if (_day == d) return;
-        if (_day is not null) _today.Clear();
+        if (_day is not null)
+        {
+            _today.Clear();
+            _topChest.Clear();
+        }
         _day = d;
     }
     public string Id => AreaId;
@@ -139,10 +156,10 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
         NewDay(ctx);
         if (_dryShown) return Decision.Off("shown in this dry run");
         if (ctx.Utc < _retryAt) return Decision.Wait(_retryAt, "could not start: tried again later");
-        if (_account is not null && ClanBossRules.Next(ctx.Settings.ClanBoss, _account.BestDamage, _today) is null)
+        if (_account is not null && ClanBossRules.Next(ctx.Settings.ClanBoss, _account.BestDamage, _today, _topChest) is null)
             return Decision.Wait(ClanBossRules.NextReset(ctx.Utc), "the key plan is done for today");
         if (_account is null || ctx.Utc - _readAt >= Recheck) return Decision.Now("reading the keys");
-        if (HasKey(ctx)) return Decision.Now($"{Math.Floor(_account.Keys)} key(s): {ClanBossRules.Next(ctx.Settings.ClanBoss, _account.BestDamage, _today)}");
+        if (HasKey(ctx)) return Decision.Now($"{Math.Floor(_account.Keys)} key(s): {ClanBossRules.Next(ctx.Settings.ClanBoss, _account.BestDamage, _today, _topChest)}");
         return Decision.Wait(_readAt + Recheck, $"no key to spend ({_account.Keys:0.##}, keeping {ctx.Settings.ClanBoss.KeepKeys})");
     }
 
@@ -153,7 +170,20 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
         NewDay(ctx);
         if (!HasKey(ctx)) return "";
         var s = ctx.Settings.ClanBoss;
-        if (ClanBossRules.Next(s, _account.BestDamage, _today) is not { } difficulty) return "";
+        if (ClanBossRules.Next(s, _account.BestDamage, _today, _topChest) is not { } difficulty) return "";
+        // The game's own numbers before any key (Ehsan 2026-11-01: a key past the top chest is a key thrown away): its keys spent replace the bot's
+        // count, and a difficulty past its top chest gets no more.
+        if (await game.ReadClanStandingAsync(difficulty, ct) is { } standing)
+        {
+            _today[difficulty] = Math.Max(_today.GetValueOrDefault(difficulty), standing.KeysSpent);
+            ctx.Event(AreaId, "standing", $"{difficulty}: {standing.Damage:N0} damage today, top chest {standing.TopChest?.ToString("N0") ?? "not read"}, {standing.KeysSpent} key(s)");
+            if (standing.Full)
+            {
+                _topChest.Add(difficulty);
+                return $"{difficulty}: past its top chest, no more keys there today";
+            }
+            if (ClanBossRules.Next(s, _account.BestDamage, _today, _topChest) != difficulty) return "";
+        }
         var quick = ClanBossRules.Quick(s, difficulty, _account.MaxQuick);
         await ctx.ThinkAsync(ct);
         var keys = Math.Floor(_account.Keys);
@@ -198,6 +228,7 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
         var counters = new Dictionary<string, int> { ["Battles"] = _battles };
         if (_account is { } a) counters["Keys"] = (int)Math.Floor(a.Keys);
         foreach (var (d, n) in _today) counters[$"{d} today"] = n;
+        foreach (var d in _topChest) counters[$"{d} top chest"] = 1;
         var timers = new Dictionary<string, DateTime>();
         if (decision.UntilUtc is { } u) timers["Next check"] = u;
         return new AreaStatus(Id, Name, s.Enabled, state, _last.Length > 0 ? $"{decision.Why} · last: {_last}" : decision.Why, decision.UntilUtc, counters, timers);

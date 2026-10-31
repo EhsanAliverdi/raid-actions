@@ -201,6 +201,7 @@ public static partial class UiTargets
                 "RemoveButton_h" => ("popup-remove", "popup: Manage (opens the manage-gear dialog)"),
                 // The manage-gear dialog (RemoveArtifactOverlay).
                 "Unequip_h" when t.View == "RemoveArtifactOverlay" => ("manage-remove", "manage gear: Remove"),
+                "OkButton" when t.View == "PaymentWaitingOverlay" => ("back", "the payment notice: OK (nothing is paid here)"),
                 "BTN_Close1" when t.View == "RemoveArtifactOverlay" => ("manage-close", "manage gear: close"),
                 // The confirmation Equip opens when it replaces a worn piece: Cancel (allowed), Continue (only inside a step's Equip).
                 "Cancel" when t.View == UiState.SwapView => ("swap-cancel", "swap dialog: Cancel"),

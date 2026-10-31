@@ -134,6 +134,8 @@ public static partial class PlayTargets
     private const string MarketItem = "Client.ViewModel.Contextes.MarketItemContext";
     private const string ResourceAvatar = "Client.ViewModel.Contextes.ResourceAvatarContext";
     private const string TavernItem = "Client.ViewModel.Contextes.HeroesDevelopmentDialog.Items.HeroesDevelopmentItemContext";
+    private const string ClanScore = "Client.ViewModel.Contextes.AllianceEnemies.ScoreItem.AllianceEnemyScoreItemContext";
+    private const string ClanChest = "Client.ViewModel.Contextes.GachaChest.AllianceEnemyRewardItem.AllianceEnemyRewardItemContext";
     private const string ShopOffer = "Client.ViewModel.Contextes.Bank.Offers.StaticCommon.StaticCommonOfferContext";
     private const string DtMapItem = "Client.ViewModel.Contextes.DoomTowerMap.DoomTowerMapItemContext";
     private const string DtResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishDoomTowerDialogContext";
@@ -198,7 +200,7 @@ public static partial class PlayTargets
         "mode-dungeon", "dungeon-region", "dungeon-stage", "dungeon-difficulty", "dungeon-dropdown", "super-raid",
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
-        "mode-clan", "clan-demonlord", "clan-hydra", "clan-difficulty", "clan-battle", "clan-continue",
+        "mode-clan", "clan-demonlord", "clan-hydra", "clan-difficulty", "clan-battle", "clan-continue", "clan-chests", "clan-score", "clan-chest",
         "mode-dt", "dt-stage", "dt-final-boss", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
@@ -507,6 +509,22 @@ public static partial class PlayTargets
                 case ClanMapItem when hydra != 0 && c.Address == hydra:
                     targets.Add(Make("clan-hydra", "clan: Hydra", n, Own(i), null));
                     break;
+                case ClanScore:
+                {
+                    // A line of the difficulty's clan table: who, damage today, keys today (read, never clicked).
+                    if (Try(() => BoolValue(g, g.Ref(c.Address, ClanScore, "IsSet")), null, notes, "AllianceEnemyScoreItemContext.IsSet") != true) break;
+                    var who = Try(() => StringValue(g, g.Ref(c.Address, ClanScore, "UserName")), null, notes, "AllianceEnemyScoreItemContext.UserName");
+                    var dealt = Try(() => StringValue(g, g.Ref(c.Address, ClanScore, "DamageDealt")), null, notes, "AllianceEnemyScoreItemContext.DamageDealt");
+                    var spent = Try(() => IntValue(g, g.Ref(c.Address, ClanScore, "KeysSpent")), null, notes, "AllianceEnemyScoreItemContext.KeysSpent");
+                    targets.Add(Make("clan-score", $"{who}", n, Own(i), $"{dealt}|{spent}"));
+                    break;
+                }
+                case ClanChest:
+                {
+                    var condition = Try(() => StringValue(g, g.Ref(c.Address, ClanChest, "_chestCondition")), null, notes, "AllianceEnemyRewardItemContext._chestCondition");
+                    targets.Add(Make("clan-chest", $"clan chest {n.Name}", n, Own(i), condition));
+                    break;
+                }
                 case ClanEnemy:
                 {
                     // A Clan Boss difficulty in the Demon Lord's list (its name, unlocked, selected, its stage id; enemy type 1 the Clan Boss).
@@ -515,6 +533,9 @@ public static partial class PlayTargets
                     var selected = Try(() => BoolValue(g, g.Ref(c.Address, ClanEnemy, "_selected")), null, notes, "AllianceEnemyItemContext._selected");
                     var stage = Try(() => (int?)g.Int(c.Address, ClanEnemy, "_StageId_k__BackingField"), null, notes, "AllianceEnemyItemContext._StageId");
                     var type = Try(() => IntValue(g, g.Ref(c.Address, ClanEnemy, "_enemyType")), null, notes, "AllianceEnemyItemContext._enemyType");
+                    // The row's chest button: the difficulty's list of chests (seen 2026-11-01).
+                    foreach (var box in SelfAndBelow(i).Where(x => x.Name == "BTN_1" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                        targets.Add(Make("clan-chests", $"clan chests: {name}", box, box, null, id: stage));
                     // The row is selected by a click on the row itself (its only button, BTN_1, is the reward list; seen 2026-10-31): the
                     // target is the row's left part, clear of that button.
                     if (n.Screen is not { } row) break;

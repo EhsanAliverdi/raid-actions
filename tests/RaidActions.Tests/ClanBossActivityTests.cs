@@ -29,6 +29,24 @@ public class ClanBossActivityTests
     }
 
     [Fact]
+    public async Task A_difficulty_past_its_top_chest_gets_no_key_and_the_next_row_does()
+    {
+        var (host, game, engine) = Make(new ClanBossSettings { Enabled = true, Plan = [new("Brutal", 2), new("Nightmare", 1)] }, TimeSpan.FromHours(2));
+        game.Standing["Brutal"] = new ClanStanding(23_030_000, 1, 21_700_000);
+        await engine.RunAsync(once: false, Limit());
+        Assert.Equal(["fight Nightmare"], game.Calls);
+    }
+
+    [Fact]
+    public async Task The_games_count_of_keys_replaces_the_bots()
+    {
+        var (_, game, engine) = Make(new ClanBossSettings { Enabled = true, Plan = [new("Brutal", 1), new("Nightmare", 1)] }, TimeSpan.FromHours(2));
+        game.Standing["Brutal"] = new ClanStanding(5_000_000, 1, 21_700_000);
+        await engine.RunAsync(once: false, Limit());
+        Assert.Equal(["fight Nightmare"], game.Calls);
+    }
+
+    [Fact]
     public void The_clan_boss_day_starts_at_its_reset_not_at_local_midnight()
     {
         var before = new DateTime(2026, 11, 1, 9, 59, 0, DateTimeKind.Utc);

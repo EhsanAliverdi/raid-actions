@@ -27,6 +27,47 @@ public sealed partial class LivePlayGame : IClanBossGame
         return FightAllianceAsync("Clan Boss", "clan-demonlord", 1, PlayTargets.ClanResultView, difficulty, dryRun, ct);
     }
 
+    public async Task<ClanStanding?> ReadClanStandingAsync(string difficulty, CancellationToken ct)
+    {
+        var me = (await Account(ct)).Data.Account.Name;
+        await OpenAllianceEnemy("clan-demonlord", PlayTargets.ClanResultView, ct);
+        bool Mine(UiTarget t) => t.Kind == "clan-difficulty" && t.Note?.Contains("type 1", StringComparison.Ordinal) == true
+            && ClanBossRules.Same(difficulty, t.Name.Replace("clan boss: ", "", StringComparison.Ordinal));
+        var row = (await Read(ct)).Targets.FirstOrDefault(Mine);
+        if (row is null || row.Note?.Contains("; locked", StringComparison.Ordinal) == true) return null;
+        if (row.Note?.Contains("; selected", StringComparison.Ordinal) != true)
+        {
+            await DragIntoView("clan-difficulty", ct, Mine);
+            await Click("clan-difficulty", Mine, (_, scan) => scan().Targets.Any(t => Mine(t) && t.Note?.Contains("; selected", StringComparison.Ordinal) == true), $"{difficulty} selected", ct);
+            await Task.Delay(1000, ct);
+        }
+        var (_, targets, _) = await Read(ct);
+        var line = targets.FirstOrDefault(t => t.Kind == "clan-score" && t.Name == me)?.Note?.Split('|');
+        var damage = ClanBossRules.Damage(line?.ElementAtOrDefault(0)) ?? 0;
+        var keys = int.TryParse(line?.ElementAtOrDefault(1), out var spent) ? spent : 0;
+        if (!_clanTop.TryGetValue(difficulty, out var top))
+        {
+            // The difficulty's own chest button: same stage id as the row, dragged into view with it.
+            var (_, now, _) = await Read(ct);
+            var box = now.FirstOrDefault(t => t.Kind == "clan-chests" && t.Name == "clan chests: " + row.Name.Replace("clan boss: ", "", StringComparison.Ordinal) && t.NotClickable is null);
+            if (box is not null)
+            {
+                await Click("clan-chests", t => t.Path == box.Path, (_, scan) => scan().Targets.Any(t => t.Kind == "clan-chest"), "the chest list opens", ct, within: TimeSpan.FromSeconds(8));
+                await Task.Delay(800, ct);
+                var (s2, list, _) = await Read(ct);
+                top = list.Where(t => t.Kind == "clan-chest").Select(t => ClanBossRules.Damage(t.Note)).Where(d => d is not null).Select(d => d!.Value).DefaultIfEmpty(0).Max();
+                if (top > 0) _clanTop[difficulty] = top;
+                await Back(Top(s2)!, ct);
+                await Task.Delay(800, ct);
+            }
+        }
+        log($"autoplay: {difficulty}: {me} {damage:N0} damage, {keys} key(s) today; top chest {top:N0}");
+        return new ClanStanding(damage, keys, top > 0 ? top : null);
+    }
+
+    /// <summary>The top chest's damage per difficulty (the game's list; it does not change in a run).</summary>
+    private readonly Dictionary<string, long> _clanTop = [];
+
     public async Task<ClanBossAccount> ReadHydraAsync(CancellationToken ct)
     {
         var (data, _, _, _) = await Account(ct);

@@ -145,7 +145,10 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             var id = $"quest-dungeon-{n.Region ?? "any"}";
             if (rows.Any(r => r.Id == id)) continue;
             var highest = n.Region is { } r0 ? EnergyPlanner.HighestBeaten(new EnergyTarget { Area = "Dungeon", Region = r0, Difficulty = "Normal" }, _account?.Progress ?? []) : null;
-            var stage = n.MinStage is { } min ? Math.Max(min, highest ?? min) : (int?)null;
+            // "Beat a Dungeon Boss" counts on any stage: the cheapest (8 Energy, not 20, and a much shorter run; Ehsan's energy goes to the farm).
+            // A quest for artifacts or accessories needs the drops: the highest stage.
+            var anyBoss = n.Region is null && n.MinStage is null && n.Text.Contains("Boss", StringComparison.OrdinalIgnoreCase);
+            var stage = n.MinStage is { } min ? Math.Max(min, highest ?? min) : anyBoss ? 1 : (int?)null;
             rows.Add(new EnergyTarget { Id = id, Area = "Dungeon", Region = n.Region ?? "DragonsLair", Difficulty = "Normal", Stage = stage });
         }
         if (ctx.QuestLeft(QuestNeedKind.CampaignBoss) > 0)

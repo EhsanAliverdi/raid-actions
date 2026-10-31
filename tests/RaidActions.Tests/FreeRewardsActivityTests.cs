@@ -78,7 +78,7 @@ public class FreeRewardsActivityTests
         [
             new(1, "Daily", "Win 5 Classic Arena battles", "WinArenaBattles", "2/5", false, false),
             new(2, "Advanced", "Defeat a Faction Wars boss", "FractionWarsMapTransition", "0/1", false, false),
-            new(3, "Daily", "Purchase an item in the Market", "PurchaseItemInMagicShop", "0/1", false, false),
+            new(3, "Weekly", "Ascend a Champion", "AscendHero", "0/1", false, false),
             new(4, "Daily", "Summon a champion", "SummonHero", "1/1", true, true),
         ];
         await engine.RunAsync(once: false, Limit());

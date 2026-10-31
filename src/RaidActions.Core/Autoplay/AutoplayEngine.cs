@@ -33,6 +33,9 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
 {
     private static readonly TimeSpan Tick = TimeSpan.FromSeconds(5);
     private readonly List<AutoplayEvent> _recent = [];
+
+    /// <summary>Quests as if read (autoplay --test-quest): to try an area's quest on the live game when no such quest is open.</summary>
+    public IReadOnlyList<QuestNeed> StartNeeds { get; init; } = [];
     private string _engine = "starting", _detail = "";
     private DateTime? _next;
     private PlayContext? _ctx;
@@ -46,7 +49,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     public async Task<string> RunAsync(bool once, CancellationToken ct)
     {
         var settings = host.LoadSettings();
-        var ctx = _ctx = new PlayContext(settings, game, host, dryRun, Remember);
+        var ctx = _ctx = new PlayContext(settings, game, host, dryRun, Remember) { QuestNeeds = [.. StartNeeds] };
         var errors = 0;
         var sessionEnd = host.UtcNow + Jitter(settings.Pacing.SessionMinutes);
         try

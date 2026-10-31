@@ -12,6 +12,7 @@ namespace RaidActions.App.Play;
 public sealed partial class LivePlayGame : IClanBossGame
 {
     private readonly HashSet<string> _clanDumped = [];
+    private const string QuickResult = "AllianceBossQuickBattleOverlay";
 
     public async Task<ClanBossAccount> ReadClanBossAsync(CancellationToken ct)
     {
@@ -96,8 +97,16 @@ public sealed partial class LivePlayGame : IClanBossGame
         {
             await Task.Delay(800, ct);
             log($"autoplay: the Quick Battle question. Screen dump: {DumpScreen("clan confirm")}");
-            await Click("clan-continue", null, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView,
+            await Click("clan-continue", null, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView or QuickResult,
                 "the battle starts", ct, within: TimeSpan.FromSeconds(25), shot: true);
+        }
+        // Quick Battle on (the team screen's switch, set in the game): no fight, the result at once (seen 2026-11-01: 23.03M on Brutal, a key spent).
+        if (Top(await ReadState(ct)) == QuickResult)
+        {
+            await Task.Delay(1000, ct);
+            await LeaveResult(ct, QuickResult);
+            log($"autoplay: {label} {difficulty}: Quick Battle done");
+            return new BattleOutcome(BattleResult.Victory, $"Quick Battle, {(DateTime.UtcNow - started).TotalSeconds:0} s");
         }
         var inBattle = await ReadState(ct);
         if (Top(inBattle) == PlayTargets.RefillView)
@@ -124,6 +133,7 @@ public sealed partial class LivePlayGame : IClanBossGame
             var s = await Settled(ct);
             if (s.InBattle && !Has(s, resultView)) { await WaitBattle(ct, resultView); continue; }
             if (Has(s, resultView)) { await LeaveResult(ct, resultView); continue; }
+            if (Has(s, QuickResult)) { await LeaveResult(ct, QuickResult); continue; }
             if (Top(s) is { } top && PlayTargets.IsTeamView(top)) { await Back(top, ct); continue; }
             var (_, targets, _) = await Read(ct);
             // The list of the wanted boss: its rows' enemy type (a list of the other boss is left).

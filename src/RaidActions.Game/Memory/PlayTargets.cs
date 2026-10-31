@@ -989,6 +989,11 @@ public static partial class PlayTargets
                 && !x.Name.Contains("Check", StringComparison.OrdinalIgnoreCase)).OrderByDescending(x => x.Screen!.Value.X).Take(1))
                 targets.Add(Make("clan-continue", "clan boss: Continue", x, x, x.Path));
 
+        // Clan Boss: a Quick Battle's result: CONTINUE is a tap on the bottom strip, no button.
+        if (t.View == "AllianceBossQuickBattleOverlay")
+            targets.Add(new UiTarget("back", "clan boss result: continue", null, t.View, new ClientRect(t.ClientWidth * 0.44f, t.ClientHeight * 0.875f, t.ClientWidth * 0.12f, t.ClientHeight * 0.045f),
+                true, true, true, false, t.View, "a tap on CONTINUE", ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
+
         // The Tavern's Upgrade Level tab, the main slot's X and Upgrade.
         if (t.View == TavernView)
             foreach (var x in nodes.Where(x => x.ActiveInHierarchy && x.Screen is not null && x.Interactable is not null))

@@ -122,7 +122,9 @@ public static class AutoplayCommand
             // Free rewards first: a check is a few clicks every 20 minutes (plan/free-rewards.md).
             var hydraActivity = new HydraActivity(game);
             var tagActivity = new TagArenaActivity(game);
-            IActivity[] activities = [giftsActivity, arena, tagActivity, cbActivity, hydraActivity, energyActivity, fwActivity, ccActivity];
+            // Keys before energy (Ehsan 2026-10-31: "use keys smartly, the first priority is the quests, especially the daily ones like Faction
+            // Wars"): energy can always play (the farm), so it comes last and takes every turn the key areas leave.
+            IActivity[] activities = [giftsActivity, arena, tagActivity, cbActivity, hydraActivity, fwActivity, ccActivity, energyActivity];
             host.GameBlocked = game.SessionTaken;
             Print($"Auto Play{(dry ? " (DRY RUN: nothing that spends is pressed)" : "")}. Settings and status: {dir}\\autoplay. Overlays: {folder}. Stop: the app, or Ctrl+Alt+Esc.");
             var engine = new AutoplayEngine(activities, game, host, dry);

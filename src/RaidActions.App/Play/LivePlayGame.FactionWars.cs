@@ -207,7 +207,7 @@ public sealed partial class LivePlayGame : IFactionWarsGame
     /// <param name="kind">"fw-stage" (crypts) or "dungeon-stage"; <paramref name="stageId"/>: the game's stage id, preferred to the name.</param>
     private async Task<UiTarget> FindStage(int stage, CancellationToken ct, string kind = "fw-stage", int? stageId = null)
     {
-        for (var i = 0; i < 14; i++)
+        for (var i = 0; i < 40; i++)
         {
             var (_, targets, play) = await Read(ct);
             var stages = play.Stages ?? [];
@@ -228,7 +228,7 @@ public sealed partial class LivePlayGame : IFactionWarsGame
             var down = live.Rect.Value.Center.Y > cy;
             var right = live.Rect.Value.Center.X > cx;
             // A list that runs sideways scrolls with the wheel as well (Unity scroll rects take it on their axis).
-            if (Input.MouseInput.Wheel(w, cx, cy, down || right ? -2 : 2) is { } notSent) throw new PlayStopException("Not scrolled: " + notSent);
+            if (Input.MouseInput.Wheel(w, cx, cy, down || right ? -4 : 4) is { } notSent) throw new PlayStopException("Not scrolled: " + notSent);
             await Task.Delay(400, ct);
         }
         throw new PlayStopException($"Stage {stage} not reachable by scrolling.");

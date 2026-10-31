@@ -15,23 +15,26 @@ public sealed partial class LivePlayGame : ILiveArenaGame
 
     public async Task<LiveArenaState> ReadLiveArenaAsync(CancellationToken ct)
     {
-        await OpenLiveArena(ct);
+        // Out of its hours the battle menu has no Live Arena button (seen 2026-11-01): closed, not an error.
+        if (!await OpenLiveArena(ct)) return new LiveArenaState(false, false);
         var (_, targets, _) = await Read(ct);
         var active = targets.FirstOrDefault(t => t.Kind == "live-state")?.Note == "active";
         var can = targets.Any(t => t.Kind == "live-find" && t.NotClickable is null && t.Note == "enabled");
         return new LiveArenaState(active, can);
     }
 
-    private async Task OpenLiveArena(CancellationToken ct)
+    private async Task<bool> OpenLiveArena(CancellationToken ct)
     {
         _nav.FitWindow();
         for (var hop = 0; hop < 8; hop++)
         {
             var s = await Settled(ct);
             var (_, targets, _) = await Read(ct);
-            if (targets.Any(t => t.Kind == "live-find")) return;
+            if (targets.Any(t => t.Kind == "live-find")) return true;
             if (Top(s) == PlayTargets.BattleMenuView)
             {
+                if (!targets.Any(t => t.Kind == "live-open")) return false;
+                await DragIntoView("live-open", ct);
                 await Click("live-open", null, (_, scan) => scan().Targets.Any(t => t.Kind == "live-find"), "Live Arena opens", ct, within: TimeSpan.FromSeconds(10));
                 await Task.Delay(1000, ct);
                 continue;
@@ -45,7 +48,7 @@ public sealed partial class LivePlayGame : ILiveArenaGame
     public async Task<BattleOutcome> PlayLiveArenaAsync(LiveArenaSettings s, bool dryRun, CancellationToken ct)
     {
         var started = DateTime.UtcNow;
-        await OpenLiveArena(ct);
+        if (!await OpenLiveArena(ct)) return new BattleOutcome(BattleResult.NotStarted, "closed now");
         if (dryRun)
         {
             var (_, t0, _) = await Read(ct);

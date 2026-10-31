@@ -8,6 +8,9 @@ public sealed class FakeClanBossGame(Func<DateTime> now) : IClanBossGame
     public Dictionary<string, long> BestDamage { get; set; } = new() { ["Brutal"] = 16_000_000, ["Nightmare"] = 24_000_000 };
     public string? MaxQuick { get; set; } = "Brutal";
     public List<string> Calls { get; } = [];
+
+    /// <summary>The next battle spends its key, then fails as a screen the bot does not know would.</summary>
+    public bool FailAfterSpend { get; set; }
     private DateTime _tick = now();
 
     private void Regen()
@@ -23,6 +26,13 @@ public sealed class FakeClanBossGame(Func<DateTime> now) : IClanBossGame
 
     public Task<BattleOutcome> FightClanBossAsync(string difficulty, bool quick, bool dryRun, CancellationToken ct)
     {
+        if (FailAfterSpend && !dryRun)
+        {
+            FailAfterSpend = false;
+            Keys--;
+            Calls.Add($"fight {difficulty}");
+            throw new PlayStopException("a screen the bot does not know");
+        }
         Regen();
         if (dryRun)
         {

@@ -20,6 +20,26 @@ public class ClanBossActivityTests
     private static CancellationToken Limit() => new CancellationTokenSource(TimeSpan.FromSeconds(20)).Token;
 
     [Fact]
+    public async Task A_key_spent_on_a_battle_that_went_wrong_counts_so_the_row_gets_no_second_key()
+    {
+        var (_, game, engine) = Make(new ClanBossSettings { Enabled = true, Plan = [new("Brutal", 1), new("Nightmare", 2)] }, TimeSpan.FromHours(2));
+        game.FailAfterSpend = true;
+        await engine.RunAsync(once: false, Limit());
+        Assert.Equal(["fight Brutal", "fight Nightmare"], game.Calls);
+    }
+
+    [Fact]
+    public void The_clan_boss_day_starts_at_its_reset_not_at_local_midnight()
+    {
+        var before = new DateTime(2026, 11, 1, 9, 59, 0, DateTimeKind.Utc);
+        var after = new DateTime(2026, 11, 1, 10, 1, 0, DateTimeKind.Utc);
+        Assert.NotEqual(ClanBossRules.Day(before), ClanBossRules.Day(after));
+        Assert.Equal(ClanBossRules.Day(after), ClanBossRules.Day(after.AddHours(23)));
+        Assert.Equal(new DateTime(2026, 11, 2, 10, 0, 0, DateTimeKind.Utc), ClanBossRules.NextReset(after));
+        Assert.Equal(new DateTime(2026, 11, 1, 10, 0, 0, DateTimeKind.Utc), ClanBossRules.NextReset(before));
+    }
+
+    [Fact]
     public async Task Every_key_goes_to_the_best_damage_difficulty_and_a_new_key_is_spent_when_it_comes()
     {
         var (host, game, engine) = Make(new ClanBossSettings { Enabled = true }, TimeSpan.FromHours(13));

@@ -119,7 +119,7 @@ public static class AutoplayCommand
             // (plan/energy.md); Faction Wars and Cursed City fill the time while the others wait for tokens and energy. A turn is one
             // battle, so a battle running is always finished first.
             var cbActivity = new ClanBossActivity(game);
-            cbActivity.Restore(LiveAutoplayHost.Today(dir), DateOnly.FromDateTime(DateTime.Now));
+            cbActivity.Restore(LiveAutoplayHost.Recent(dir), DateTime.UtcNow);
             // Clan Boss (plan/clan-boss.md) after the arena: its keys come slowly, so a key waiting is spent before the energy places.
             var giftsActivity = new FreeRewardsActivity(game);
             giftsActivity.Restore(LiveAutoplayHost.Today(dir), DateOnly.FromDateTime(DateTime.Now));

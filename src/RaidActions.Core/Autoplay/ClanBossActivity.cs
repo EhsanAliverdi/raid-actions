@@ -102,7 +102,7 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
 
     private void NewDay(PlayContext ctx)
     {
-        var d = DateOnly.FromDateTime(ctx.Local);
+        var d = ClanBossRules.Day(ctx.Utc);
         if (_day == d) return;
         if (_day is not null) _today.Clear();
         _day = d;
@@ -120,10 +120,11 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
 
     public bool IsEnabled(AutoplaySettings settings) => settings.ClanBoss.Enabled;
 
-    public void Restore(IEnumerable<AutoplayEvent> events, DateOnly localDay)
+    public void Restore(IEnumerable<AutoplayEvent> events, DateTime utc)
     {
-        _day = localDay;
-        foreach (var e in events.Where(e => e.Area == AreaId && e.Kind == "battle" && DateOnly.FromDateTime(e.Utc.ToLocalTime()) == localDay))
+        var day = ClanBossRules.Day(utc);
+        _day = day;
+        foreach (var e in events.Where(e => e.Area == AreaId && e.Kind == "battle" && ClanBossRules.Day(e.Utc) == day))
         {
             _battles++;
             var d = e.Text.Split(':', ' ')[0];
@@ -139,7 +140,7 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
         if (_dryShown) return Decision.Off("shown in this dry run");
         if (ctx.Utc < _retryAt) return Decision.Wait(_retryAt, "could not start: tried again later");
         if (_account is not null && ClanBossRules.Next(ctx.Settings.ClanBoss, _account.BestDamage, _today) is null)
-            return Decision.Wait(ctx.Local.Date.AddDays(1).ToUniversalTime(), "the key plan is done for today");
+            return Decision.Wait(ClanBossRules.NextReset(ctx.Utc), "the key plan is done for today");
         if (_account is null || ctx.Utc - _readAt >= Recheck) return Decision.Now("reading the keys");
         if (HasKey(ctx)) return Decision.Now($"{Math.Floor(_account.Keys)} key(s): {ClanBossRules.Next(ctx.Settings.ClanBoss, _account.BestDamage, _today)}");
         return Decision.Wait(_readAt + Recheck, $"no key to spend ({_account.Keys:0.##}, keeping {ctx.Settings.ClanBoss.KeepKeys})");
@@ -155,7 +156,25 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
         if (ClanBossRules.Next(s, _account.BestDamage, _today) is not { } difficulty) return "";
         var quick = ClanBossRules.Quick(s, difficulty, _account.MaxQuick);
         await ctx.ThinkAsync(ct);
-        var outcome = await game.FightClanBossAsync(difficulty, quick, ctx.DryRun, ct);
+        var keys = Math.Floor(_account.Keys);
+        BattleOutcome outcome;
+        try { outcome = await game.FightClanBossAsync(difficulty, quick, ctx.DryRun, ct); }
+        catch (PlayStopException e) when (!ctx.DryRun)
+        {
+            // Something went wrong after Start can still have spent the key (2026-11-01: a result screen the bot did not know, the key went
+            // uncounted and Brutal got a second one). Counted when the key is gone, and when the keys cannot be read: a row may under-spend, never over-spend.
+            ClanBossAccount? now = null;
+            try { now = await game.ReadClanBossAsync(ct); }
+            catch (PlayStopException) { }
+            if (now is null || Math.Floor(now.Keys) < keys)
+            {
+                _battles++;
+                _today[difficulty] = _today.GetValueOrDefault(difficulty) + 1;
+                ctx.Event(AreaId, "battle", $"{difficulty}: the key is gone, the battle's end was not read: {e.Message}");
+            }
+            if (now is not null) _account = now;
+            throw;
+        }
         if (outcome.Result is BattleResult.NotStarted)
         {
             _dryShown = ctx.DryRun;

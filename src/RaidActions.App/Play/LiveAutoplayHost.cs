@@ -112,9 +112,14 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
     }
 
     /// <summary>Today's events (to carry today's counters over a restart).</summary>
-    public static List<AutoplayEvent> Today(string dir)
+    public static List<AutoplayEvent> Today(string dir) => Day(dir, DateTime.Now);
+
+    /// <summary>Yesterday's and today's events: for a day that does not start at local midnight (the Clan Boss's).</summary>
+    public static List<AutoplayEvent> Recent(string dir) => [.. Day(dir, DateTime.Now.AddDays(-1)), .. Day(dir, DateTime.Now)];
+
+    private static List<AutoplayEvent> Day(string dir, DateTime day)
     {
-        var path = AutoplayStatus.EventsPathIn(dir, DateTime.Now);
+        var path = AutoplayStatus.EventsPathIn(dir, day);
         if (!File.Exists(path)) return [];
         var list = new List<AutoplayEvent>();
         foreach (var line in File.ReadLines(path))

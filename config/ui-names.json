@@ -237,6 +237,7 @@
                   "Client.ViewModel.Contextes.BattleFinishArena3x3Dialog.BattleFinishArena3x3DialogContext":  [ "_summaryDefeat", "_enemyUserName" ],
                   "Client.ViewModel.Contextes.DoomTowerMap.DoomTowerMapItemContext":  [ "_id", "_status", "_level" ],
                   "Client.ViewModel.Contextes.MarketSlotContext":  [ "_item", "_isEmpty", "_state" ],
+                  "Client.ViewModel.Contextes.Bank.Offers.StaticCommon.StaticCommonOfferContext":  [ "_isFree" ],
                   "Client.ViewModel.Contextes.MarketItemContext":  [ "_itemType", "_price", "_rarityName" ],
                   "Client.ViewModel.Contextes.ResourceAvatarContext":  [ "_count", "_iconUrl" ],
                   "Client.ViewModel.Contextes.HeroesDevelopmentDialog.Items.HeroesDevelopmentItemContext":  [ "_HeroAvatar_k__BackingField", "_isSelected" ],

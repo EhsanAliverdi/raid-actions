@@ -64,7 +64,7 @@ public static partial class PlayTargets
 {
     public const string ArenaDialogView = "ArenaDialog", ArenaMapView = "ArenaMap", ArenaHudView = "ArenaHUD", TeamView = "HeroesSelectionDialogToArena",
         BattleHudView = "BattleHUD", ArenaResultView = "BattleFinishArenaDialog", InboxView = "InboxDialog", BattleMenuView = "BattleModeSelectionDialog",
-        VillageHudView = "VillageHUD", RefillView = "ResourceRefillOverlay", FwMapView = "FractionWarsMap", FwDialogView = "FractionWarsDialog",
+        VillageHudView = "VillageHUD", ShopView = "BankOverlay", RefillView = "ResourceRefillOverlay", FwMapView = "FractionWarsMap", FwDialogView = "FractionWarsDialog",
         FwTeamView = "HeroesSelectionDialogToFractionWars", FwResultView = "BattleFinishFractionWarsDialog",
         CcMapView = "CursedCityMap", CcTeamView = "CursedCityHeroesSelectionDialog", CcResultView = "BattleFinishCursedCityDialog",
         CcHudView = "CursedCityHUD",
@@ -134,6 +134,7 @@ public static partial class PlayTargets
     private const string MarketItem = "Client.ViewModel.Contextes.MarketItemContext";
     private const string ResourceAvatar = "Client.ViewModel.Contextes.ResourceAvatarContext";
     private const string TavernItem = "Client.ViewModel.Contextes.HeroesDevelopmentDialog.Items.HeroesDevelopmentItemContext";
+    private const string ShopOffer = "Client.ViewModel.Contextes.Bank.Offers.StaticCommon.StaticCommonOfferContext";
     private const string DtMapItem = "Client.ViewModel.Contextes.DoomTowerMap.DoomTowerMapItemContext";
     private const string DtResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishDoomTowerDialogContext";
     private const string CcMap = "Client.ViewModel.Contextes.CursedCity.Map.CursedCityMapContext";
@@ -198,7 +199,7 @@ public static partial class PlayTargets
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-demonlord", "clan-hydra", "clan-difficulty", "clan-battle", "clan-continue",
-        "mode-dt", "dt-stage", "dt-final-boss", "village-market", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
+        "mode-dt", "dt-stage", "dt-final-boss", "village-market", "village-gems", "village-shop", "shop-free", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
     };
@@ -724,6 +725,14 @@ public static partial class PlayTargets
                     (picks ??= []).Add(new TeamPickRead(hero.Value, state, target));
                     break;
                 }
+                case ShopOffer:
+                {
+                    // The Shop: only an offer the game itself marks free, not locked behind its timer, is ever a target.
+                    if (Try(() => BoolValue(g, g.Ref(c.Address, ShopOffer, "_isFree")), null, notes, "StaticCommonOfferContext._isFree") != true) break;
+                    if (SelfAndBelow(i).Any(x => x.Name == "LockedState_h" && x.ActiveInHierarchy)) break;
+                    targets.Add(Make("shop-free", $"shop: free offer {n.Name}", n, Own(i), "free"));
+                    break;
+                }
                 case MarketSlot:
                 {
                     // A slot: empty, sold (its Price_h gone) or an item (MagicShopItemTypeId), priced by the icon (silver only is ever bought).
@@ -1020,6 +1029,11 @@ public static partial class PlayTargets
         if (t.View == VillageHudView)
         {
             var (mw, mh) = (t.ClientWidth, t.ClientHeight);
+            // The Mine's gem bubble (seen 2026-11-01, a tap collects) and the Shop button (only ever to reach its free offers).
+            targets.Add(new UiTarget("village-gems", "village: the Mine's gems (their spot)", null, t.View, new ClientRect(mw * 0.08f, mh * 0.52f, mw * 0.03f, mh * 0.05f),
+                true, true, true, false, "VillageHUD/(gem bubble)", "a fixed spot on the default village view", ClientWidth: mw, ClientHeight: mh));
+            foreach (var x in nodes.Where(x => x.Name == "ShopButton" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                targets.Add(Make("village-shop", "village: Shop", x, x, null));
             targets.Add(new UiTarget("village-market", "village: Market (the building's spot)", null, t.View, new ClientRect(mw * 0.335f, mh * 0.67f, mw * 0.04f, mh * 0.07f),
                 true, true, true, false, "VillageHUD/(Market building)", "a fixed spot on the default village view", ClientWidth: mw, ClientHeight: mh));
         }

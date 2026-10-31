@@ -181,6 +181,44 @@ public sealed partial class LivePlayGame : IChoresGame
         throw new PlayStopException($"The Tavern was not reached. Screen dump: {DumpScreen("tavern not reached")}");
     }
 
+    public async Task<int> CollectFreeAsync(bool dryRun, CancellationToken ct)
+    {
+        _nav.FitWindow();
+        var (s, _, _) = await Read(ct);
+        if (Top(s) != PlayTargets.VillageHudView) await ToVillage(ct);
+        // The Mine's bubble: a tap on its spot; nothing there when no gems wait (and a screen a stray tap opened is closed).
+        if (!dryRun)
+        {
+            await Click("village-gems", null, (_, _) => true, "the gem bubble", ct);
+            await Task.Delay(1500, ct);
+            var (after, _, _) = await Read(ct);
+            if (Top(after) != PlayTargets.VillageHudView) await Back(Top(after)!, ct);
+        }
+        await Click("village-shop", null, (s2, _) => Top(s2) == PlayTargets.ShopView, "the Shop opens", ct, within: TimeSpan.FromSeconds(10));
+        await Task.Delay(2000, ct);
+        var claimed = 0;
+        for (var i = 0; i < 4; i++)
+        {
+            var (_, targets, _) = await Read(ct);
+            var offer = targets.FirstOrDefault(t => t.Kind == "shop-free" && t.NotClickable is null);
+            if (offer is null) break;
+            if (dryRun) { log($"autoplay: WOULD CLAIM {offer.Name} (dry run)"); break; }
+            await Click("shop-free", t => t.Path == offer.Path, (s2, scan) => Top(s2) != PlayTargets.ShopView || !scan().Targets.Any(t => t.Kind == "shop-free" && t.Path == offer.Path),
+                $"{offer.Name} claimed", ct, within: TimeSpan.FromSeconds(8), shot: true);
+            claimed++;
+            log($"autoplay: claimed {offer.Name}");
+            await Task.Delay(2000, ct);
+            for (var j = 0; j < 3; j++)
+            {
+                var s3 = await Settled(ct);
+                if (Top(s3) is not { } top || top == PlayTargets.ShopView) break;
+                await Back(top, ct);
+            }
+        }
+        await Back(PlayTargets.ShopView, ct);
+        return claimed;
+    }
+
     private NavigatingDriver? _upgrader;
 
     public async Task<ArtifactOutcome?> UpgradeArtifactAsync(int? minLevel, bool attempts, long keepSilver, bool dryRun, CancellationToken ct)

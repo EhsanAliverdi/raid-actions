@@ -1400,6 +1400,19 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.Bank.Offers.StaticCommon.StaticCommonOfferContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_isFree": {
+          "offset": "0x60",
+          "type": "BoolProperty",
+          "field": "_isFree",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.MarketItemContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

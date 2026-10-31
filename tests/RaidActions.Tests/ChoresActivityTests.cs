@@ -25,6 +25,12 @@ public class ChoresActivityTests
             return Task.FromResult(true);
         }
 
+        public Task<int> CollectFreeAsync(bool dryRun, CancellationToken ct)
+        {
+            Calls.Add("free");
+            return Task.FromResult(1);
+        }
+
         public Task<ArtifactOutcome?> UpgradeArtifactAsync(int? minLevel, bool attempts, long keepSilver, bool dryRun, CancellationToken ct)
         {
             Calls.Add($"upgrade {minLevel} {attempts} {keepSilver}");
@@ -48,7 +54,7 @@ public class ChoresActivityTests
     {
         var (ctx, game, chores) = Make(Need(QuestNeedKind.Market, 1), Need(QuestNeedKind.LevelUp, 1), Need(QuestNeedKind.ArtifactAttempts, 4), Need(QuestNeedKind.ArtifactLevel, 1, 12));
         for (var i = 0; i < 6; i++) await chores.RunTurnAsync(ctx, CancellationToken.None);
-        Assert.Equal(["market quest=True", "level", "upgrade  True 0", "upgrade  True 0", "upgrade 12 False 0", "upgrade  False 500000"], game.Calls);
+        Assert.Equal(["market quest=True", "level", "upgrade  True 0", "upgrade  True 0", "upgrade 12 False 0", "free"], game.Calls);
     }
 
     [Fact]

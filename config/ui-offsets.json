@@ -1346,6 +1346,47 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.DoomTowerMap.DoomTowerMapItemContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_id": {
+          "offset": "0x68",
+          "type": "IntProperty",
+          "field": "_id",
+          "source": "field",
+          "status": "direct"
+        },
+        "_status": {
+          "offset": "0x70",
+          "type": "IntProperty",
+          "field": "_status",
+          "source": "field",
+          "status": "direct"
+        },
+        "_level": {
+          "offset": "0x78",
+          "type": "StringProperty",
+          "field": "_level",
+          "source": "field",
+          "status": "direct"
+        },
+        "_stageId": {
+          "offset": "0x80",
+          "type": "StringProperty",
+          "field": "_stageId",
+          "source": "field",
+          "status": "direct"
+        },
+        "_bossAvatar": {
+          "offset": "0x88",
+          "type": "BossAvatarContext",
+          "field": "_bossAvatar",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.Quests.QuestItemContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

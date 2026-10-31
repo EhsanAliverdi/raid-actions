@@ -81,7 +81,7 @@ public static partial class PlayTargets
         CampaignMapView = "Map",
         // Clan Boss (plan/clan-boss.md; from the dump 2026-10-31, names to confirm live).
         ClanMapView = "AllianceActivityMap", ClanDialogView = "AllianceBossesDialog", ClanResultView = "BattleFinishAllianceBossDialog",
-        HydraResultView = "BattleFinishAllianceHydraDialog",
+        HydraResultView = "BattleFinishAllianceHydraDialog", DtResultView = "BattleFinishDoomTowerDialog",
         StoryResultView = "BattleFinishStoryDialog", TavernView = "HeroesDevelopmentDialog", FastRankUpView = "FastRankUpOverlay";
 
     /// <summary>A team screen (the views where a squad is picked before a battle).</summary>
@@ -119,6 +119,10 @@ public static partial class PlayTargets
     private const string SelectionSlot = "Client.ViewModel.Contextes.HeroesSelectionDialog.HeroSlotContext";
     private const string SelectableAvatar = "Client.ViewModel.Contextes.HeroesSelectionDialog.SelectableHeroAvatarContext";
     private const string CcMapItem = "Client.ViewModel.Contextes.CursedCity.Map.Items.CursedCityMapItemContext";
+    // Doom Tower (plan/doom-tower.md; from the dump 2026-10-31, to explore live): the map's floors, rooms and bosses, and its result.
+    private const string DtMapItem = "Client.ViewModel.Contextes.DoomTowerMap.DoomTowerMapItemContext";
+    private const string DtMap = "Client.ViewModel.Contextes.DoomTowerMap.DoomTowerMapContext";
+    private const string DtResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishDoomTowerDialogContext";
     private const string CcMap = "Client.ViewModel.Contextes.CursedCity.Map.CursedCityMapContext";
     private const string CcResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishCursedCityDialogContext";
     // Campaign (plan/campaign.md; from the dump 2026-10-30, not seen live yet).
@@ -181,6 +185,7 @@ public static partial class PlayTargets
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-demonlord", "clan-hydra", "clan-difficulty", "clan-battle",
+        "mode-dt", "dt-stage", "dt-battle",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
     };
@@ -671,7 +676,7 @@ public static partial class PlayTargets
                     targets.Add(Make("portal-summon1", "portal: Summon x1", n, button, $"selected shard {selectedShard}" + (why is null ? "" : "; " + why)));
                     break;
                 }
-                case FwResult or CcResult or DungeonResult or StoryResult or TwinsResult:
+                case FwResult or CcResult or DungeonResult or StoryResult or TwinsResult or DtResult:
                     pve = new PveResultRead(
                         Try(() => IntValue(g, g.Ref(c.Address, PveResult, "_battleResultType")), null, notes, "BattleFinishPveDialogContext._battleResultType"),
                         Try(() => IntValue(g, g.Ref(c.Address, PveResult, "_stars")), null, notes, "BattleFinishPveDialogContext._stars"),
@@ -704,6 +709,19 @@ public static partial class PlayTargets
                     var target = Make("team-pick", $"team list: #{hero}", n, Own(i), $"state {state}", id: hero);
                     targets.Add(target);
                     (picks ??= []).Add(new TeamPickRead(hero.Value, state, target));
+                    break;
+                }
+                case DtMapItem:
+                {
+                    // A floor, secret room or boss on the tower (DoomTowerMapItemStatus: 0 locked, 1 open, 2 beaten).
+                    var stageText = Try(() => StringValue(g, g.Ref(c.Address, DtMapItem, "_stageId")), null, notes, "DoomTowerMapItemContext._stageId");
+                    var id = int.TryParse(stageText, out var sid) ? sid : Try(() => IntValue(g, g.Ref(c.Address, DtMapItem, "_id")), null, notes, "DoomTowerMapItemContext._id") ?? 0;
+                    if (id <= 0) break;
+                    var status = Try(() => IntValue(g, g.Ref(c.Address, DtMapItem, "_status")), null, notes, "DoomTowerMapItemContext._status");
+                    var boss = Try(() => g.Ref(c.Address, DtMapItem, "_bossAvatar"), 0UL, notes, "DoomTowerMapItemContext._bossAvatar") != 0;
+                    var level = Try(() => StringValue(g, g.Ref(c.Address, DtMapItem, "_level")), null, notes, "DoomTowerMapItemContext._level");
+                    targets.Add(Make("dt-stage", $"doom tower: {level ?? (id % 1000).ToString(System.Globalization.CultureInfo.InvariantCulture)}", n, Own(i),
+                        $"stage {id}, status {status}{(boss ? ", boss" : "")}", id: id));
                     break;
                 }
                 case CcMapItem:
@@ -811,6 +829,7 @@ public static partial class PlayTargets
                 (BattleMenuView, var b) when b.Contains("Fraction", StringComparison.OrdinalIgnoreCase) || b.Contains("FactionWars", StringComparison.OrdinalIgnoreCase)
                     => ("mode-fw", "battle menu: Faction Wars"),
                 (BattleMenuView, var b) when b.Contains("CursedCity", StringComparison.OrdinalIgnoreCase) => ("mode-cc", "battle menu: Cursed City"),
+                (BattleMenuView, var b) when b.Contains("DoomTower", StringComparison.OrdinalIgnoreCase) => ("mode-dt", "battle menu: Doom Tower"),
                 // The battle menu's Dungeons card (DungeonModeContext; binding name to confirm live).
                 (BattleMenuView, var b) when b.Contains("Dungeon", StringComparison.OrdinalIgnoreCase) => ("mode-dungeon", "battle menu: Dungeons"),
                 // The arena map's buildings: labels that follow the 3D scene (a canvas inside the view); Arena1x1 is the Classic Arena.
@@ -905,6 +924,12 @@ public static partial class PlayTargets
             foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null && FightName().IsMatch(x.Name)
                 && !NotFightName().IsMatch(x.Name)).Take(1))
                 targets.Add(Make("clan-battle", "clan boss: Battle", x, x, x.Path));
+
+        // A Doom Tower stage's Battle (the panel a floor opens, if it opens one before the team screen; by name, to confirm live).
+        if (nodes.Any(x => x.Context?.Class == DtMap) && !IsTeamView(t.View))
+            foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null && FightName().IsMatch(x.Name)
+                && !NotFightName().IsMatch(x.Name) && !x.Name.Contains("Multi", StringComparison.OrdinalIgnoreCase) && x.Context?.Class != DtMapItem).Take(1))
+                targets.Add(Make("dt-battle", "doom tower: Battle", x, x, x.Path));
 
         // The Portal's single summon (seen 2026-10-31: "SingleSummon", next to "MultiSummon_h", never clicked).
         if (t.View == "PortalDialog" && !targets.Any(x => x.Kind == "portal-summon1"))

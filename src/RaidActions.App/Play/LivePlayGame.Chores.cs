@@ -28,7 +28,20 @@ public sealed partial class LivePlayGame : IChoresGame
         {
             if (dryRun) { log($"autoplay: WOULD BUY {o.Name} (dry run)"); bought.Add(o.Name); continue; }
             bool Mine(UiTarget t) => t.Kind == "market-item" && t.Id == o.Slot;
-            await DragIntoView("market-item", ct, Mine);
+            // The slots run sideways, off to the right (seen 2026-10-31): dragged until this one is wholly shown.
+            for (var i = 0; i < 6; i++)
+            {
+                var (_, now, _) = await Read(ct);
+                var row = now.FirstOrDefault(Mine);
+                if (row is null) throw new PlayStopException($"{o.Name} left the Market. Screen dump: {DumpScreen("market item")}");
+                if (row.NotClickable is null) break;
+                var (w, why) = Game.Window.GameWindow.Find();
+                if (w is null) throw new PlayStopException(why!);
+                var dx = Math.Clamp((row.Rect?.Center.X ?? 0) - w.Client.Width * 0.6f, -w.Client.Width * 0.4f, w.Client.Width * 0.4f);
+                var x = w.Client.Width * 0.6f + dx / 2;
+                if (Input.MouseInput.Drag(w, x, w.Client.Height * 0.55f, x - dx, w.Client.Height * 0.55f) is { } notSent) throw new PlayStopException("Not dragged: " + notSent);
+                await Task.Delay(900, ct);
+            }
             await Click("market-item", Mine, (_, scan) => scan().Targets.Any(t => t.Kind == "market-get"), $"{o.Name} opens", ct, within: TimeSpan.FromSeconds(8));
             await Task.Delay(800, ct);
             var (s0, _, _) = await Read(ct);

@@ -479,7 +479,15 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         var y = r.Y + r.Height * (0.3f + 0.4f * (float)_random.NextDouble());
         if (shot) Shot($"autoplay: CLICK {target.Name} at {r}", r, always: true);
         await Task.Delay(_random.Next(120, 320), ct);
-        if (MouseInput.Click(w, x, y, _random) is { } notSent) throw new PlayStopException($"Not clicked ({target.Name}): {notSent}");
+        // A small window floating over the point (a screen recorder's; seen 2026-10-31): another point of the same target.
+        var sent = MouseInput.Click(w, x, y, _random);
+        foreach (var (fx, fy) in new[] { (0.15f, 0.15f), (0.85f, 0.15f), (0.15f, 0.85f), (0.85f, 0.85f) })
+        {
+            if (sent is null || !sent.StartsWith("The window under", StringComparison.Ordinal)) break;
+            (x, y) = (r.X + r.Width * fx, r.Y + r.Height * fy);
+            sent = MouseInput.Click(w, x, y, _random);
+        }
+        if (sent is { } notSent) throw new PlayStopException($"Not clicked ({target.Name}): {notSent}");
         log($"autoplay: clicked {target.Name} at ({x:0},{y:0})");
 
         var until = DateTime.UtcNow + (within ?? TimeSpan.FromSeconds(8));

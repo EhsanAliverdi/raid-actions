@@ -35,6 +35,8 @@ public sealed partial class LivePlayGame : ITagArenaGame
                 await Task.Delay(1000, ct);
                 continue;
             }
+            // The Classic Arena (or its HUD) over the map hides the Tag Team Arena's item (seen 2026-10-31): back to the map first.
+            if (Top(s) is PlayTargets.ArenaDialogView or PlayTargets.ArenaHudView) { await Back(Top(s)!, ct); continue; }
             if (Has(s, PlayTargets.ArenaMapView)) throw new PlayStopException($"The arena map is open but its Tag Team Arena is not recognised. Screen dump: {DumpScreen("tag arena")}");
             if (Top(s) == PlayTargets.BattleMenuView)
             {

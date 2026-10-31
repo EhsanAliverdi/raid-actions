@@ -1370,18 +1370,98 @@
           "field": "_level",
           "source": "field",
           "status": "direct"
-        },
-        "_stageId": {
-          "offset": "0x80",
-          "type": "StringProperty",
-          "field": "_stageId",
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.MarketSlotContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_item": {
+          "offset": "0x68",
+          "type": "MarketItemContext",
+          "field": "_item",
           "source": "field",
           "status": "direct"
         },
-        "_bossAvatar": {
+        "_isEmpty": {
+          "offset": "0x50",
+          "type": "BoolProperty",
+          "field": "_isEmpty",
+          "source": "field",
+          "status": "direct"
+        },
+        "_state": {
+          "offset": "0x58",
+          "type": "IntProperty",
+          "field": "_state",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.MarketItemContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_itemType": {
+          "offset": "0x80",
+          "type": "IntProperty",
+          "field": "_itemType",
+          "source": "field",
+          "status": "direct"
+        },
+        "_price": {
+          "offset": "0x68",
+          "type": "ResourceAvatarContext",
+          "field": "_price",
+          "source": "field",
+          "status": "direct"
+        },
+        "_rarityName": {
           "offset": "0x88",
-          "type": "BossAvatarContext",
-          "field": "_bossAvatar",
+          "type": "StringProperty",
+          "field": "_rarityName",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.ResourceAvatarContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_count": {
+          "offset": "0x58",
+          "type": "StringProperty",
+          "field": "_count",
+          "source": "field",
+          "status": "direct"
+        },
+        "_iconUrl": {
+          "offset": "0x50",
+          "type": "StringProperty",
+          "field": "_iconUrl",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.HeroesDevelopmentDialog.Items.HeroesDevelopmentItemContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_HeroAvatar_k__BackingField": {
+          "offset": "0x50",
+          "type": "HeroAvatarContext",
+          "field": "_HeroAvatar_k__BackingField",
+          "source": "field",
+          "status": "direct"
+        },
+        "_isSelected": {
+          "offset": "0x68",
+          "type": "BoolProperty",
+          "field": "_isSelected",
           "source": "field",
           "status": "direct"
         }

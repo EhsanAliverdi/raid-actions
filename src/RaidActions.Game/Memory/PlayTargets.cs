@@ -85,6 +85,15 @@ public static partial class PlayTargets
         StoryResultView = "BattleFinishStoryDialog", TavernView = "HeroesDevelopmentDialog", FastRankUpView = "FastRankUpOverlay";
 
     /// <summary>A team screen (the views where a squad is picked before a battle).</summary>
+    /// <summary>"10,000" → 10000, "101.3K" → 101300, "1.14M" → 1140000; 0 unknown.</summary>
+    public static long Silver(string? text)
+    {
+        if (text is null) return 0;
+        var t = text.Replace(",", "", StringComparison.Ordinal).Trim();
+        var scale = t.EndsWith('K') ? 1_000 : t.EndsWith('M') ? 1_000_000 : 1;
+        return double.TryParse(t.TrimEnd('K', 'M'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) ? (long)(v * scale) : 0;
+    }
+
     public static bool IsTeamView(string view) => view.StartsWith("HeroesSelectionDialog", StringComparison.Ordinal) || view.EndsWith("HeroesSelectionDialog", StringComparison.Ordinal);
 
     private const string BattleMapButton = "Client.ViewModel.Contextes.Village.HUD.BattleMapButtonContext";
@@ -120,6 +129,11 @@ public static partial class PlayTargets
     private const string SelectableAvatar = "Client.ViewModel.Contextes.HeroesSelectionDialog.SelectableHeroAvatarContext";
     private const string CcMapItem = "Client.ViewModel.Contextes.CursedCity.Map.Items.CursedCityMapItemContext";
     // Doom Tower (plan/doom-tower.md; from the dump 2026-10-31, to explore live): the map's floors, rooms and bosses, and its result.
+    // Chores (plan/chores.md, seen live 2026-10-31): the Market's slots, the Tavern's list.
+    private const string MarketSlot = "Client.ViewModel.Contextes.MarketSlotContext";
+    private const string MarketItem = "Client.ViewModel.Contextes.MarketItemContext";
+    private const string ResourceAvatar = "Client.ViewModel.Contextes.ResourceAvatarContext";
+    private const string TavernItem = "Client.ViewModel.Contextes.HeroesDevelopmentDialog.Items.HeroesDevelopmentItemContext";
     private const string DtMapItem = "Client.ViewModel.Contextes.DoomTowerMap.DoomTowerMapItemContext";
     private const string DtMap = "Client.ViewModel.Contextes.DoomTowerMap.DoomTowerMapContext";
     private const string DtResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishDoomTowerDialogContext";
@@ -185,7 +199,7 @@ public static partial class PlayTargets
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-demonlord", "clan-hydra", "clan-difficulty", "clan-battle",
-        "mode-dt", "dt-stage", "dt-battle",
+        "mode-dt", "dt-stage", "dt-battle", "village-market", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
     };
@@ -711,17 +725,43 @@ public static partial class PlayTargets
                     (picks ??= []).Add(new TeamPickRead(hero.Value, state, target));
                     break;
                 }
+                case MarketSlot:
+                {
+                    // A slot: empty, sold (its Price_h gone) or an item (MagicShopItemTypeId), priced by the icon (silver only is ever bought).
+                    var item = Try(() => g.Ref(c.Address, MarketSlot, "_item"), 0UL, notes, "MarketSlotContext._item");
+                    if (item == 0 || Try(() => BoolValue(g, g.Ref(c.Address, MarketSlot, "_isEmpty")), null, notes, "MarketSlotContext._isEmpty") == true) break;
+                    var button = SelfAndBelow(i).FirstOrDefault(x => x.Name == "Price_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null);
+                    if (button is null) break;
+                    var type = Try(() => IntValue(g, g.Ref(item, MarketItem, "_itemType")), null, notes, "MarketItemContext._itemType");
+                    var price = Try(() => g.Ref(item, MarketItem, "_price"), 0UL, notes, "MarketItemContext._price");
+                    var count = price == 0 ? null : Try(() => StringValue(g, g.Ref(price, ResourceAvatar, "_count")), null, notes, "ResourceAvatarContext._count");
+                    var icon = price == 0 ? null : Try(() => StringValue(g, g.Ref(price, ResourceAvatar, "_iconUrl")), null, notes, "ResourceAvatarContext._iconUrl");
+                    var rarity = Try(() => StringValue(g, g.Ref(item, MarketItem, "_rarityName")), null, notes, "MarketItemContext._rarityName");
+                    var amount = Silver(count);
+                    var silver = icon?.Contains("Silver", StringComparison.OrdinalIgnoreCase) == true;
+                    targets.Add(Make("market-item", $"market: {rarity} type {type}", n, button, $"type {type}, price {amount}{(silver ? ", silver" : $", icon {icon}")}", id: int.TryParse(n.Name, out var slot) ? slot : -1));
+                    break;
+                }
+                case TavernItem:
+                {
+                    var avatar = Try(() => g.Ref(c.Address, TavernItem, "_HeroAvatar_k__BackingField"), 0UL, notes, "HeroesDevelopmentItemContext.HeroAvatar");
+                    var hero = avatar == 0 ? null : Try(() => (int?)g.Int(avatar, HeroAvatar, "_EntityId_k__BackingField"), null, notes, "HeroAvatarContext._EntityId");
+                    if (hero is not > 0) break;
+                    var selected = Try(() => BoolValue(g, g.Ref(c.Address, TavernItem, "_isSelected")), null, notes, "HeroesDevelopmentItemContext._isSelected") == true;
+                    var box = SelfAndBelow(i).FirstOrDefault(x => x.Name == "1_AvatarContainer_h" && x.Interactable is not null);
+                    if (box is not null) targets.Add(Make("tavern-hero", $"tavern: #{hero}", n, box, selected ? "selected" : null, id: hero));
+                    break;
+                }
                 case DtMapItem:
                 {
                     // A floor, secret room or boss on the tower (DoomTowerMapItemStatus: 0 locked, 1 open, 2 beaten).
-                    var stageText = Try(() => StringValue(g, g.Ref(c.Address, DtMapItem, "_stageId")), null, notes, "DoomTowerMapItemContext._stageId");
-                    var id = int.TryParse(stageText, out var sid) ? sid : Try(() => IntValue(g, g.Ref(c.Address, DtMapItem, "_id")), null, notes, "DoomTowerMapItemContext._id") ?? 0;
+                    // _id is the whole stage id; _stageId only its floor's label ("801", seen 2026-10-31).
+                    var id = Try(() => IntValue(g, g.Ref(c.Address, DtMapItem, "_id")), null, notes, "DoomTowerMapItemContext._id") ?? 0;
                     if (id <= 0) break;
                     var status = Try(() => IntValue(g, g.Ref(c.Address, DtMapItem, "_status")), null, notes, "DoomTowerMapItemContext._status");
-                    var boss = Try(() => g.Ref(c.Address, DtMapItem, "_bossAvatar"), 0UL, notes, "DoomTowerMapItemContext._bossAvatar") != 0;
                     var level = Try(() => StringValue(g, g.Ref(c.Address, DtMapItem, "_level")), null, notes, "DoomTowerMapItemContext._level");
                     targets.Add(Make("dt-stage", $"doom tower: {level ?? (id % 1000).ToString(System.Globalization.CultureInfo.InvariantCulture)}", n, Own(i),
-                        $"stage {id}, status {status}{(boss ? ", boss" : "")}", id: id));
+                        $"stage {id}, status {status}", id: id));
                     break;
                 }
                 case CcMapItem:
@@ -829,7 +869,7 @@ public static partial class PlayTargets
                 (BattleMenuView, var b) when b.Contains("Fraction", StringComparison.OrdinalIgnoreCase) || b.Contains("FactionWars", StringComparison.OrdinalIgnoreCase)
                     => ("mode-fw", "battle menu: Faction Wars"),
                 (BattleMenuView, var b) when b.Contains("CursedCity", StringComparison.OrdinalIgnoreCase) => ("mode-cc", "battle menu: Cursed City"),
-                (BattleMenuView, var b) when b.Contains("DoomTower", StringComparison.OrdinalIgnoreCase) => ("mode-dt", "battle menu: Doom Tower"),
+                (BattleMenuView, "Tower") => ("mode-dt", "battle menu: Doom Tower"), // seen live 2026-10-31
                 // The battle menu's Dungeons card (DungeonModeContext; binding name to confirm live).
                 (BattleMenuView, var b) when b.Contains("Dungeon", StringComparison.OrdinalIgnoreCase) => ("mode-dungeon", "battle menu: Dungeons"),
                 // The arena map's buildings: labels that follow the 3D scene (a canvas inside the view); Arena1x1 is the Classic Arena.
@@ -925,6 +965,20 @@ public static partial class PlayTargets
                 && !NotFightName().IsMatch(x.Name)).Take(1))
                 targets.Add(Make("clan-battle", "clan boss: Battle", x, x, x.Path));
 
+        // The Market's Get on the item's page (never in the real-money Shop, which the bot does not open).
+        if (t.View is not "BankOverlay")
+            foreach (var x in nodes.Where(x => x.Name == "BuyButton_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                targets.Add(Make("market-get", "market: Get", x, x, x.Path));
+
+        // The Tavern's Upgrade Level tab, the main slot's X and Upgrade.
+        if (t.View == TavernView)
+            foreach (var x in nodes.Where(x => x.ActiveInHierarchy && x.Screen is not null && x.Interactable is not null))
+            {
+                if (x.Name == "0_LevelUpTabButton") targets.Add(Make("tavern-level-tab", "tavern: Upgrade Level tab", x, x, x.IsOn == true ? "on" : "off"));
+                else if (x.Name == "DeselectButton_h") targets.Add(Make("tavern-deselect", "tavern: empty the main slot", x, x, null));
+                else if (x.Name == "LevelUpButton") targets.Add(Make("tavern-levelup", "tavern: Upgrade", x, x, null));
+            }
+
         // A Doom Tower stage's Battle (the panel a floor opens, if it opens one before the team screen; by name, to confirm live).
         if (nodes.Any(x => x.Context?.Class == DtMap) && !IsTeamView(t.View))
             foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null && FightName().IsMatch(x.Name)
@@ -939,6 +993,13 @@ public static partial class PlayTargets
         // The village's Portal is a 3D building with no UI element to click (seen 2026-10-31): on the default village view it stands at the
         // upper left (its purple swirl at about 23% across, 34% down). The target is that spot; the click is checked by the Portal's
         // shards opening, and anything else that opens is closed.
+        // The Market (seen 2026-10-31): a 3D building, a fixed spot on the default village view, as the Portal.
+        if (t.View == VillageHudView)
+        {
+            var (mw, mh) = (t.ClientWidth, t.ClientHeight);
+            targets.Add(new UiTarget("village-market", "village: Market (the building's spot)", null, t.View, new ClientRect(mw * 0.335f, mh * 0.67f, mw * 0.04f, mh * 0.07f),
+                true, true, true, false, "VillageHUD/(Market building)", "a fixed spot on the default village view", ClientWidth: mw, ClientHeight: mh));
+        }
         if (t.View == VillageHudView && !targets.Any(x => x.Kind == "village-portal"))
         {
             var (w, h) = (t.ClientWidth, t.ClientHeight);

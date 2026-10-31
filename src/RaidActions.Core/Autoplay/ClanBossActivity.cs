@@ -41,9 +41,13 @@ public sealed class HydraActivity(IClanBossGame game) : IActivity
 
     private bool HasKey(PlayContext ctx) => _account is { } a && Math.Floor(a.Keys) >= 1 + Math.Max(0, ctx.Settings.Hydra.KeepKeys);
 
+    /// <summary>A battle that could not start (no team saved, ...): not tried again before this (2026-10-31: it looped and held the areas after it).</summary>
+    private DateTime _retryAt = DateTime.MinValue;
+
     public Decision Decide(PlayContext ctx)
     {
         if (_dryShown) return Decision.Off("shown in this dry run");
+        if (ctx.Utc < _retryAt) return Decision.Wait(_retryAt, _last.Length > 0 ? _last : "could not start: tried again later");
         if (_account is null || ctx.Utc - _readAt >= Recheck) return Decision.Now("reading the keys");
         if (HasKey(ctx)) return Decision.Now($"{Math.Floor(_account.Keys)} key(s): {HydraRules.Pick(ctx.Settings.Hydra, _account.BestDamage)}");
         return Decision.Wait(_readAt + Recheck, $"no key to spend ({_account.Keys:0.##}, keeping {ctx.Settings.Hydra.KeepKeys})");
@@ -61,7 +65,8 @@ public sealed class HydraActivity(IClanBossGame game) : IActivity
         {
             _dryShown = ctx.DryRun;
             ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", $"{difficulty}: {outcome.Text}");
-            _readAt = ctx.Utc; // tried again after the recheck, not at once
+            _retryAt = ctx.Utc + TimeSpan.FromHours(6);
+            _last = $"{difficulty}: {outcome.Text}";
             return "";
         }
         _battles++;
@@ -108,6 +113,7 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
     private static readonly TimeSpan Recheck = TimeSpan.FromMinutes(30);
     private ClanBossAccount? _account;
     private DateTime _readAt = DateTime.MinValue;
+    private DateTime _retryAt = DateTime.MinValue;
     private bool _dryShown;
     private int _battles;
     private string _last = "";
@@ -131,6 +137,7 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
     {
         NewDay(ctx);
         if (_dryShown) return Decision.Off("shown in this dry run");
+        if (ctx.Utc < _retryAt) return Decision.Wait(_retryAt, "could not start: tried again later");
         if (_account is not null && ClanBossRules.Next(ctx.Settings.ClanBoss, _account.BestDamage, _today) is null)
             return Decision.Wait(ctx.Local.Date.AddDays(1).ToUniversalTime(), "the key plan is done for today");
         if (_account is null || ctx.Utc - _readAt >= Recheck) return Decision.Now("reading the keys");
@@ -153,7 +160,7 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
         {
             _dryShown = ctx.DryRun;
             ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", $"{difficulty}: {outcome.Text}");
-            if (!ctx.DryRun) _readAt = ctx.Utc; // tried again after the recheck
+            _retryAt = ctx.Utc + TimeSpan.FromHours(1); // not at once: it would hold the areas after it
             return "";
         }
         _battles++;

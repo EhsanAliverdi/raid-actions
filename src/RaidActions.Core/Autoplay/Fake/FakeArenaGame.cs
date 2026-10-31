@@ -19,6 +19,14 @@ public sealed class FakeArenaGame(Func<DateTime> now, int seed = 7) : IPlayGame
     public TimeSpan TokenPeriod { get; set; } = TimeSpan.FromMinutes(12);
     public TimeSpan FreeRefreshEvery { get; set; } = TimeSpan.FromMinutes(15);
     public int InboxTokens { get; set; }
+    /// <summary>Fights with the 4-affinity team (the quest).</summary>
+    public int AffinityFights { get; private set; }
+
+    public Task<BattleOutcome> FightArenaAffinitiesAsync(long userId, bool dryRun, CancellationToken ct)
+    {
+        if (!dryRun) AffinityFights++;
+        return FightArenaOpponentAsync(userId, dryRun, ct);
+    }
     public double Gems { get; set; } = 500;
     public double Energy { get; set; } = 100;
 

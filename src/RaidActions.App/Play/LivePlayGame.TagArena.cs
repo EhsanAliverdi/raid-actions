@@ -106,6 +106,9 @@ public sealed partial class LivePlayGame : ITagArenaGame
             {
                 var (_, _, seen) = await Read(ct);
                 last = seen.Result is not null || seen.Pve is not null ? seen : last;
+                // The series' screen without a result read (2026-10-31: every series "Unknown"): what the reader said, for the next fix.
+                if (shown == "BattleFinishArena3x3Dialog" && seen.Result is null)
+                    log($"autoplay: the Tag Team series result was not read: {string.Join("; ", seen.Notes.Where(x => x.Contains("Arena3x3", StringComparison.Ordinal) || x.Contains("_enemyUserName", StringComparison.Ordinal)).DefaultIfEmpty("no note"))}");
                 await LeaveResult(ct, shown);
                 await Task.Delay(1500, ct);
                 continue;

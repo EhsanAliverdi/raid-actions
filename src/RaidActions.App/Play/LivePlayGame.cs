@@ -83,7 +83,28 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         throw new PlayStopException("Could not reach the Classic Arena in 8 steps.");
     }
 
-    public async Task<BattleOutcome> FightArenaOpponentAsync(long userId, bool dryRun, CancellationToken ct)
+    public Task<BattleOutcome> FightArenaOpponentAsync(long userId, bool dryRun, CancellationToken ct) => FightArena(userId, dryRun, false, ct);
+
+    public Task<BattleOutcome> FightArenaAffinitiesAsync(long userId, bool dryRun, CancellationToken ct) => FightArena(userId, dryRun, true, ct);
+
+    /// <summary>The arena team as it was before the 4-affinity quest fight: put back on the next arena fight (kept across restarts).</summary>
+    private string ArenaTeamFile => Path.Combine(ExtractorOutput, "autoplay", "arena-team-before-quest.json");
+
+    private List<int>? SavedArenaTeam()
+    {
+        try { return File.Exists(ArenaTeamFile) ? System.Text.Json.JsonSerializer.Deserialize<List<int>>(File.ReadAllText(ArenaTeamFile)) : null; }
+        catch (Exception e) when (e is IOException or System.Text.Json.JsonException) { return null; }
+    }
+
+    /// <summary>The team screen set to this team (the arena's own screen); Cursed City's remembered team is left as it was.</summary>
+    private async Task SetArenaTeam(IReadOnlyList<int> team, CancellationToken ct)
+    {
+        var cc = _ccLastTeam;
+        try { await SetTeam(team, ct, PlayTargets.TeamView); }
+        finally { _ccLastTeam = cc; }
+    }
+
+    private async Task<BattleOutcome> FightArena(long userId, bool dryRun, bool affinities, CancellationToken ct)
     {
         var started = DateTime.UtcNow;
         var (s, _, play) = await Read(ct);
@@ -98,6 +119,31 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             $"the team selection for {who} opens", ct);
         var after = await Settled(ct);
         if (Top(after) != PlayTargets.TeamView) await Refuse(after, $"Battle {who}", ct);
+
+        // The quest "a team from 4 different Affinities" (Ehsan 2026-10-31): the team built from the one shown, which is saved first and
+        // put back before the next arena fight. A dry run sets it and puts the old one back at once (nothing is saved without Start).
+        var (_, _, teamRead) = await Read(ct);
+        var shownTeam = teamRead.TeamIds ?? [];
+        var restore = !affinities ? SavedArenaTeam() : null;
+        if (affinities)
+        {
+            var (data, _, _, _) = await Account(ct);
+            var team = ArenaAffinityTeam.Build(shownTeam, data.Champions)
+                ?? throw new PlayStopException("No team of 4 different affinities can be built (a geared champion of each affinity is needed).");
+            if (!dryRun && !File.Exists(ArenaTeamFile))
+            {
+                Directory.CreateDirectory(Path.GetDirectoryName(ArenaTeamFile)!);
+                File.WriteAllText(ArenaTeamFile, System.Text.Json.JsonSerializer.Serialize(shownTeam));
+            }
+            log($"autoplay: STEP the 4-affinity team for the quest: {string.Join(", ", team.Select(i => $"#{i}"))} (the arena team was {string.Join(", ", shownTeam.Select(i => $"#{i}"))})");
+            await SetArenaTeam(team, ct);
+            if (dryRun) await SetArenaTeam(shownTeam, ct);
+        }
+        else if (restore is { Count: > 0 } && !restore.ToHashSet().SetEquals(shownTeam))
+        {
+            log($"autoplay: STEP the arena team back after the quest fight: {string.Join(", ", restore.Select(i => $"#{i}"))}");
+            await SetArenaTeam(restore, ct);
+        }
 
         if (dryRun)
         {
@@ -114,6 +160,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         var inBattle = await ReadState(ct);
         if (!inBattle.Active.Any(v => BattleViews.Contains(v.Name))) await Refuse(inBattle, $"Start vs {who}", ct);
         log($"autoplay: battle vs {who} started");
+        if (restore is not null) try { File.Delete(ArenaTeamFile); } catch (IOException) { }
 
         var result = (await WaitBattle(ct))?.Result;
         await LeaveResult(ct);

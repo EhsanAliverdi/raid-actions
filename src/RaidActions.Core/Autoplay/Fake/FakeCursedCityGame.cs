@@ -24,7 +24,7 @@ public sealed class FakeCursedCityGame : ICursedCityGame
     public List<string> Calls { get; } = [];
     private readonly HashSet<int> _wearing = [];
 
-    public Task<CursedCityPlan> PlanAsync(int lossesToSkip, IReadOnlySet<int> skip, bool allowRisky, string? difficulty, CancellationToken ct)
+    public Task<CursedCityPlan> PlanAsync(int lossesToSkip, IReadOnlySet<int> skip, bool allowRisky, string? difficulty, bool forQuest, CancellationToken ct)
     {
         var levels = Levels.Select(l =>
         {
@@ -36,7 +36,8 @@ public sealed class FakeCursedCityGame : ICursedCityGame
         }).ToList();
         var open = levels.Where(l => l.Reachable && !l.Stage.Beaten && !l.Unbeatable && !skip.Contains(l.Stage.Id)).OrderByDescending(l => l.Stage.Number).FirstOrDefault();
         var replay = levels.Where(l => l.Stage.Beaten && !skip.Contains(l.Stage.Id)).OrderByDescending(l => l.Stage.Number).FirstOrDefault();
-        return Task.FromResult(new CursedCityPlan(Keys, "Hard", levels, open ?? replay, open is not null ? "open" : "again", []));
+        var next = forQuest ? replay ?? open : open ?? replay;
+        return Task.FromResult(new CursedCityPlan(Keys, "Hard", levels, next, next == open ? "open" : "again", []));
     }
 
     public Task<string> GearAsync(CcLevel level, IReadOnlyList<int> ids, bool dryRun, CancellationToken ct)

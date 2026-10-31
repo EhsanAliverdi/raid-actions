@@ -7,7 +7,8 @@ namespace RaidActions.Autoplay;
 public interface ICursedCityGame
 {
     /// <summary>The plan from a fresh account read (<see cref="CursedCityPlanner"/>): keys, levels, the next level and its team.</summary>
-    Task<CursedCityPlan> PlanAsync(int lossesToSkip, IReadOnlySet<int> skip, bool allowRisky, string? difficulty, CancellationToken ct);
+    /// <param name="forQuest">A quest asks for cleared stages: a beaten level first (<see cref="CursedCityPlanner.Plan"/>).</param>
+    Task<CursedCityPlan> PlanAsync(int lossesToSkip, IReadOnlySet<int> skip, bool allowRisky, string? difficulty, bool forQuest, CancellationToken ct);
 
     /// <summary>Gears these unused champions from the inventory (Prepare) for the level; vault members are taken out first.</summary>
     Task<string> GearAsync(CcLevel level, IReadOnlyList<int> ids, bool dryRun, CancellationToken ct);
@@ -40,6 +41,8 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
     private static readonly TimeSpan PlanStale = TimeSpan.FromMinutes(10);
     private CursedCityPlan? _plan;
     private DateTime _planAt;
+    private bool _planForQuest;
+    private string? _lastWhy;
     private readonly HashSet<int> _geared = [];
     private readonly HashSet<int> _dryShown = [];
     private int _battles, _wins, _losses, _opened;
@@ -60,7 +63,7 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
     public Decision Decide(PlayContext ctx)
     {
         var s = ctx.Settings.CursedCity;
-        if (_plan is null || ctx.Utc - _planAt > PlanStale) return Decision.Now("reading Cursed City");
+        if (_plan is null || ctx.Utc - _planAt > PlanStale || _planForQuest != ForQuest(ctx)) return Decision.Now("reading Cursed City");
         if (Next(s, ctx.DryRun) is { } why) return Decision.Now(why);
         return Decision.Wait(ctx.Utc + TimeSpan.FromHours(1), _plan.Next is null ? _plan.Why : $"{Math.Floor(_plan.Keys):0} key(s): waiting for keys");
     }
@@ -68,10 +71,14 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
     public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
     {
         var s = ctx.Settings.CursedCity;
-        _plan = await game.PlanAsync(Math.Max(1, s.LossesToSkip), _dryShown, s.TryRisky, s.Difficulty, ct);
+        _planForQuest = ForQuest(ctx);
+        _plan = await game.PlanAsync(Math.Max(1, s.LossesToSkip), _dryShown, s.TryRisky, s.Difficulty, _planForQuest, ct);
         _planAt = ctx.Utc;
         var level = _plan.Next;
         var playable = level is not null && Spendable(s) >= Cost(level) && level.Team.Feasible && !_dryShown.Contains(level.Stage.Id);
+        // Nothing to play: why, once per reason (seen 2026-10-31: a whole day without one line from Cursed City).
+        if (!playable && _plan.Why != _lastWhy) ctx.Event(AreaId, "plan", $"nothing to play: {_plan.Why}");
+        _lastWhy = playable ? null : _plan.Why;
 
         // Gear this bot added that the next level does not use (or all of it when no level is played now): off again.
         var keep = playable ? level!.Team.Members.Select(m => m.Id).ToHashSet() : [];
@@ -128,6 +135,7 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
         {
             _wins++;
             if (!level.Stage.Beaten) _opened++;
+            ctx.QuestNeeds = [.. ctx.QuestNeeds.Select(n => n.Kind == QuestNeedKind.CursedCity ? n with { Remaining = n.Remaining - 1 } : n).Where(n => n.Remaining > 0)];
         }
         else _losses++;
         ctx.Event(AreaId, "battle", $"{outcome.Result} {where} ({level.Criterion}; team {string.Join(", ", level.Team.Members.Select(m => m.Name))}). {outcome.Text}");
@@ -158,6 +166,9 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
         if (s.RemoveGearAfter && !dryRun && _geared.Count > 0) return "keys used: taking the added gear back off";
         return null;
     }
+
+    /// <summary>The quest "Clear N Stages in the Cursed City" is open (Ehsan 2026-10-31: beaten levels pass it).</summary>
+    private static bool ForQuest(PlayContext ctx) => ctx.QuestLeft(QuestNeedKind.CursedCity) > 0;
 
     private double Spendable(CursedCityPlaySettings s) => Math.Floor(_plan?.Keys ?? 0) - Math.Max(0, s.KeepKeys);
 

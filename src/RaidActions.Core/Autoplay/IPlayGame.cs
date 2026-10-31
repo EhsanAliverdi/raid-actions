@@ -26,6 +26,12 @@ public interface IPlayGame
     /// </summary>
     Task<BattleOutcome> FightArenaOpponentAsync(long userId, bool dryRun, CancellationToken ct);
 
+    /// <summary>
+    /// The quest "a team from 4 different Affinities" (Ehsan 2026-10-31): like <see cref="FightArenaOpponentAsync"/>, with the team screen
+    /// set to <see cref="ArenaAffinityTeam.Build"/> from the team it shows; the team it showed is put back before the next arena fight.
+    /// </summary>
+    Task<BattleOutcome> FightArenaAffinitiesAsync(long userId, bool dryRun, CancellationToken ct) => FightArenaOpponentAsync(userId, dryRun, ct);
+
     /// <summary>The board's free refresh (never a paid one): false when the game does not offer it free now. Returns the new board.</summary>
     Task<ArenaBoard?> RefreshArenaFreeAsync(bool dryRun, CancellationToken ct);
 

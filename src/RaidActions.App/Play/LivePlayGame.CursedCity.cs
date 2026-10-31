@@ -21,13 +21,13 @@ public sealed partial class LivePlayGame : ICursedCityGame
     /// <summary>The team last set on a team screen (the game keeps it in the slots): the planner keeps it where it fits.</summary>
     private HashSet<int> _ccLastTeam = [];
 
-    public async Task<CursedCityPlan> PlanAsync(int lossesToSkip, IReadOnlySet<int> skip, bool allowRisky, string? difficulty, CancellationToken ct)
+    public async Task<CursedCityPlan> PlanAsync(int lossesToSkip, IReadOnlySet<int> skip, bool allowRisky, string? difficulty, bool forQuest, CancellationToken ct)
     {
         var (data, _, ratings, locks) = await Account(ct);
         LoadLocked(data.Progress?.CursedCity?.RotationUpdatedUtc, difficulty ?? "Hard");
         // The readiness check (AoE control, survivability, damage, the boss's needs): NotReady levels are never played.
         _ccCtx ??= CcContext.Load(extractorRoot, ExtractorOutput);
-        var plan = CursedCityPlanner.Plan(data, locks, ratings, lossesToSkip, skip, _ccLocked, _ccCtx, allowRisky, difficulty, _ccLastTeam);
+        var plan = CursedCityPlanner.Plan(data, locks, ratings, lossesToSkip, skip, _ccLocked, _ccCtx, allowRisky, difficulty, _ccLastTeam, forQuest);
         // The chosen level's own disabled champions: its team built again without them.
         if (plan.Next is { } next && _ccDisabled.TryGetValue(next.Stage.Id, out var off) && off.Count > 0)
         {

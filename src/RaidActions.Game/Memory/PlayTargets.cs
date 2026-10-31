@@ -94,7 +94,7 @@ public static partial class PlayTargets
         return double.TryParse(t.TrimEnd('K', 'M'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) ? (long)(v * scale) : 0;
     }
 
-    public static bool IsTeamView(string view) => view.StartsWith("HeroesSelectionDialog", StringComparison.Ordinal) || view.EndsWith("HeroesSelectionDialog", StringComparison.Ordinal);
+    public static bool IsTeamView(string view) => view.StartsWith("HeroesSelectionDialog", StringComparison.Ordinal) || view.EndsWith("HeroesSelectionDialog", StringComparison.Ordinal) || view == "LiveArenaDraftDialog";
 
     private const string BattleMapButton = "Client.ViewModel.Contextes.Village.HUD.BattleMapButtonContext";
     private const string InboxButton = "Client.ViewModel.Contextes.InboxButtonContext";
@@ -136,6 +136,10 @@ public static partial class PlayTargets
     private const string TavernItem = "Client.ViewModel.Contextes.HeroesDevelopmentDialog.Items.HeroesDevelopmentItemContext";
     private const string ClanScore = "Client.ViewModel.Contextes.AllianceEnemies.ScoreItem.AllianceEnemyScoreItemContext";
     private const string ClanChest = "Client.ViewModel.Contextes.GachaChest.AllianceEnemyRewardItem.AllianceEnemyRewardItemContext";
+    private const string LiveDraftState = "Client.ViewModel.Contextes.LiveArenaDraftDialog.IterativeHeroSelectionStateContext";
+    private const string LiveBattleTab = "Client.ViewModel.Contextes.LiveArenaDialog.Tabs.Battle.LiveArenaBattleTabContext";
+    private const string LiveSchedule = "Client.ViewModel.Contextes.LiveArenaDialog.Tabs.Battle.LiveArenaCurrentScheduleContext";
+    private const string LiveSlot = "Client.ViewModel.Contextes.LiveArenaDraftDialog.SelectableHeroSlotContext";
     private const string ShopOffer = "Client.ViewModel.Contextes.Bank.Offers.StaticCommon.StaticCommonOfferContext";
     private const string DtMapItem = "Client.ViewModel.Contextes.DoomTowerMap.DoomTowerMapItemContext";
     private const string DtResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishDoomTowerDialogContext";
@@ -200,7 +204,7 @@ public static partial class PlayTargets
         "mode-dungeon", "dungeon-region", "dungeon-stage", "dungeon-difficulty", "dungeon-dropdown", "super-raid",
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
-        "mode-clan", "clan-demonlord", "clan-hydra", "clan-difficulty", "clan-battle", "clan-continue", "clan-chests", "clan-score", "clan-chest",
+        "mode-clan", "clan-demonlord", "clan-hydra", "clan-difficulty", "clan-battle", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-state", "live-phase", "live-slot", "live-confirm",
         "mode-dt", "dt-stage", "dt-final-boss", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
@@ -214,6 +218,7 @@ public static partial class PlayTargets
     [GeneratedRegex(@"^Region(\d+)$")] private static partial Regex ChapterPoint();
 
     [GeneratedRegex(@"Battle|Start|Fight|Attack", RegexOptions.IgnoreCase)] private static partial Regex FightName();
+    [GeneratedRegex(@"Confirm|Ready|Accept|Start", RegexOptions.IgnoreCase)] private static partial Regex ConfirmName();
     [GeneratedRegex(@"Info|Avatar|Profile|Hero|Skin|Preset|Auto|Relic|Filter|Sort", RegexOptions.IgnoreCase)] private static partial Regex NotFightName();
     [GeneratedRegex(@"Refresh|Update|Reload", RegexOptions.IgnoreCase)] private static partial Regex RefreshName();
     [GeneratedRegex(@"Collect|Claim|Take|Get|Receive|Accept", RegexOptions.IgnoreCase)] private static partial Regex CollectName();
@@ -509,6 +514,41 @@ public static partial class PlayTargets
                 case ClanMapItem when hydra != 0 && c.Address == hydra:
                     targets.Add(Make("clan-hydra", "clan: Hydra", n, Own(i), null));
                     break;
+                case LiveBattleTab:
+                {
+                    // Find Opponent: enabled by the game only with a token.
+                    var enabled = Try(() => BoolValue(g, g.Ref(c.Address, LiveBattleTab, "_battleButtonEnabled")), null, notes, "LiveArenaBattleTabContext._battleButtonEnabled");
+                    foreach (var x in SelfAndBelow(i).Where(x => x.Name == "BattleButton_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                        targets.Add(Make("live-find", "live arena: Find Opponent", x, x, enabled == true ? "enabled" : "not enabled"));
+                    break;
+                }
+                case LiveSchedule:
+                {
+                    var open = Try(() => BoolValue(g, g.Ref(c.Address, LiveSchedule, "_active")), null, notes, "LiveArenaCurrentScheduleContext._active");
+                    targets.Add(Make("live-state", "live arena: hours", n, Own(i), open == true ? "active" : "closed"));
+                    break;
+                }
+                case LiveDraftState:
+                {
+                    var phaseName = Try(() => StringValue(g, g.Ref(c.Address, LiveDraftState, "_phaseName")), null, notes, "IterativeHeroSelectionStateContext._phaseName");
+                    var mine = Try(() => BoolValue(g, g.Ref(c.Address, LiveDraftState, "_isPlayerTurn")), null, notes, "IterativeHeroSelectionStateContext._isPlayerTurn");
+                    var confirm = Try(() => BoolValue(g, g.Ref(c.Address, LiveDraftState, "_canPressConfirm")), null, notes, "IterativeHeroSelectionStateContext._canPressConfirm");
+                    targets.Add(Make("live-phase", "live arena: phase", n, Own(i), $"{phaseName}|{(mine == true ? "mine" : "theirs")}|{(confirm == true ? "confirm" : "no")}"));
+                    if (confirm == true)
+                        foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null && ConfirmName().IsMatch(x.Name)).Take(1))
+                            targets.Add(Make("live-confirm", "live arena: Confirm", x, x, x.Path));
+                    break;
+                }
+                case LiveSlot:
+                {
+                    // A squad slot: mine left of the VS, the enemy's right. The champion's id for mine.
+                    if (Try(() => BoolValue(g, g.Ref(c.Address, LiveSlot, "_isAvailable")), null, notes, "SelectableHeroSlotContext._isAvailable") == false || n.Screen is null) break;
+                    var avatar = Try(() => g.Ref(c.Address, SelectionSlot, "Hero"), 0UL, notes, "HeroSlotContext.Hero");
+                    var hero = avatar == 0 ? null : Try(() => (int?)g.Int(avatar, HeroAvatar, "_EntityId_k__BackingField"), null, notes, "HeroAvatarContext._EntityId");
+                    var left = n.Screen.Value.Center.X < t.ClientWidth / 2f;
+                    targets.Add(Make("live-slot", $"live arena slot {n.Name}", n, Own(i) ?? n, left ? "mine" : "enemy", id: hero));
+                    break;
+                }
                 case ClanScore:
                 {
                     // A line of the difficulty's clan table: who, damage today, keys today (read, never clicked).
@@ -1028,6 +1068,11 @@ public static partial class PlayTargets
         if (t.View == "StaticOfferInfoOverlay")
             foreach (var x in nodes.Where(x => x.Name == "BuyPackButton" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
                 targets.Add(Make("shop-claim", "shop: Claim", x, x, x.Path));
+
+        // The battle menu's Live Arena button (seen 2026-11-01).
+        if (t.View == BattleMenuView)
+            foreach (var x in nodes.Where(x => x.Name == "OpenLiveArenaButton" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                targets.Add(Make("live-open", "battle menu: Live Arena", x, x, null));
 
         // The Tavern's Upgrade Level tab, the main slot's X and Upgrade.
         if (t.View == TavernView)

@@ -1400,6 +1400,72 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.LiveArenaDraftDialog.IterativeHeroSelectionStateContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_phaseName": {
+          "offset": "0x88",
+          "type": "StringProperty",
+          "field": "_phaseName",
+          "source": "field",
+          "status": "direct"
+        },
+        "_isPlayerTurn": {
+          "offset": "0x68",
+          "type": "BoolProperty",
+          "field": "_isPlayerTurn",
+          "source": "field",
+          "status": "direct"
+        },
+        "_canPressConfirm": {
+          "offset": "0x60",
+          "type": "BoolProperty",
+          "field": "_canPressConfirm",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.LiveArenaDialog.Tabs.Battle.LiveArenaBattleTabContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_battleButtonEnabled": {
+          "offset": "0x78",
+          "type": "BoolProperty",
+          "field": "_battleButtonEnabled",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.LiveArenaDialog.Tabs.Battle.LiveArenaCurrentScheduleContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_active": {
+          "offset": "0x60",
+          "type": "BoolProperty",
+          "field": "_active",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.LiveArenaDraftDialog.SelectableHeroSlotContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_isAvailable": {
+          "offset": "0xE8",
+          "type": "BoolProperty",
+          "field": "_isAvailable",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.AllianceEnemies.ScoreItem.AllianceEnemyScoreItemContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

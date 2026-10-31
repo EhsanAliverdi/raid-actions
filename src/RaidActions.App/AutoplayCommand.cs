@@ -38,6 +38,7 @@ public static class AutoplayCommand
         var enableHydra = args.Contains("--enable-hydra");
         var enableDt = args.Contains("--enable-dt");
         var enableChores = args.Contains("--enable-chores");
+        var enableLive = args.Contains("--enable-live");
         var enableTag = args.Contains("--enable-tag");
         var noYield = args.Contains("--no-yield");
         // --cc-difficulty Normal|Hard: the Cursed City difficulty to play; --cc-risky: also risky levels (whatever the settings say).
@@ -55,13 +56,14 @@ public static class AutoplayCommand
             if (enableHydra) s = s with { Enabled = true, Hydra = s.Hydra with { Enabled = true } };
             if (enableDt) s = s with { Enabled = true, DoomTower = s.DoomTower with { Enabled = true } };
             if (enableChores) s = s with { Enabled = true, Chores = s.Chores with { Enabled = true } };
+            if (enableLive) s = s with { Enabled = true, LiveArena = s.LiveArena with { Enabled = true } };
             if (enableTag) s = s with { Enabled = true, TagArena = s.TagArena with { Enabled = true } };
             if (ccDifficulty is not null) s = s with { CursedCity = s.CursedCity with { Difficulty = ccDifficulty } };
             if (ccRisky) s = s with { CursedCity = s.CursedCity with { TryRisky = true } };
             if (noYield) s = s with { Pacing = s.Pacing with { YieldToPersonMinutes = 0 } };
             return s;
         }
-        Func<AutoplaySettings, AutoplaySettings>? force = enable || enableFw || enableCc || enableEnergy || enableCb || enableGifts || enableHydra || enableDt || enableChores || enableTag || noYield || ccDifficulty is not null || ccRisky ? Force : null;
+        Func<AutoplaySettings, AutoplaySettings>? force = enable || enableFw || enableCc || enableEnergy || enableCb || enableGifts || enableHydra || enableDt || enableChores || enableLive || enableTag || noYield || ccDifficulty is not null || ccRisky ? Force : null;
 
         using var hold = BotLock.TakeAutoplay();
         if (hold is null)
@@ -127,10 +129,11 @@ public static class AutoplayCommand
             var hydraActivity = new HydraActivity(game);
             var dtActivity = new DoomTowerActivity(game);
             var choresActivity = new ChoresActivity(game);
+            var liveActivity = new LiveArenaActivity(game);
             var tagActivity = new TagArenaActivity(game);
             // Keys before energy (Ehsan 2026-10-31: "use keys smartly, the first priority is the quests, especially the daily ones like Faction
             // Wars"): energy can always play (the farm), so it comes last and takes every turn the key areas leave.
-            IActivity[] activities = [giftsActivity, arena, tagActivity, cbActivity, hydraActivity, fwActivity, ccActivity, dtActivity, choresActivity, energyActivity];
+            IActivity[] activities = [giftsActivity, arena, tagActivity, cbActivity, hydraActivity, fwActivity, ccActivity, dtActivity, liveActivity, choresActivity, energyActivity];
             host.GameBlocked = game.SessionTaken;
             Print($"Auto Play{(dry ? " (DRY RUN: nothing that spends is pressed)" : "")}. Settings and status: {dir}\\autoplay. Overlays: {folder}. Stop: the app, or Ctrl+Alt+Esc.");
             // autoplay --test-quest ArenaAffinities:1 --test-quest CursedCity:2: quests as if read, to try an area's quest when none is open.

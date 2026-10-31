@@ -197,9 +197,9 @@ public static partial class PlayTargets
         "mode-dungeon", "dungeon-region", "dungeon-stage", "dungeon-difficulty", "dungeon-dropdown", "super-raid",
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
-        "mode-clan", "clan-demonlord", "clan-hydra", "clan-difficulty", "clan-battle",
+        "mode-clan", "clan-demonlord", "clan-hydra", "clan-difficulty", "clan-battle", "clan-continue",
         "mode-dt", "dt-stage", "dt-final-boss", "village-market", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
-        "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "village-missions", "mission-item",
+        "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
     };
 
@@ -973,6 +973,21 @@ public static partial class PlayTargets
         if (t.View == "PrizeInfoOverlay")
             foreach (var x in nodes.Where(x => x.Name == "1" && x.Context?.Class == "Client.ViewModel.Contextes.ButtonContext" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
                 targets.Add(Make("market-get", "market: Get", x, x, x.Path));
+
+        // The quests' Claim all (seen 2026-11-01: a plain button, its context not on it, so the context's case above never saw it: quests stood
+        // done and unclaimed) and a row's own Claim, when the game enables them.
+        if (t.View == "QuestsDialog")
+            foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null))
+            {
+                if (x.Name == "ClaimAllButton" && !targets.Any(o => o.Kind == "quest-claim-all" && o.Path == x.Path)) targets.Add(Make("quest-claim-all", "quests: Claim all", x, x, "available"));
+                else if (x.Name == "ClaimButton_h") targets.Add(Make("quest-claim", "quests: Claim", x, x, x.Path));
+            }
+
+        // Clan Boss: the question before a normal battle (Continue; the rest is its close and the "don't ask again" box).
+        if (t.View == "AllianceBossQuickBattleConfirmOverlay")
+            foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null && x.IsOn is null && !x.Name.Contains("Close", StringComparison.OrdinalIgnoreCase)
+                && !x.Name.Contains("Check", StringComparison.OrdinalIgnoreCase)).OrderByDescending(x => x.Screen!.Value.X).Take(1))
+                targets.Add(Make("clan-continue", "clan boss: Continue", x, x, x.Path));
 
         // The Tavern's Upgrade Level tab, the main slot's X and Upgrade.
         if (t.View == TavernView)

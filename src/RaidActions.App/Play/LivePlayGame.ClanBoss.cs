@@ -89,8 +89,16 @@ public sealed partial class LivePlayGame : IClanBossGame
             await Back(teamView, ct);
             return new BattleOutcome(BattleResult.NotStarted, start?.NotClickable is null && start is not null ? "Start shown, not pressed" : $"Start not identified: {start?.Note ?? "no team-start target"}");
         }
-        await Click("team-start", t => t.View == teamView, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView,
+        await Click("team-start", t => t.View == teamView, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView or "AllianceBossQuickBattleConfirmOverlay",
             "the battle starts", ct, within: TimeSpan.FromSeconds(25), shot: true);
+        // The game asks before a normal battle where Quick Battle is open (seen 2026-11-01): its one action is Continue.
+        if (Top(await ReadState(ct)) == "AllianceBossQuickBattleConfirmOverlay")
+        {
+            await Task.Delay(800, ct);
+            log($"autoplay: the Quick Battle question. Screen dump: {DumpScreen("clan confirm")}");
+            await Click("clan-continue", null, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView,
+                "the battle starts", ct, within: TimeSpan.FromSeconds(25), shot: true);
+        }
         var inBattle = await ReadState(ct);
         if (Top(inBattle) == PlayTargets.RefillView)
         {

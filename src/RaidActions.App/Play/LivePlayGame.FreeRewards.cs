@@ -72,6 +72,10 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
             foreach (var q in play.Quests ?? []) read[(q.Tab, q.Id, q.Text)] = q;
             if (!claim) continue;
             var claimAll = after.FirstOrDefault(t => t.Kind == "quest-claim-all" && t.Note == "available" && t.NotClickable is null);
+            var claimable = (play.Quests ?? []).Count(q => q.Claimable);
+            var seen = after.Where(t => t.Kind == "quest-claim-all").Select(t => $"{t.Note}{(t.NotClickable is { } why ? $" ({why})" : "")}").ToList();
+            if (claimAll is null && (claimable > 0 || (play.Quests ?? []).Any(q => q.Completed)))
+                log($"autoplay: quest tab {k}: {claimable} claimable, {(play.Quests ?? []).Count(q => q.Completed)} completed, Claim all: {(seen.Count == 0 ? "not found" : string.Join(", ", seen))}. Screen dump: {DumpScreen($"quest tab {k}")}");
             if (claimAll is null) continue;
             if (dryRun)
             {
@@ -79,8 +83,10 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
                 continue;
             }
             var top = Top(s2);
-            await Click("quest-claim-all", t => t.Path == claimAll.Path, (s3, scan) => Top(s3) != top || !scan().Targets.Any(t => t.Kind == "quest-claim-all" && t.Note == "available"),
-                $"quest tab {k}'s rewards claimed", ct, within: TimeSpan.FromSeconds(10));
+            try { await Click("quest-claim-all", t => t.Path == claimAll.Path, (s3, scan) => Top(s3) != top || !scan().Targets.Any(t => t.Kind == "quest-claim-all" && t.Note == "available"),
+                $"quest tab {k}'s rewards claimed", ct, within: TimeSpan.FromSeconds(6)); }
+            // The button stays lit after a claim on some tabs: not an error.
+            catch (PlayStopException e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal)) { }
             claimed++;
             log($"autoplay: claimed the rewards of quest tab {k}");
             await Task.Delay(1500, ct);

@@ -23,8 +23,9 @@ public sealed partial class LivePlayGame : ITagArenaGame
         for (var hop = 0; hop < 10; hop++)
         {
             var s = await Settled(ct);
-            if (s.InBattle) { log("autoplay: a battle is running; waiting for it to end (no input)"); await WaitBattle(ct, "BattleFinishArena3x3Dialog"); continue; }
+            // A result on top first: the series' result keeps the battle flag up (seen 2026-10-31), so it is left before any wait.
             if (Top(s) is { } r && r.StartsWith("BattleFinish", StringComparison.Ordinal)) { await LeaveResult(ct, r); continue; }
+            if (s.InBattle) { log("autoplay: a battle is running; waiting for it to end (no input)"); await WaitBattle(ct, "BattleFinishArena3x3Dialog"); continue; }
             var (_, targets, play) = await Read(ct);
             if (play.Tag is { } board && targets.Any(t => t.Kind is "tag-opponent" or "tag-refresh")) return TagBoard(board);
             if (Top(s) is { } top && PlayTargets.IsTeamView(top)) { await Back(top, ct); continue; }
@@ -57,6 +58,21 @@ public sealed partial class LivePlayGame : ITagArenaGame
         var row = targets.FirstOrDefault(t => t.Kind == "tag-opponent" && t.Key == userId)
             ?? throw new PlayStopException($"Tag Team Arena: opponent {userId} is not on the board.");
         log($"autoplay: STEP Tag Team Arena: {row.Name}");
+        // The board does not take the wheel (seen 2026-10-31): it is dragged until the row's Battle is on screen.
+        for (var i = 0; i < 6; i++)
+        {
+            var (_, now, _) = await Read(ct);
+            var mine = now.FirstOrDefault(t => t.Kind == "tag-opponent" && t.Key == userId);
+            if (mine is null || mine.NotClickable is null) break;
+            var (w, why) = Game.Window.GameWindow.Find();
+            if (w is null) throw new PlayStopException(why!);
+            var dy = Math.Clamp((mine.Rect?.Center.Y ?? w.Client.Height) - w.Client.Height * 0.5f, -w.Client.Height * 0.45f, w.Client.Height * 0.45f);
+            var x = w.Client.Width * 0.45f;
+            var y1 = w.Client.Height * 0.55f + dy / 2;
+            if (Input.MouseInput.Drag(w, x, y1, x, y1 - dy) is { } notSent) throw new PlayStopException("Not dragged: " + notSent);
+            log($"autoplay: dragged the Tag Team board {-dy:0} px towards {row.Name}");
+            await Task.Delay(900, ct);
+        }
         await Click("tag-opponent", t => t.Key == userId, (s2, _) => s2.Top?.Name is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView),
             "the team screen", ct, within: TimeSpan.FromSeconds(10));
         var after = await Settled(ct);
@@ -84,6 +100,14 @@ public sealed partial class LivePlayGame : ITagArenaGame
         {
             var s = await ReadState(ct);
             if (!s.InBattle && !(Top(s)?.StartsWith("BattleFinish", StringComparison.Ordinal) ?? false)) break;
+            if (Top(s) is { } shown && shown.StartsWith("BattleFinish", StringComparison.Ordinal))
+            {
+                var (_, _, seen) = await Read(ct);
+                last = seen.Result is not null || seen.Pve is not null ? seen : last;
+                await LeaveResult(ct, shown);
+                await Task.Delay(1500, ct);
+                continue;
+            }
             last = await WaitBattle(ct, "BattleFinishArena3x3Dialog") ?? last;
             var r = await ReadState(ct);
             if (Top(r) is { } fin && fin.StartsWith("BattleFinish", StringComparison.Ordinal)) await LeaveResult(ct, fin);

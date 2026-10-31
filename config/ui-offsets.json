@@ -1326,6 +1326,26 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.BattleFinishArena3x3Dialog.BattleFinishArena3x3DialogContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_summaryDefeat": {
+          "offset": "0x80",
+          "type": "BoolProperty",
+          "field": "_summaryDefeat",
+          "source": "field",
+          "status": "direct"
+        },
+        "_enemyUserName": {
+          "offset": "0x78",
+          "type": "StringProperty",
+          "field": "_enemyUserName",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.Quests.QuestItemContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

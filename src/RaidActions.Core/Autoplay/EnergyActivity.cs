@@ -135,11 +135,19 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     /// Rows the open quests add before the list (plan/quests.md): a dungeon boss (Dragon's Lair, the highest Normal stage beaten), a
     /// Campaign boss (12-7 Normal); as many runs as the quest has left. Energy quests and Campaign stages are met by the list itself.
     /// </summary>
-    private static List<EnergyTarget> QuestRows(PlayContext ctx)
+    private List<EnergyTarget> QuestRows(PlayContext ctx)
     {
         var rows = new List<EnergyTarget>();
-        if (ctx.QuestLeft(QuestNeedKind.DungeonBoss) > 0)
-            rows.Add(new EnergyTarget { Id = "quest-dungeon", Area = "Dungeon", Region = "DragonsLair", Difficulty = "Normal" });
+        // A quest naming its dungeon and a lowest stage ("Clear Stage 15 or higher of the Phantom Shogun's Grove"): that dungeon, at the
+        // highest stage beaten when it counts, else the stage it names; any other dungeon quest: Dragon's Lair's highest Normal stage.
+        foreach (var n in ctx.Settings.Quests.Enabled ? ctx.QuestNeeds.Where(n => n.Kind == QuestNeedKind.DungeonBoss && n.Playable && n.Remaining > 0) : [])
+        {
+            var id = $"quest-dungeon-{n.Region ?? "any"}";
+            if (rows.Any(r => r.Id == id)) continue;
+            var highest = n.Region is { } r0 ? EnergyPlanner.HighestBeaten(new EnergyTarget { Area = "Dungeon", Region = r0, Difficulty = "Normal" }, _account?.Progress ?? []) : null;
+            var stage = n.MinStage is { } min ? Math.Max(min, highest ?? min) : (int?)null;
+            rows.Add(new EnergyTarget { Id = id, Area = "Dungeon", Region = n.Region ?? "DragonsLair", Difficulty = "Normal", Stage = stage });
+        }
         if (ctx.QuestLeft(QuestNeedKind.CampaignBoss) > 0)
             rows.Add(new EnergyTarget { Id = "quest-campaign-boss", Area = "Story", Region = "Region12", Difficulty = "Normal", Stage = 7 });
         return rows;
@@ -287,8 +295,9 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 // A quest row's win counts against its quest at once (the next quest pass reads the real progress).
                 if (outcome.Result == BattleResult.Victory && run.Target.Id.StartsWith("quest-", StringComparison.Ordinal))
                 {
-                    var kind = run.Target.Id == "quest-dungeon" ? QuestNeedKind.DungeonBoss : QuestNeedKind.CampaignBoss;
-                    ctx.QuestNeeds = [.. ctx.QuestNeeds.Select(n => n.Kind == kind ? n with { Remaining = n.Remaining - 1 } : n).Where(n => n.Remaining > 0)];
+                    var kind = run.Target.Id.StartsWith("quest-dungeon", StringComparison.Ordinal) ? QuestNeedKind.DungeonBoss : QuestNeedKind.CampaignBoss;
+                    var region = run.Target.Id.StartsWith("quest-dungeon-", StringComparison.Ordinal) && run.Target.Id != "quest-dungeon-any" ? run.Target.Region : null;
+                    ctx.QuestNeeds = [.. ctx.QuestNeeds.Select(n => n.Kind == kind && n.Region == region ? n with { Remaining = n.Remaining - 1 } : n).Where(n => n.Remaining > 0)];
                 }
                 // Campaign drops sold when enough have come (the option; a failed sale stops only the sale, not the farm).
                 if (run.Target.Area == "Story" && s.SellGear.Enabled && outcome.Result == BattleResult.Victory)

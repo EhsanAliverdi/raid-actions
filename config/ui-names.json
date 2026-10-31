@@ -234,6 +234,7 @@
                   "Client.ViewModel.Contextes.Quests.QuestsDialogContext":  [ "_activeTabIndex" ],
                   "Client.ViewModel.Contextes.Arena3x3Dialog.Tabs.Battle.Arena3x3BattleOpponentItemContext":  [ "_arenaOpponent", "_teamPower", "_opponentStatusId", "_onQuarantine" ],
                   "Client.ViewModel.Contextes.Arena3x3Dialog.Tabs.Battle.Arena3x3BattleTabContext":  [ "_freeRefreshAvailable", "_freeRefreshTimeLeft" ],
+                  "Client.ViewModel.Contextes.BattleFinishArena3x3Dialog.BattleFinishArena3x3DialogContext":  [ "_summaryDefeat", "_enemyUserName" ],
                   "Client.ViewModel.Contextes.Quests.QuestItemContext":  [ "ConditionName", "ProgressString", "IsCompleted", "ButtonState", "_QuestId_k__BackingField" ],
                   "Client.ViewModel.Contextes.Quests.PeriodicQuestItemContext":  [ "_questPrototypeId" ],
                   "Client.ViewModel.Contextes.RecommendedQuests.RecommendedQuestItemContext":  [ "_description", "_state", "_progressValue", "_questId" ],

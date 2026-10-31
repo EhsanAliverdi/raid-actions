@@ -247,16 +247,16 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     }
 
     /// <summary>Wheel-scrolls the board until the opponent's Battle button is fully visible (at most 12 turns).</summary>
-    private async Task ScrollTo(long userId, CancellationToken ct)
+    private async Task ScrollTo(long userId, CancellationToken ct, string kind = "arena-opponent")
     {
         for (var i = 0; i < 12; i++)
         {
             var (_, targets, _) = await Read(ct);
-            var mine = targets.FirstOrDefault(t => t.Kind == "arena-opponent" && t.Key == userId);
+            var mine = targets.FirstOrDefault(t => t.Kind == kind && t.Key == userId);
             if (mine is null) throw new PlayStopException($"Opponent {userId} has no Battle target on the board.");
             if (mine.NotClickable is null) return;
             if (mine.Rect is null || mine.Interactable is null) throw new PlayStopException($"Opponent {userId}'s Battle button: {mine.NotClickable} ({mine.Note}).");
-            var shown = targets.Where(t => t.Kind == "arena-opponent" && t.FullyVisible && t.Rect is not null).Select(t => t.Rect!.Value).ToList();
+            var shown = targets.Where(t => t.Kind == kind && t.FullyVisible && t.Rect is not null).Select(t => t.Rect!.Value).ToList();
             if (shown.Count == 0) throw new PlayStopException("No opponent row is fully shown to scroll from.");
             var cx = shown.Average(r => r.Center.X);
             var cy = shown.Average(r => r.Center.Y);

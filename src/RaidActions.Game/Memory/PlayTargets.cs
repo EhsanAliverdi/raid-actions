@@ -150,6 +150,7 @@ public static partial class PlayTargets
     // Tag Team Arena (plan/tag-arena.md; from the dump 2026-10-31).
     private const string TagOpponent = "Client.ViewModel.Contextes.Arena3x3Dialog.Tabs.Battle.Arena3x3BattleOpponentItemContext";
     private const string TagTab = "Client.ViewModel.Contextes.Arena3x3Dialog.Tabs.Battle.Arena3x3BattleTabContext";
+    private const string TagResult = "Client.ViewModel.Contextes.BattleFinishArena3x3Dialog.BattleFinishArena3x3DialogContext";
     private const string QuestItem = "Client.ViewModel.Contextes.Quests.QuestItemContext";
     private const string PeriodicQuest = "Client.ViewModel.Contextes.Quests.PeriodicQuestItemContext";
     private const string AdvancedQuest = "Client.ViewModel.Contextes.Quests.Advanced.AdvancedQuestsItemContext";
@@ -357,8 +358,11 @@ public static partial class PlayTargets
                     tagFree = Try(() => BoolValue(g, g.Ref(c.Address, TagTab, "_freeRefreshAvailable")), null, notes, "Arena3x3BattleTabContext._freeRefreshAvailable");
                     tagFreeText = Try(() => StringValue(g, g.Ref(c.Address, TagTab, "_freeRefreshTimeLeft")), null, notes, "Arena3x3BattleTabContext._freeRefreshTimeLeft");
                     // The free refresh as the Classic Arena's (FreeResfreshAvailable_h's BTN_1; to confirm live); the paid one is never clicked.
-                    var tagFreeButtons = SelfAndBelow(i).Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Path.Contains("FreeResfreshAvailable", StringComparison.Ordinal)
-                        && x.Name.StartsWith("BTN", StringComparison.Ordinal)).ToList();
+                    // The refresh is the tab's "BTN_1" above the opponent rows (seen 2026-10-31, top right); it is clicked only while
+                    // _freeRefreshAvailable says free (checked again right before the click), so the paid refresh is never pressed.
+                    var rowsTop = SelfAndBelow(i).Where(x => x.Context?.Class == TagOpponent && x.Screen is not null).Select(x => x.Screen!.Value.Y).DefaultIfEmpty(float.MaxValue).Min();
+                    var tagFreeButtons = SelfAndBelow(i).Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Name == "BTN_1" && x.Screen is { } sr && sr.Y < rowsTop
+                        && tagFree == true).ToList();
                     targets.Add(Make("tag-refresh", "tag arena: Refresh (free)", n, tagFreeButtons.Count == 1 ? tagFreeButtons[0] : null,
                         (tagFree == true ? "free now" : "not free now") + (tagFreeButtons.Count == 1 ? "" : $"; {tagFreeButtons.Count} free refresh buttons shown")));
                     foreach (var paid in SelfAndBelow(i).Where(x => x.Interactable is not null && x.Path.Contains("FreeResfreshNotAvailable", StringComparison.Ordinal)))
@@ -528,6 +532,9 @@ public static partial class PlayTargets
                 {
                     // A quest row (plan/quests.md): its words, progress, done; its type (a periodic quest's prototype, an advanced quest's
                     // transition: the screen that does it).
+                    // Only the rows on screen: every tab's list stays loaded, so a hidden tab's rows would be read under the shown tab's name
+                    // (seen 2026-10-31: every quest four times).
+                    if (!n.ActiveInHierarchy || n.Screen is null) break;
                     var text = Try(() => StringValue(g, g.Ref(c.Address, QuestItem, "ConditionName")), null, notes, "QuestItemContext.ConditionName");
                     if (string.IsNullOrWhiteSpace(text)) break;
                     var progress = Try(() => StringValue(g, g.Ref(c.Address, QuestItem, "ProgressString")), null, notes, "QuestItemContext.ProgressString");
@@ -545,6 +552,13 @@ public static partial class PlayTargets
                         type = tr == 0 ? null : Try(() => g.ClassName(tr), null, notes, "the transition's class")?.Split('.')[^1];
                     }
                     quests.Add(new RaidExtractor.Autoplay.QuestRead(id, c.Class == AdvancedQuest ? "Advanced" : "?", text.Trim(), type, progress, done, false));
+                    break;
+                }
+                case TagResult:
+                {
+                    // The Tag Team series' result: _summaryDefeat (seen 2026-10-31).
+                    var defeat = Try(() => BoolValue(g, g.Ref(c.Address, TagResult, "_summaryDefeat")), null, notes, "BattleFinishArena3x3DialogContext._summaryDefeat");
+                    if (defeat is { } d) result = new ArenaResultRead(d ? 2 : 1, null, Try(() => StringValue(g, g.Ref(c.Address, TagResult, "_enemyUserName")), null, notes, "_enemyUserName"));
                     break;
                 }
                 case GiftPrize:
@@ -848,6 +862,13 @@ public static partial class PlayTargets
                 targets.Add(new UiTarget("result-close", "arena result: Return to Arena", null, t.View, middle, true, true, true, false, cb.Path, "the RETURN TO ARENA bar",
                     ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
             }
+
+        // The Tag Team Arena's result screens (BattleFinishArena3x3RewardDialog, seen 2026-10-31: prizes and the league bar, no button) close
+        // on a tap: the target is the empty strip near the bottom.
+        if (t.View.StartsWith("BattleFinishArena3x3", StringComparison.Ordinal) && !targets.Any(x => x.Kind == "result-close"))
+            targets.Add(new UiTarget("result-close", "tag arena result: tap to continue", null, t.View,
+                new ClientRect(t.ClientWidth * 0.40f, t.ClientHeight * 0.86f, t.ClientWidth * 0.2f, t.ClientHeight * 0.06f), true, true, true, false, t.View,
+                "a tap on the empty bottom strip", ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
 
         // The team selection's Start (seen 2026-10-29: "Default_h", the big button bottom right; its Checkbox_h above is left alone).
         if (IsTeamView(t.View))

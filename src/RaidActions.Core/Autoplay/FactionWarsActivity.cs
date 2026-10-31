@@ -128,10 +128,11 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
             {
                 var c = step.Crypt!;
                 var stage = Stage(c, s);
-                // A quest asks for a Faction Wars boss (Ehsan 2026-10-31): the lowest boss stage already beaten (7, 14, 21), the safest win.
+                // A quest asks for a Faction Wars boss (Ehsan 2026-10-31: "it should go to the highest boss I beat"): the highest boss stage
+                // already beaten (bosses are stages 7, 14, 21).
                 if (ctx.QuestLeft(QuestNeedKind.FactionWarsBoss) > 0 && c.HighestPassed >= 7)
                 {
-                    stage = 7;
+                    stage = c.HighestPassed / 7 * 7;
                     ctx.Event(AreaId, "quest", $"{c.Name}: a quest asks for a boss: stage {stage}");
                 }
                 var outcome = await game.FightCryptAsync(c, stage, ctx.DryRun, ct);

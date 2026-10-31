@@ -969,6 +969,11 @@ public static partial class PlayTargets
             foreach (var x in nodes.Where(x => x.Name == "BuyButton_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
                 targets.Add(Make("market-get", "market: Get", x, x, x.Path));
 
+        // A shard's page in the Market (seen 2026-10-31): its two ButtonContext buttons, Cancel ("0") and Get ("1").
+        if (t.View == "PrizeInfoOverlay")
+            foreach (var x in nodes.Where(x => x.Name == "1" && x.Context?.Class == "Client.ViewModel.Contextes.ButtonContext" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                targets.Add(Make("market-get", "market: Get", x, x, x.Path));
+
         // The Tavern's Upgrade Level tab, the main slot's X and Upgrade.
         if (t.View == TavernView)
             foreach (var x in nodes.Where(x => x.ActiveInHierarchy && x.Screen is not null && x.Interactable is not null))

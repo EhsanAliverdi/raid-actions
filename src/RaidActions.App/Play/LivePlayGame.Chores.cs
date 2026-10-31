@@ -192,7 +192,12 @@ public sealed partial class LivePlayGame : IChoresGame
             await Click("village-gems", null, (_, _) => true, "the gem bubble", ct);
             await Task.Delay(1500, ct);
             var (after, _, _) = await Read(ct);
-            if (Top(after) != PlayTargets.VillageHudView) await Back(Top(after)!, ct);
+            if (Top(after) != PlayTargets.VillageHudView)
+            {
+                await Back(Top(after)!, ct); // no gems waiting: the tap opened the Mine's window
+                await Task.Delay(2000, ct);
+                await Settled(ct);
+            }
         }
         await Click("village-shop", null, (s2, _) => Top(s2) == PlayTargets.ShopView, "the Shop opens", ct, within: TimeSpan.FromSeconds(10));
         await Task.Delay(2000, ct);

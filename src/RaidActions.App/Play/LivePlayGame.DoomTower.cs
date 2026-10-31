@@ -13,10 +13,15 @@ public sealed partial class LivePlayGame : IDoomTowerGame
 {
     private bool _dtDumped;
 
+    /// <summary>
+    /// The top boss: the only stage the bot reaches. The tower is a 3D scene with no screen rectangles; with every floor beaten the map opens
+    /// on this boss (seen 2026-10-31), a fixed spot, and a click opens its team screen.
+    /// </summary>
+    private const int FinalBoss = 120;
+
     public async Task<DoomTowerMap> ReadDoomTowerAsync(CancellationToken ct)
     {
         var (data, _, _, _) = await Account(ct);
-        var prices = (data.Progress?.StageCosts ?? []).Where(c => c.Area == "DoomTower").GroupBy(c => c.StageId).ToDictionary(g => g.Key, g => g.First().Price);
         await OpenDoomTower(ct);
         var (_, targets, _) = await Read(ct);
         if (!_dtDumped) { _dtDumped = true; log($"autoplay: the Doom Tower map. Screen dump: {DumpScreen("doom tower map")}"); }
@@ -25,9 +30,9 @@ public sealed partial class LivePlayGame : IDoomTowerGame
             var t = g.First();
             var status = t.Note is { } n && System.Text.RegularExpressions.Regex.Match(n, @"status (\d)") is { Success: true } m ? m.Groups[1].Value[0] - '0' : 0;
             var id = g.Key;
-            return new DtStage(id, DoomTowerRules.KindOf(id, t.Note?.Contains("boss", StringComparison.Ordinal) == true), status, DoomTowerRules.FloorOf(id),
-                DoomTowerRules.HardOf(id), prices.GetValueOrDefault(id));
-        }).ToList();
+            return new DtStage(id, DoomTowerRules.KindOf(id, false), status, DoomTowerRules.FloorOf(id), false);
+        }).Where(s => s.Kind == DtKind.Boss && s.Floor == FinalBoss).ToList();
+        log($"autoplay: the tower: floor {FinalBoss} " + (stages.Count == 0 ? "not read" : $"status {stages[0].Status}"));
         var r = data.Account.Resources;
         return new DoomTowerMap(stages, r.GetValueOrDefault(DoomTowerRules.Gold), r.GetValueOrDefault(DoomTowerRules.Silver));
     }
@@ -38,19 +43,9 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         var name = DoomTowerRules.Name(stage);
         log($"autoplay: STEP Doom Tower {name}");
         await OpenDoomTower(ct);
-        bool Mine(UiTarget t) => t.Kind == "dt-stage" && t.Id == stage.Id;
-        if (!(await Read(ct)).Targets.Any(Mine)) throw new PlayStopException($"{name} is not on the map. Screen dump: {DumpScreen("doom tower stage")}");
-        await DragIntoView("dt-stage", ct, Mine);
-        await Click("dt-stage", Mine, (s2, scan) => s2.Top?.Name is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView)
-            || scan().Targets.Any(t => t.Kind == "dt-battle"), $"{name} opens", ct, within: TimeSpan.FromSeconds(10));
+        await Click("dt-final-boss", null, (s2, _) => s2.Top?.Name is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView),
+            $"{name} opens", ct, within: TimeSpan.FromSeconds(10));
         await Task.Delay(800, ct);
-        var (s, targets, _) = await Read(ct);
-        if (!(Top(s) is { } top0 && PlayTargets.IsTeamView(top0)) && targets.Any(t => t.Kind == "dt-battle" && t.NotClickable is null))
-        {
-            log($"autoplay: the stage panel. Screen dump: {DumpScreen("doom tower panel")}");
-            await Click("dt-battle", null, (s2, _) => s2.Top?.Name is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView),
-                "the team screen", ct, within: TimeSpan.FromSeconds(10));
-        }
         var after = await Settled(ct);
         if (Top(after) == PlayTargets.RefillView)
         {

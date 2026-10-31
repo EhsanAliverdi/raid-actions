@@ -135,7 +135,6 @@ public static partial class PlayTargets
     private const string ResourceAvatar = "Client.ViewModel.Contextes.ResourceAvatarContext";
     private const string TavernItem = "Client.ViewModel.Contextes.HeroesDevelopmentDialog.Items.HeroesDevelopmentItemContext";
     private const string DtMapItem = "Client.ViewModel.Contextes.DoomTowerMap.DoomTowerMapItemContext";
-    private const string DtMap = "Client.ViewModel.Contextes.DoomTowerMap.DoomTowerMapContext";
     private const string DtResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishDoomTowerDialogContext";
     private const string CcMap = "Client.ViewModel.Contextes.CursedCity.Map.CursedCityMapContext";
     private const string CcResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishCursedCityDialogContext";
@@ -199,7 +198,7 @@ public static partial class PlayTargets
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-demonlord", "clan-hydra", "clan-difficulty", "clan-battle",
-        "mode-dt", "dt-stage", "dt-battle", "village-market", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
+        "mode-dt", "dt-stage", "dt-final-boss", "village-market", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
     };
@@ -979,11 +978,10 @@ public static partial class PlayTargets
                 else if (x.Name == "LevelUpButton") targets.Add(Make("tavern-levelup", "tavern: Upgrade", x, x, null));
             }
 
-        // A Doom Tower stage's Battle (the panel a floor opens, if it opens one before the team screen; by name, to confirm live).
-        if (nodes.Any(x => x.Context?.Class == DtMap) && !IsTeamView(t.View))
-            foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null && FightName().IsMatch(x.Name)
-                && !NotFightName().IsMatch(x.Name) && !x.Name.Contains("Multi", StringComparison.OrdinalIgnoreCase) && x.Context?.Class != DtMapItem).Take(1))
-                targets.Add(Make("dt-battle", "doom tower: Battle", x, x, x.Path));
+        // The tower's top boss: a fixed spot on the map as it opens with every floor beaten (a 3D scene, seen 2026-10-31).
+        if (t.View == "DoomTowerHUD")
+            targets.Add(new UiTarget("dt-final-boss", "doom tower: the Final Boss (its spot)", null, t.View, new ClientRect(t.ClientWidth * 0.48f, t.ClientHeight * 0.45f, t.ClientWidth * 0.035f, t.ClientHeight * 0.08f),
+                true, true, true, false, "DoomTowerHUD/(Final Boss)", "a fixed spot on the map", ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
 
         // The Portal's single summon (seen 2026-10-31: "SingleSummon", next to "MultiSummon_h", never clicked).
         if (t.View == "PortalDialog" && !targets.Any(x => x.Kind == "portal-summon1"))

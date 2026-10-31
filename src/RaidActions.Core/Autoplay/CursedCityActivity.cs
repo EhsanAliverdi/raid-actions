@@ -137,7 +137,11 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
             if (!level.Stage.Beaten) _opened++;
             ctx.QuestNeeds = [.. ctx.QuestNeeds.Select(n => n.Kind == QuestNeedKind.CursedCity ? n with { Remaining = n.Remaining - 1 } : n).Where(n => n.Remaining > 0)];
         }
-        else _losses++;
+        else
+        {
+            _losses++;
+            if (_planForQuest) _questLosses++;
+        }
         ctx.Event(AreaId, "battle", $"{outcome.Result} {where} ({level.Criterion}; team {string.Join(", ", level.Team.Members.Select(m => m.Name))}). {outcome.Text}");
         _plan = _plan with { Next = null }; // read again next turn: results and keys changed
         _planAt = DateTime.MinValue;
@@ -168,7 +172,11 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
     }
 
     /// <summary>The quest "Clear N Stages in the Cursed City" is open (Ehsan 2026-10-31: beaten levels pass it).</summary>
-    private static bool ForQuest(PlayContext ctx) => ctx.QuestLeft(QuestNeedKind.CursedCity) > 0;
+    private bool ForQuest(PlayContext ctx) => ctx.QuestLeft(QuestNeedKind.CursedCity) > 0 && _questLosses < MaxQuestLosses;
+
+    /// <summary>Quest replays lost (2026-11-01: a spare team lost a beaten level, 20 minutes a try): after these the quest is given up for this run.</summary>
+    private const int MaxQuestLosses = 2;
+    private int _questLosses;
 
     private double Spendable(CursedCityPlaySettings s) => Math.Floor(_plan?.Keys ?? 0) - Math.Max(0, s.KeepKeys);
 

@@ -26,6 +26,22 @@ public class QuestFightTests
     }
 
     [Fact]
+    public async Task A_cleared_stages_quest_is_given_up_after_two_lost_replays()
+    {
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, CursedCity = new CursedCityPlaySettings { Enabled = true, GearUnused = false } } };
+        var game = new FakeCursedCityGame { Keys = 9, WinsUpTo = 0 };
+        game.Levels.Add(new FakeCursedCityGame.Level { Number = 5, Team = [(1, false)], Wins = 1 });
+        var ctx = new PlayContext(host.Settings, new FakeArenaGame(() => host.UtcNow), host, false, host.Events.Add) { QuestNeeds = [Need(QuestNeedKind.CursedCity, 2)] };
+        var cc = new CursedCityActivity(game);
+        await cc.RunTurnAsync(ctx, CancellationToken.None);
+        await cc.RunTurnAsync(ctx, CancellationToken.None);
+        Assert.Equal(2, game.Calls.Count);
+        Assert.Equal(2, ctx.QuestLeft(QuestNeedKind.CursedCity));
+        cc.Decide(ctx);
+        Assert.Contains("fight 5", game.Calls);
+    }
+
+    [Fact]
     public async Task A_cleared_stages_quest_replays_a_beaten_level_before_opening_new_ones()
     {
         var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, CursedCity = new CursedCityPlaySettings { Enabled = true, GearUnused = false } } };

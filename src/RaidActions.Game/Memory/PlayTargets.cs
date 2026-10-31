@@ -199,7 +199,7 @@ public static partial class PlayTargets
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-demonlord", "clan-hydra", "clan-difficulty", "clan-battle", "clan-continue",
-        "mode-dt", "dt-stage", "dt-final-boss", "village-market", "village-gems", "village-shop", "shop-free", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
+        "mode-dt", "dt-stage", "dt-final-boss", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
     };
@@ -1002,6 +1002,11 @@ public static partial class PlayTargets
         if (t.View == "AllianceBossQuickBattleOverlay")
             targets.Add(new UiTarget("back", "clan boss result: continue", null, t.View, new ClientRect(t.ClientWidth * 0.44f, t.ClientHeight * 0.875f, t.ClientWidth * 0.12f, t.ClientHeight * 0.045f),
                 true, true, true, false, t.View, "a tap on CONTINUE", ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
+
+        // A free offer's "Get this for free?": its Claim (the live game presses it only right after a tile marked free).
+        if (t.View == "StaticOfferInfoOverlay")
+            foreach (var x in nodes.Where(x => x.Name == "BuyPackButton" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                targets.Add(Make("shop-claim", "shop: Claim", x, x, x.Path));
 
         // The Tavern's Upgrade Level tab, the main slot's X and Upgrade.
         if (t.View == TavernView)

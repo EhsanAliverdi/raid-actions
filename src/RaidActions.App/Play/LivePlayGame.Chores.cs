@@ -208,10 +208,11 @@ public sealed partial class LivePlayGame : IChoresGame
             var offer = targets.FirstOrDefault(t => t.Kind == "shop-free" && t.NotClickable is null);
             if (offer is null) break;
             if (dryRun) { log($"autoplay: WOULD CLAIM {offer.Name} (dry run)"); break; }
-            await Click("shop-free", t => t.Path == offer.Path, (s2, scan) => Top(s2) != PlayTargets.ShopView || !scan().Targets.Any(t => t.Kind == "shop-free" && t.Path == offer.Path),
-                $"{offer.Name} claimed", ct, within: TimeSpan.FromSeconds(8), shot: true);
-            claimed++;
-            log($"autoplay: claimed {offer.Name}");
+            // The tile opens "Get this for free?" (seen 2026-11-01); its Claim is the same button a paid offer's Buy would be, so it is only
+            // ever pressed here, right after a tile the game marks free opened it.
+            await Click("shop-free", t => t.Path == offer.Path, (s2, _) => Top(s2) == "StaticOfferInfoOverlay", $"{offer.Name} opens", ct, within: TimeSpan.FromSeconds(8));
+            await Task.Delay(800, ct);
+            await Click("shop-claim", null, (s2, _) => Top(s2) != "StaticOfferInfoOverlay", $"{offer.Name} claimed", ct, within: TimeSpan.FromSeconds(8), shot: true);
             await Task.Delay(2000, ct);
             for (var j = 0; j < 3; j++)
             {
@@ -219,6 +220,9 @@ public sealed partial class LivePlayGame : IChoresGame
                 if (Top(s3) is not { } top || top == PlayTargets.ShopView) break;
                 await Back(top, ct);
             }
+            if ((await Read(ct)).Targets.Any(t => t.Kind == "shop-free" && t.Path == offer.Path)) throw new PlayStopException($"{offer.Name} is still free after Claim. Screen dump: {DumpScreen("shop claim")}");
+            claimed++;
+            log($"autoplay: claimed {offer.Name}");
         }
         await Back(PlayTargets.ShopView, ct);
         return claimed;

@@ -243,8 +243,23 @@ public sealed partial class LivePlayGame : IEnergyGame
             return;
         }
         log($"autoplay: STEP Super Raid {(wanted ? "on" : "off")}");
-        await Click("super-raid", t => t.Path == box.Path, (_, scan) => scan().Targets.Any(t => t.Kind == "super-raid" && t.Path == box.Path && t.Note == (wanted ? "on" : "off")),
-            $"Super Raid {(wanted ? "on" : "off")}", ct);
+        // The box did not follow a click once (2026-11-01): one more try; left on or off, the run still goes (it costs and pays double).
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await Click("super-raid", t => t.Path == box.Path, (_, scan) => scan().Targets.Any(t => t.Kind == "super-raid" && t.Path == box.Path && t.Note == (wanted ? "on" : "off")),
+                    $"Super Raid {(wanted ? "on" : "off")}", ct, within: TimeSpan.FromSeconds(4));
+                return;
+            }
+            catch (PlayStopException e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal))
+            {
+                var now = (await Read(ct)).Targets.FirstOrDefault(t => t.Kind == "super-raid" && t.Path == box.Path)?.Note;
+                if (now == (wanted ? "on" : "off")) return;
+                if (attempt >= 2) { log($"autoplay: Super Raid stays {now}: the run goes on"); return; }
+                await Task.Delay(1000, ct);
+            }
+        }
     }
 
     public Task<double> CollectInboxAsync(string resource, bool dryRun, CancellationToken ct) =>

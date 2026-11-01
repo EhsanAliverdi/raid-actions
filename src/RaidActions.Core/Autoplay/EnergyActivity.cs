@@ -144,12 +144,16 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         {
             var id = $"quest-dungeon-{n.Region ?? "any"}";
             if (rows.Any(r => r.Id == id)) continue;
+            // "On Normal or Hard": Hard when a stage that counts is beaten there.
+            var hard = n.Region is { } r1 && n.MinStage is { } least && n.Text.Contains("Hard", StringComparison.OrdinalIgnoreCase)
+                ? EnergyPlanner.HighestBeaten(new EnergyTarget { Area = "Dungeon", Region = r1, Difficulty = "Hard" }, _account?.Progress ?? []) is { } h && h >= least ? h : (int?)null : null;
             var highest = n.Region is { } r0 ? EnergyPlanner.HighestBeaten(new EnergyTarget { Area = "Dungeon", Region = r0, Difficulty = "Normal" }, _account?.Progress ?? []) : null;
             // "Beat a Dungeon Boss" counts on any stage: the cheapest (8 Energy, not 20, and a much shorter run; Ehsan's energy goes to the farm).
             // A quest for artifacts or accessories needs the drops: the highest stage.
             var anyBoss = n.Region is null && n.MinStage is null && n.Text.Contains("Boss", StringComparison.OrdinalIgnoreCase);
-            var stage = n.MinStage is { } min ? Math.Max(min, highest ?? min) : anyBoss ? 1 : (int?)null;
-            rows.Add(new EnergyTarget { Id = id, Area = "Dungeon", Region = n.Region ?? "DragonsLair", Difficulty = "Normal", Stage = stage });
+            var best = ctx.Settings.Quests.HighestStage;
+            var stage = n.MinStage is { } min ? best ? hard ?? Math.Max(min, highest ?? min) : min : anyBoss ? 1 : (int?)null;
+            rows.Add(new EnergyTarget { Id = id, Area = "Dungeon", Region = n.Region ?? "DragonsLair", Difficulty = best && hard is not null ? "Hard" : "Normal", Stage = stage });
         }
         if (ctx.QuestLeft(QuestNeedKind.CampaignBoss) > 0)
             rows.Add(new EnergyTarget { Id = "quest-campaign-boss", Area = "Story", Region = "Region12", Difficulty = "Normal", Stage = 7 });

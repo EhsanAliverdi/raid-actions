@@ -124,7 +124,8 @@ public sealed partial class LivePlayGame : IChoresGame
             throw new PlayStopException($"The Tavern asked something (closed, nothing levelled). Screen dump: {dump}");
         }
         var now = (await Account(ct)).Data.Champions;
-        if (now.First(c => c.Id == pair.Main).Level <= levels[pair.Main])
+        // The food gone is the proof: one level-1 food is not always a whole level (2026-11-01: #3339 at 9 ate one and stayed 9, with the XP).
+        if (now.First(c => c.Id == pair.Main).Level <= levels[pair.Main] && now.Any(c => c.Id == pair.Food))
             throw new PlayStopException($"Upgrade was pressed but {Who(pair.Main)} did not level. Screen dump: {DumpScreen("tavern not levelled")}");
         log($"autoplay: {Who(pair.Main)} is level {now.First(c => c.Id == pair.Main).Level}");
         await _nav.GoHome(Action("from the Tavern"), ct);

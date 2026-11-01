@@ -844,6 +844,13 @@
           "source": "field",
           "status": "direct"
         },
+        "_inboxRewardItemContext": {
+          "offset": "0xC0",
+          "type": "InboxRewardItemContext",
+          "field": "_inboxRewardItemContext",
+          "source": "field",
+          "status": "direct"
+        },
         "_message": {
           "offset": "0xA8",
           "type": "StringProperty",
@@ -1402,6 +1409,32 @@
           "offset": "0x58",
           "type": "IntProperty",
           "field": "_state",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.InboxDialog.Contexts.InboxRewardItemContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_itemAvatar": {
+          "offset": "0x80",
+          "type": "ItemAvatarContext",
+          "field": "_itemAvatar",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.Generic.Items.ItemAvatarContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_resourceType": {
+          "offset": "0xE8",
+          "type": "IntProperty",
+          "field": "_resourceType",
           "source": "field",
           "status": "direct"
         }

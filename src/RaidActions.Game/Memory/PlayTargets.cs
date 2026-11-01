@@ -140,6 +140,8 @@ public static partial class PlayTargets
     private const string LiveBattleTab = "Client.ViewModel.Contextes.LiveArenaDialog.Tabs.Battle.LiveArenaBattleTabContext";
     private const string LiveSchedule = "Client.ViewModel.Contextes.LiveArenaDialog.Tabs.Battle.LiveArenaCurrentScheduleContext";
     private const string LiveSlot = "Client.ViewModel.Contextes.LiveArenaDraftDialog.SelectableHeroSlotContext";
+    private const string InboxReward = "Client.ViewModel.Contextes.InboxDialog.Contexts.InboxRewardItemContext";
+    private const string ItemAvatarCtx = "Client.ViewModel.Contextes.Generic.Items.ItemAvatarContext";
     private const string ShopOffer = "Client.ViewModel.Contextes.Bank.Offers.StaticCommon.StaticCommonOfferContext";
     private const string DtMapItem = "Client.ViewModel.Contextes.DoomTowerMap.DoomTowerMapItemContext";
     private const string DtResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishDoomTowerDialogContext";
@@ -881,6 +883,11 @@ public static partial class PlayTargets
                     var title = Try(() => StringValue(g, g.Ref(c.Address, InboxItem, "_title")), null, notes, "InboxItemContext._title");
                     var message = Try(() => StringValue(g, g.Ref(c.Address, InboxItem, "_message")), null, notes, "InboxItemContext._message");
                     var icon = Try(() => StringValue(g, g.Ref(c.Address, InboxItem, "_iconUrl")), null, notes, "InboxItemContext._iconUrl");
+                    // Titles come blank for many items (seen 2026-11-01): the reward's resource type says what it is.
+                    var reward = Try(() => g.Ref(c.Address, InboxItem, "_inboxRewardItemContext"), 0UL, notes, "InboxItemContext._inboxRewardItemContext");
+                    var rewardAvatar = reward == 0 ? 0UL : Try(() => g.Ref(reward, InboxReward, "_itemAvatar"), 0UL, notes, "InboxRewardItemContext._itemAvatar");
+                    var resourceId = rewardAvatar == 0 ? null : Try(() => IntValue(g, g.Ref(rewardAvatar, ItemAvatarCtx, "_resourceType")), null, notes, "ItemAvatarContext._resourceType");
+                    if (resourceId is { } rid) icon = $"{icon} {g.EnumName(ResourceEnum, rid) ?? rid.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
                     var valid = Try(() => BoolValue(g, g.Ref(c.Address, InboxItem, "_isValid")), null, notes, "InboxItemContext._isValid");
                     var (button, why) = Named(i, CollectName(), null);
                     var target = Make("inbox-collect", $"inbox: Collect \"{title ?? message ?? "?"}\"", n, button, why, id: inbox.Count);

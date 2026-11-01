@@ -202,7 +202,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             var entry = play.Inbox.FirstOrDefault(e => match(e) && e.Collect?.NotClickable is null);
             if (entry is null)
             {
-                if (n == 0) log($"autoplay: inbox: no {what} ({play.Inbox.Count} entries: {string.Join("; ", play.Inbox.Select(e => e.Title ?? e.Message).Take(8))})");
+                if (n == 0) log($"autoplay: inbox: no {what} ({play.Inbox.Count} entries: {string.Join("; ", play.Inbox.Select(e => $"[{e.Title}|{e.Message}|{e.Icon}|{e.Expires}]").Take(10))}). Screen dump: {DumpScreen("inbox")}");
                 break;
             }
             if (dryRun)

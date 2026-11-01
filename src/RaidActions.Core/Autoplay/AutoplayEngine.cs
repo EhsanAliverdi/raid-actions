@@ -99,8 +99,9 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 if (now >= _resourcesAt && activities.Any(a => a.IsEnabled(settings)))
                 {
                     _resourcesAt = now + TimeSpan.FromMinutes(2);
+                    // A game still logging in cannot be read (2026-11-01: this ended the bot): the next read tries again.
                     try { await ctx.ReadResourcesAsync(ct); }
-                    catch (PlayStopException) { }
+                    catch (Exception e) when (e is not OperationCanceledException) { }
                 }
                 var enabled = activities.Where(a => a.IsEnabled(settings)).OrderBy(a => order.IndexOf(a.Id) is >= 0 and var at ? at : int.MaxValue).ToList();
                 _decisions = activities.ToDictionary(a => a.Id, a => a.IsEnabled(settings) ? a.Decide(ctx) : Decision.Off("switched off"));

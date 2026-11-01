@@ -391,7 +391,14 @@ public sealed partial class LivePlayGame : ICursedCityGame
             var (_, _, play) = await Read(ct);
             var id = (play.TeamIds ?? []).FirstOrDefault();
             if (id == 0) return;
-            await Click("team-slot", x => x.Id == id && x.View == PlayTargets.CcTeamView, (_, lazy) => !(lazy().TeamIds ?? []).Contains(id), $"{Who(id)} leaves the team", ct);
+            // The last one may refuse to leave (2026-11-01: three left, Vagabond stayed): not fatal, it goes once another is in.
+            var last = (play.TeamIds ?? []).Count == 1;
+            try { await Click("team-slot", x => x.Id == id && x.View == PlayTargets.CcTeamView, (_, lazy) => !(lazy().TeamIds ?? []).Contains(id), $"{Who(id)} leaves the team", ct); }
+            catch (PlayStopException e) when (last && e.Message.StartsWith("After clicking", StringComparison.Ordinal))
+            {
+                log($"autoplay: {Who(id)} stays in the last slot for now");
+                return;
+            }
         }
     }
 
@@ -487,7 +494,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
             // slots read late, so a selected champion is never clicked again (a second click takes it out; 2026-10-30, Zelotah).
             foreach (var p in play.Picks ?? []) if (p.State is 1 or 7) inSlots.Add(p.HeroId);
             var extra = inSlots.Except(wanted).FirstOrDefault();
-            if (extra != 0)
+            if (extra != 0 && inSlots.Count > 1)
             {
                 await Click("team-slot", t => t.Id == extra && t.View == view, (_, lazy) => !(lazy().TeamIds ?? []).Contains(extra),
                     $"#{extra} leaves the team", ct);

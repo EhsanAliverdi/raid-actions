@@ -43,7 +43,7 @@ public sealed class TagArenaActivity(ITagArenaGame game) : IActivity
     private List<ArenaOpponentInfo> Eligible(ClassicArenaSettings s) =>
         _board is null ? [] : [.. ArenaRules.Eligible(_board.Opponents, s).Where(o => !_skip.Contains(o.UserId))];
 
-    public bool Full(PlayContext ctx) => _tokens >= 10;
+    public bool Full(PlayContext ctx) => _tokens >= 9;
 
     public Decision Decide(PlayContext ctx)
     {

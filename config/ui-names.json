@@ -173,6 +173,7 @@
                                                                                            ],
                   "Client.ViewModel.Contextes.InboxDialog.Contexts.InboxItemContext":  [
                                                                                            "_title",
+                                                                                           "_expirationTime",
                                                                                            "_message",
                                                                                            "_iconUrl",
                                                                                            "_isValid"

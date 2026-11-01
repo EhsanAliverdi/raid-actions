@@ -16,7 +16,7 @@ public sealed record ArenaResultRead(int? ResultType, int? EnemyPower, string? E
 public sealed record HudResource(string? Resource, string? Value, string? Timer);
 
 /// <summary>An inbox entry (InboxItemContext) and its collect button.</summary>
-public sealed record InboxEntry(string? Title, string? Message, string? Icon, bool? Valid, UiTarget? Collect);
+public sealed record InboxEntry(string? Title, string? Message, string? Icon, bool? Valid, UiTarget? Collect, string? Expires = null);
 
 /// <summary>A crypt on the Faction Wars map (FractionWarsRegionItemContext): the faction (HeroFraction id), its name, state and key count text.</summary>
 public sealed record CryptRead(int FactionId, string? Name, int? State, string? Keys, string? OpenInfo, UiTarget? Open);
@@ -883,7 +883,8 @@ public static partial class PlayTargets
                     var (button, why) = Named(i, CollectName(), null);
                     var target = Make("inbox-collect", $"inbox: Collect \"{title ?? message ?? "?"}\"", n, button, why, id: inbox.Count);
                     targets.Add(target);
-                    inbox.Add(new InboxEntry(title, message, icon, valid, target));
+                    var expires = Try(() => StringValue(g, g.Ref(c.Address, InboxItem, "_expirationTime")), null, notes, "InboxItemContext._expirationTime");
+                    inbox.Add(new InboxEntry(title, message, icon, valid, target, expires));
                     break;
                 }
             }
@@ -1148,6 +1149,9 @@ public static partial class PlayTargets
         var text = $"{e.Title} {e.Message} {e.Icon}";
         return TokenWord().IsMatch(text) && !OtherTokens().IsMatch(text);
     }
+
+    /// <summary>An inbox entry that holds arena tokens of any arena (Classic, Tag Team): by its text and icon.</summary>
+    public static bool IsAnyTokens(InboxEntry e) => TokenWord().IsMatch($"{e.Title} {e.Message} {e.Icon}");
 
     /// <summary>An inbox entry that holds energy (by its text and icon; to confirm live).</summary>
     public static bool IsEnergy(InboxEntry e) => EnergyWord().IsMatch($"{e.Title} {e.Message} {e.Icon}");

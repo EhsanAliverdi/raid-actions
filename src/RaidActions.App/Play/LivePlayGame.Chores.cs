@@ -181,6 +181,15 @@ public sealed partial class LivePlayGame : IChoresGame
         throw new PlayStopException($"The Tavern was not reached. Screen dump: {DumpScreen("tavern not reached")}");
     }
 
+    public async Task<int> CollectExpiringTokensAsync(bool dryRun, CancellationToken ct)
+    {
+        var before = new Dictionary<string, double>((await Account(ct)).Data.Account.Resources);
+        bool Soon(InboxEntry e) => PlayTargets.IsAnyTokens(e) && ChoreRules.ExpiresWithinADay(e.Expires);
+        await CollectInbox(Soon, "Token", "tokens expiring within a day", dryRun, ct);
+        var after = (await Account(ct)).Data.Account.Resources;
+        return before.Keys.Count(k => k.Contains("Token", StringComparison.OrdinalIgnoreCase) && after.GetValueOrDefault(k) > before[k]);
+    }
+
     public async Task<int> CollectFreeAsync(bool dryRun, CancellationToken ct)
     {
         _nav.FitWindow();

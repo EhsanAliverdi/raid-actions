@@ -35,7 +35,7 @@ public sealed class FreeRewardsActivity(IFreeRewardsGame game) : IActivity
     public bool IsEnabled(AutoplaySettings settings) => settings.FreeRewards.Enabled;
 
     public void Restore(IEnumerable<AutoplayEvent> events, DateOnly localDay) =>
-        _collected = events.Where(e => e.Area == AreaId && e.Kind == "collect" && DateOnly.FromDateTime(e.Utc.ToLocalTime()) == localDay)
+        _collected = events.Where(e => e.Area == AreaId && e.Kind == "collect" && DateOnly.FromDateTime(e.Utc) == localDay)
             .Sum(e => int.TryParse(e.Text.Split(' ').ElementAtOrDefault(1), out var n) ? n : 0);
 
     private TimeSpan Every(PlayContext ctx) => TimeSpan.FromMinutes(Math.Max(5, ctx.Settings.FreeRewards.CheckEveryMinutes));

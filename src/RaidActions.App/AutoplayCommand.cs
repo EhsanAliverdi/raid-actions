@@ -77,7 +77,7 @@ public static class AutoplayCommand
         abortHook?.Invoke(() => { try { abort.Cancel(); } catch (ObjectDisposedException) { } });
         var host = new LiveAutoplayHost(dir, Print, watchPerson: !fake, force);
         var arena = new ClassicArenaActivity();
-        arena.Restore(LiveAutoplayHost.Today(dir), DateOnly.FromDateTime(DateTime.Now));
+        arena.Restore(LiveAutoplayHost.Recent(dir), DateOnly.FromDateTime(DateTime.UtcNow));
 
 
         if (fake)
@@ -116,7 +116,7 @@ public static class AutoplayCommand
             var ccActivity = new CursedCityActivity(game);
             ccActivity.Restore(LiveAutoplayHost.Today(dir));
             var energyActivity = new EnergyActivity(game);
-            energyActivity.Restore(LiveAutoplayHost.Today(dir), DateOnly.FromDateTime(DateTime.Now));
+            energyActivity.Restore(LiveAutoplayHost.Recent(dir), DateOnly.FromDateTime(DateTime.UtcNow));
             // Priority (Ehsan, 2026-10-30): the arena first (its free refresh every 15 minutes, a token's opponent ready), then energy
             // (plan/energy.md); Faction Wars and Cursed City fill the time while the others wait for tokens and energy. A turn is one
             // battle, so a battle running is always finished first.
@@ -124,7 +124,7 @@ public static class AutoplayCommand
             cbActivity.Restore(LiveAutoplayHost.Recent(dir), DateTime.UtcNow);
             // Clan Boss (plan/clan-boss.md) after the arena: its keys come slowly, so a key waiting is spent before the energy places.
             var giftsActivity = new FreeRewardsActivity(game);
-            giftsActivity.Restore(LiveAutoplayHost.Today(dir), DateOnly.FromDateTime(DateTime.Now));
+            giftsActivity.Restore(LiveAutoplayHost.Recent(dir), DateOnly.FromDateTime(DateTime.UtcNow));
             // Free rewards first: a check is a few clicks every 20 minutes (plan/free-rewards.md).
             var hydraActivity = new HydraActivity(game);
             var dtActivity = new DoomTowerActivity(game);

@@ -80,7 +80,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     public void Restore(IEnumerable<AutoplayEvent> events, DateOnly localDay)
     {
         _day = localDay;
-        foreach (var e in events.Where(e => e.Area == AreaId && DateOnly.FromDateTime(e.Utc.ToLocalTime()) == localDay))
+        foreach (var e in events.Where(e => e.Area == AreaId && DateOnly.FromDateTime(e.Utc) == localDay))
         {
             if (e.Kind == "battle" && System.Text.RegularExpressions.Regex.Match(e.Text, @"\[row (\w+)\]") is { Success: true } m)
             {
@@ -103,7 +103,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
 
     private void NewDay(PlayContext ctx)
     {
-        var today = DateOnly.FromDateTime(ctx.Local);
+        var today = DateOnly.FromDateTime(ctx.Utc);
         if (_day == today) return;
         _day = today;
         _runsToday.Clear();
@@ -185,7 +185,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             case EnergyStep.Run or EnergyStep.Inbox or EnergyStep.BuyRefill or EnergyStep.RankUp or EnergyStep.Summon:
                 return Decision.Now(plan.Why);
             case EnergyStep.Nothing:
-                return Decision.Wait(ctx.Local.Date.AddDays(1).ToUniversalTime(), plan.Why);
+                return Decision.Wait(ctx.Utc.Date.AddDays(1), plan.Why);
             default:
                 var have = World(ctx, _account, expected: true).Resources.GetValueOrDefault(plan.Resource!);
                 var at = plan.Resource == "Energy"
@@ -209,7 +209,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             try { got = await game.SummonMysteryAsync(want, ctx.DryRun, ct); }
             catch (Exception e) when (e is not OperationCanceledException)
             {
-                _summonBlockedUntil = ctx.Local.Date.AddDays(1).ToUniversalTime();
+                _summonBlockedUntil = ctx.Utc.Date.AddDays(1);
                 ctx.Event(AreaId, "error", $"the quest's summon paused until tomorrow: {e.Message}");
                 return "";
             }
@@ -258,14 +258,14 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 try { opened = await game.SummonMysteryAsync(Math.Min(count, 10), ctx.DryRun, ct); }
                 catch (Exception e) when (e is not OperationCanceledException)
                 {
-                    _summonBlockedUntil = ctx.Local.Date.AddDays(1).ToUniversalTime();
+                    _summonBlockedUntil = ctx.Utc.Date.AddDays(1);
                     ctx.Event(AreaId, "error", $"Mystery shards paused until tomorrow: {e.Message}");
                     return "";
                 }
                 _summoned += opened;
                 ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "summon",
                     opened > 0 ? $"opened {opened} Mystery shard(s) for food" : $"no Mystery shard opened{(ctx.DryRun ? ": dry run" : "")}");
-                if (opened == 0) _summonBlockedUntil = ctx.Local.Date.AddDays(1).ToUniversalTime();
+                if (opened == 0) _summonBlockedUntil = ctx.Utc.Date.AddDays(1);
                 _account = await game.ReadAccountAsync(ct);
                 _accountAt = ctx.Utc;
                 return opened > 0 ? $"summon: {opened} Mystery shard(s)" : "";

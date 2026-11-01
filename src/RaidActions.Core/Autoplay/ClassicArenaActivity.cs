@@ -31,7 +31,7 @@ public sealed class ClassicArenaActivity : IActivity
     public void Restore(IEnumerable<AutoplayEvent> today, DateOnly day)
     {
         _day = day;
-        foreach (var e in today.Where(e => e.Area == AreaId && e.Kind == "battle"))
+        foreach (var e in today.Where(e => e.Area == AreaId && e.Kind == "battle" && DateOnly.FromDateTime(e.Utc) == day))
         {
             _battles++;
             if (e.Text.StartsWith("Victory", StringComparison.Ordinal)) _wins++;
@@ -45,7 +45,7 @@ public sealed class ClassicArenaActivity : IActivity
         NewDay(ctx);
         var s = ctx.Settings.ClassicArena;
         if (s.MaxBattlesPerDay > 0 && _battles >= s.MaxBattlesPerDay)
-            return Decision.Wait(ctx.Local.Date.AddDays(1).ToUniversalTime(), $"{_battles} battles today: the daily limit");
+            return Decision.Wait(ctx.Utc.Date.AddDays(1), $"{_battles} battles today: the daily limit");
         var tokens = ctx.Expected("Token");
         if (tokens is null || _board is null || ctx.Utc - _board.Utc > BoardStale) return Decision.Now("looking at the arena");
         if (ArenaRules.SpendableTokens(tokens.Value, s) == 0)
@@ -207,7 +207,7 @@ public sealed class ClassicArenaActivity : IActivity
 
     private void NewDay(PlayContext ctx)
     {
-        var today = DateOnly.FromDateTime(ctx.Local);
+        var today = DateOnly.FromDateTime(ctx.Utc);
         if (today == _day) return;
         _day = today;
         _battles = _wins = _losses = _draws = _refreshes = _inboxTokens = 0;

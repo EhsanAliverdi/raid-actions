@@ -837,6 +837,13 @@
           "source": "field",
           "status": "direct"
         },
+        "_expirationTime": {
+          "offset": "0x90",
+          "type": "StringProperty",
+          "field": "_expirationTime",
+          "source": "field",
+          "status": "direct"
+        },
         "_message": {
           "offset": "0xA8",
           "type": "StringProperty",

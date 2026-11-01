@@ -38,6 +38,15 @@ public class ClanBossActivityTests
     }
 
     [Fact]
+    public async Task An_uncapped_difficulty_with_a_key_spent_and_its_top_chest_unread_gets_no_more()
+    {
+        var (_, game, engine) = Make(new ClanBossSettings { Enabled = true, Plan = [new("UltraNightmare", null)] }, TimeSpan.FromHours(2));
+        game.Standing["UltraNightmare"] = new ClanStanding(5_000_000, 1, null);
+        await engine.RunAsync(once: false, Limit());
+        Assert.Empty(game.Calls);
+    }
+
+    [Fact]
     public async Task The_games_count_of_keys_replaces_the_bots()
     {
         var (_, game, engine) = Make(new ClanBossSettings { Enabled = true, Plan = [new("Brutal", 1), new("Nightmare", 1)] }, TimeSpan.FromHours(2));

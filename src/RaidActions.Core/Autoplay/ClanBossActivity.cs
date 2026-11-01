@@ -182,6 +182,12 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
                 _topChest.Add(difficulty);
                 return $"{difficulty}: past its top chest, no more keys there today";
             }
+            // No cap and no top chest to stop at: a key already spent there is enough (2026-11-01: the read can fail; a key past the top is thrown away).
+            if (standing is { TopChest: null, KeysSpent: > 0 } && s.Plan.FirstOrDefault(r => ClanBossRules.Same(r.Difficulty, difficulty))?.KeysPerDay is null)
+            {
+                _topChest.Add(difficulty);
+                return $"{difficulty}: top chest not read, no more keys there today";
+            }
             if (ClanBossRules.Next(s, _account.BestDamage, _today, _topChest) != difficulty) return "";
         }
         var quick = ClanBossRules.Quick(s, difficulty, _account.MaxQuick);

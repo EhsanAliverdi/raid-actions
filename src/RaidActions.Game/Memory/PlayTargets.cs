@@ -889,7 +889,9 @@ public static partial class PlayTargets
                     var resourceId = rewardAvatar == 0 ? null : Try(() => IntValue(g, g.Ref(rewardAvatar, ItemAvatarCtx, "_resourceType")), null, notes, "ItemAvatarContext._resourceType");
                     if (resourceId is { } rid) icon = $"{icon} {g.EnumName(ResourceEnum, rid) ?? rid.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
                     var valid = Try(() => BoolValue(g, g.Ref(c.Address, InboxItem, "_isValid")), null, notes, "InboxItemContext._isValid");
+                    // The row's Collect is "BTN_2" (seen 2026-11-01), not a name that says so.
                     var (button, why) = Named(i, CollectName(), null);
+                    if (button is null && SelfAndBelow(i).FirstOrDefault(x => x.Name == "BTN_2" && x.Interactable is not null && x.ActiveInHierarchy) is { } row) (button, why) = (row, null);
                     var target = Make("inbox-collect", $"inbox: Collect \"{title ?? message ?? "?"}\"", n, button, why, id: inbox.Count);
                     targets.Add(target);
                     var expires = Try(() => StringValue(g, g.Ref(c.Address, InboxItem, "_expirationTime")), null, notes, "InboxItemContext._expirationTime");

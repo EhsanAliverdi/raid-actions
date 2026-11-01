@@ -242,6 +242,11 @@ public static partial class UiTargets
         // Scroll areas are not clickable elements: they are kept with their rectangles for the wheel.
         // One element found twice (an inventory item carries its context on two nested elements, both leading to the same button)
         // is one target. Different elements claiming one id stay separate, and Resolve refuses them.
+        // The Tag Team Arena's reward screen has no button: it closes on a tap on its bottom strip (2026-11-01: left open, it stopped the bot).
+        if (t.View == "BattleFinishArena3x3RewardDialog")
+            targets.Add(new UiTarget("back", "tag arena result: tap to continue", null, t.View,
+                new ClientRect(t.ClientWidth * 0.40f, t.ClientHeight * 0.86f, t.ClientWidth * 0.2f, t.ClientHeight * 0.06f), true, true, true, false, t.View,
+                "a tap on the empty bottom strip", ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
         return targets.DistinctBy(t => (t.Kind, t.Id, t.Slot, t.Path, t.Rect)).ToList();
     }
 

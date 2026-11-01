@@ -120,10 +120,33 @@ public sealed partial class LivePlayGame : IClanBossGame
             {
                 // No team saved (Ehsan 2026-11-01: "make the best team yourself"): the strongest geared champions, one of each type.
                 var (data, _, ratings, _) = await Account(ct);
-                var team = data.Champions.Where(c => !c.InVault && !c.InBathhouse && c.Artifacts.Count > 0 && c.Level >= 40)
-                    .OrderByDescending(c => CursedCityPlanner.Score(c, ratings)).DistinctBy(c => c.BaseTypeId).Take(6).Select(c => c.Id).ToList();
-                if (team.Count == 0 || !await SetRunTeam(team, teamView, ct))
+                // A champion the screen refuses is left out and the next best takes the place (2026-11-01: the Hydra locks those it has used, and the same six
+                // were tried for hours with 2 keys waiting). Known only for this battle: a lock ends with the rotation, and these are no food.
+                var locked = new HashSet<int>();
+                List<int>? team = null;
+                for (var attempt = 0; attempt < 5 && team is null; attempt++)
+                {
+                    var next = data.Champions.Where(c => !c.InVault && !c.InBathhouse && c.Artifacts.Count > 0 && c.Level >= 40 && !locked.Contains(c.Id))
+                        .OrderByDescending(c => CursedCityPlanner.Score(c, ratings)).DistinctBy(c => c.BaseTypeId).Take(6).Select(c => c.Id).ToList();
+                    if (next.Count < 6) break;
+                    log($"autoplay: STEP team: {string.Join(", ", next.Select(Who))}");
+                    try
+                    {
+                        await SetTeam(next, ct, teamView);
+                        team = next;
+                    }
+                    catch (LockedHeroException e)
+                    {
+                        locked.Add(e.HeroId);
+                        foreach (var (id, _) in e.Shown) locked.Add(id);
+                        log($"autoplay: {label}: locked here: {string.Join(", ", locked.Select(Who))}");
+                    }
+                }
+                if (team is null)
+                {
+                    await Back(teamView, ct);
                     return new BattleOutcome(BattleResult.NotStarted, "no team could be set there");
+                }
                 log($"autoplay: {label}: no saved team, the bot built {string.Join(", ", team.Select(Who))}");
                 await Task.Delay(800, ct);
             }

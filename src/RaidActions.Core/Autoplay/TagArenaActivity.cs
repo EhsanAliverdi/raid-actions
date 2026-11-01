@@ -66,8 +66,9 @@ public sealed class TagArenaActivity(ITagArenaGame game) : IActivity
         {
             var o = s.Order == ArenaOrder.StrongestFirst ? pick.MaxBy(x => x.Power)! : s.Order == ArenaOrder.BoardOrder ? pick[0] : pick.MinBy(x => x.Power)!;
             await ctx.ThinkAsync(ct);
-            var outcome = await game.FightTagOpponentAsync(o.UserId, ctx.DryRun, ct);
+            // Noted before the fight: a series that times out must not be picked again (2026-11-01: a stalling opponent, twice).
             _skip.Add(o.UserId);
+            var outcome = await game.FightTagOpponentAsync(o.UserId, ctx.DryRun, ct);
             if (outcome.Result is BattleResult.NotStarted)
             {
                 _dryShown = ctx.DryRun;

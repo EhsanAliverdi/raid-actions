@@ -48,6 +48,18 @@ public class CursedCityActivityTests
     }
 
     [Fact]
+    public async Task Idle_keys_go_to_beaten_levels_with_the_strong_team_and_two_losses_end_it()
+    {
+        var (_, game, engine) = Make(stopAfter: TimeSpan.FromHours(3));
+        game.Keys = 8;
+        game.SpareTeamNotReady = true;
+        game.WinsUpTo = 0;
+        game.Levels.Add(new FakeCursedCityGame.Level { Number = 5, Team = [(1, false)], Wins = 1 });
+        await engine.RunAsync(once: false, Limit());
+        Assert.Equal(["fight 5", "fight 5"], game.Calls.Where(c => c.StartsWith("fight", StringComparison.Ordinal)));
+    }
+
+    [Fact]
     public async Task A_level_lost_twice_is_skipped_and_the_keys_go_to_the_highest_beaten_level()
     {
         var (_, game, engine) = Make(stopAfter: TimeSpan.FromHours(3), cc: s => s with { GearUnused = false, LossesToSkip = 2 });

@@ -21,6 +21,9 @@ public sealed class FakeCursedCityGame : ICursedCityGame
     public List<Level> Levels { get; } = [];
     public double Keys { get; set; } = 5;
     public int WinsUpTo { get; set; } = 99;
+
+    /// <summary>The plain plan finds nothing the spare team can play: beaten levels only with the strong team.</summary>
+    public bool SpareTeamNotReady { get; set; }
     public List<string> Calls { get; } = [];
     private readonly HashSet<int> _wearing = [];
 
@@ -36,7 +39,7 @@ public sealed class FakeCursedCityGame : ICursedCityGame
         }).ToList();
         var open = levels.Where(l => l.Reachable && !l.Stage.Beaten && !l.Unbeatable && !skip.Contains(l.Stage.Id)).OrderByDescending(l => l.Stage.Number).FirstOrDefault();
         var replay = levels.Where(l => l.Stage.Beaten && !skip.Contains(l.Stage.Id)).OrderByDescending(l => l.Stage.Number).FirstOrDefault();
-        var next = forQuest ? replay ?? open : open ?? replay;
+        var next = forQuest ? replay ?? open : SpareTeamNotReady ? null : open ?? replay;
         return Task.FromResult(new CursedCityPlan(Keys, "Hard", levels, next, next == open ? "open" : "again", []));
     }
 

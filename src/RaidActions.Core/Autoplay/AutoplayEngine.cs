@@ -36,6 +36,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     private const int MaxTurnsInARow = 3;
     private string? _lastArea;
     private int _sameArea;
+    private DateTime _resourcesAt = DateTime.MinValue;
 
     /// <summary>Quests as if read (autoplay --test-quest): to try an area's quest on the live game when no such quest is open.</summary>
     public IReadOnlyList<QuestNeed> StartNeeds { get; init; } = [];
@@ -95,6 +96,12 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
 
                 // The order set on the page; an area not in it keeps its place after those that are.
                 var order = settings.AreaOrder;
+                if (now >= _resourcesAt && activities.Any(a => a.IsEnabled(settings)))
+                {
+                    _resourcesAt = now + TimeSpan.FromMinutes(2);
+                    try { await ctx.ReadResourcesAsync(ct); }
+                    catch (PlayStopException) { }
+                }
                 var enabled = activities.Where(a => a.IsEnabled(settings)).OrderBy(a => order.IndexOf(a.Id) is >= 0 and var at ? at : int.MaxValue).ToList();
                 _decisions = activities.ToDictionary(a => a.Id, a => a.IsEnabled(settings) ? a.Decide(ctx) : Decision.Off("switched off"));
                 if (enabled.Count == 0)
@@ -108,6 +115,8 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 var act = enabled.FirstOrDefault(a => _decisions[a.Id].Act);
                 if (act is not null && act.Id == _lastArea && _sameArea >= MaxTurnsInARow)
                     act = enabled.FirstOrDefault(a => _decisions[a.Id].Act && a.Id != _lastArea) ?? act;
+                // A full resource stops regenerating: its area first, whatever the order and the turns in a row.
+                if (enabled.FirstOrDefault(a => _decisions[a.Id].Act && a.Full(ctx)) is { } full) act = full;
                 if (act is not null)
                 {
                     _sameArea = act.Id == _lastArea ? _sameArea + 1 : 1;

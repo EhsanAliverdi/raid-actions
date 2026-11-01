@@ -40,6 +40,8 @@ public sealed class ClassicArenaActivity : IActivity
         }
     }
 
+    public bool Full(PlayContext ctx) => ctx.LastResources is { } r && r.Tokens >= (r.TokenCap ?? 10);
+
     public Decision Decide(PlayContext ctx)
     {
         NewDay(ctx);

@@ -175,6 +175,8 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         };
     }
 
+    public bool Full(PlayContext ctx) => ctx.LastResources is { } r && r.Energy >= (r.EnergyCap ?? 124);
+
     public Decision Decide(PlayContext ctx)
     {
         NewDay(ctx);

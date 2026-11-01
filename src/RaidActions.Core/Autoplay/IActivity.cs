@@ -21,6 +21,9 @@ public interface IActivity
     string Name { get; }
     bool IsEnabled(AutoplaySettings settings);
     Decision Decide(PlayContext ctx);
+
+    /// <summary>What this area spends is at its cap, so it has stopped regenerating (Ehsan 2026-11-01: nothing may stay full): the area goes before all others.</summary>
+    bool Full(PlayContext ctx) => false;
     Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct);
     AreaStatus Status(PlayContext ctx, Decision decision);
 }

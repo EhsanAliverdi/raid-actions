@@ -47,6 +47,22 @@ public class ClanBossActivityTests
     }
 
     [Fact]
+    public async Task An_area_with_many_turns_steps_aside_after_three()
+    {
+        var host = new FakeHost(Start)
+        {
+            Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 }, ClanBoss = new ClanBossSettings { Enabled = true }, DoomTower = new DoomTowerSettings { Enabled = true } },
+        };
+        var clan = new FakeClanBossGame(() => host.UtcNow) { Keys = 8 };
+        var tower = new FakeDoomTowerGame { Silver = 2 };
+        tower.Stages.Add(new DtStage(120, DtKind.Boss, 2, 120, false));
+        host.OnDelay = h => { if (h.UtcNow - Start >= TimeSpan.FromMinutes(5)) h.Stop = true; };
+        await new AutoplayEngine([new ClanBossActivity(clan), new DoomTowerActivity(tower)], new FakeArenaGame(() => host.UtcNow), host, false).RunAsync(once: false, Limit());
+        var battles = host.Events.Where(e => e.Kind == "battle").Select(e => e.Area).ToList();
+        Assert.Equal(DoomTowerActivity.AreaId, battles[3]);
+    }
+
+    [Fact]
     public async Task The_page_s_order_decides_which_area_plays_first()
     {
         var host = new FakeHost(Start)

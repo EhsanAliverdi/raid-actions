@@ -33,6 +33,9 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
 {
     private static readonly TimeSpan Tick = TimeSpan.FromSeconds(5);
     private readonly List<AutoplayEvent> _recent = [];
+    private const int MaxTurnsInARow = 3;
+    private string? _lastArea;
+    private int _sameArea;
 
     /// <summary>Quests as if read (autoplay --test-quest): to try an area's quest on the live game when no such quest is open.</summary>
     public IReadOnlyList<QuestNeed> StartNeeds { get; init; } = [];
@@ -100,7 +103,16 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                     await Idle("waiting", "no area is switched on", null, ct);
                     continue;
                 }
+                // Priority decides who goes first, but an area with many turns in hand (Faction Wars, 24 keys: two hours) steps aside after three in a row,
+                // so full energy and short-lived chances (Live Arena's hours) do not wait for it (2026-11-01).
                 var act = enabled.FirstOrDefault(a => _decisions[a.Id].Act);
+                if (act is not null && act.Id == _lastArea && _sameArea >= MaxTurnsInARow)
+                    act = enabled.FirstOrDefault(a => _decisions[a.Id].Act && a.Id != _lastArea) ?? act;
+                if (act is not null)
+                {
+                    _sameArea = act.Id == _lastArea ? _sameArea + 1 : 1;
+                    _lastArea = act.Id;
+                }
                 if (act is null)
                 {
                     var wait = enabled.Select(a => _decisions[a.Id].UntilUtc).Where(t => t is not null).Min();

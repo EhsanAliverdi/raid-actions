@@ -572,11 +572,23 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
     /// When the window is minimized or below the minimum: restores it to the minimum size (the smallest that keeps click targets
     /// big enough), remembering where it was. Any other size is used as it is.
     /// </summary>
+    private const int FullWidth = 1298, FullHeight = 732;
+
     public void FitWindow()
     {
         var (w, why) = GameWindow.Find();
         if (w is null) throw new StopException(why!);
-        if (policy.Problem(w) is null) return;
+        // Full size whenever the screen has room (2026-11-01: the Campaign map's far regions are out of reach at the smallest size); a small Remote
+        // Desktop screen keeps the small window Ehsan allows.
+        if (policy.Problem(w) is null)
+        {
+            if (w.Client.Width < FullWidth && WindowFit.Plan(w, FullWidth, FullHeight) is var full && full.Window.Width <= full.WorkArea.Width && full.Window.Height <= full.WorkArea.Height)
+            {
+                var (bigger, _) = WindowFit.Apply(w, full);
+                if (bigger is not null) log($"window fit: {w.Client.Width}x{w.Client.Height} → {bigger.Client.Width}x{bigger.Client.Height}");
+            }
+            return;
+        }
         _before ??= WindowFit.Save(w);
         var from = w.Minimized ? "minimized" : $"{w.Client.Width}x{w.Client.Height}";
         // A minimized window is still restoring (and changing DPI) when the first size is applied: measured again and sized again.

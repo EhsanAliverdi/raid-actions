@@ -22,7 +22,7 @@ public sealed class FakeArenaGame(Func<DateTime> now, int seed = 7) : IPlayGame
     /// <summary>Fights with the 4-affinity team (the quest).</summary>
     public int AffinityFights { get; private set; }
 
-    public Task<BattleOutcome> FightArenaAffinitiesAsync(long userId, bool dryRun, CancellationToken ct)
+    public Task<BattleOutcome> FightArenaVariantAsync(long userId, TeamVariant variant, bool dryRun, CancellationToken ct)
     {
         if (!dryRun) AffinityFights++;
         return FightArenaOpponentAsync(userId, dryRun, ct);

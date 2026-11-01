@@ -83,9 +83,9 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         throw new PlayStopException("Could not reach the Classic Arena in 8 steps.");
     }
 
-    public Task<BattleOutcome> FightArenaOpponentAsync(long userId, bool dryRun, CancellationToken ct) => FightArena(userId, dryRun, false, ct);
+    public Task<BattleOutcome> FightArenaOpponentAsync(long userId, bool dryRun, CancellationToken ct) => FightArena(userId, dryRun, TeamVariant.Default, ct);
 
-    public Task<BattleOutcome> FightArenaAffinitiesAsync(long userId, bool dryRun, CancellationToken ct) => FightArena(userId, dryRun, true, ct);
+    public Task<BattleOutcome> FightArenaVariantAsync(long userId, TeamVariant variant, bool dryRun, CancellationToken ct) => FightArena(userId, dryRun, variant, ct);
 
     /// <summary>The arena team as it was before the 4-affinity quest fight: put back on the next arena fight (kept across restarts).</summary>
     private string ArenaTeamFile => Path.Combine(ExtractorOutput, "autoplay", "arena-team-before-quest.json");
@@ -96,6 +96,30 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         catch (Exception e) when (e is IOException or System.Text.Json.JsonException) { return null; }
     }
 
+    private const string ClassicArenaAreaId = "classic-arena";
+
+    /// <summary>The shown team noted for the page's "use the current team"; never a reason to stop.</summary>
+    private void NoteTeam(string area, IReadOnlyList<int> team)
+    {
+        try { TeamsSeen.Note(ExtractorOutput, area, team); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { log($"autoplay: the team seen was not saved: {e.Message}"); }
+    }
+
+    /// <summary>The page's choice for this team, read fresh so a change acts at once.</summary>
+    private TeamChoice TeamChoiceOf(string area, TeamVariant variant) =>
+        TeamRules.Choice(AutoplaySettings.Load(ExtractorOutput).Teams.GetValueOrDefault(area), variant);
+
+    /// <summary>A team screen open: what it shows noted, and the area's default set when the page says so. False: the game refused a champion.</summary>
+    private async Task<bool> ApplyDefaultTeam(string area, string teamView, CancellationToken ct)
+    {
+        var shown = (await Read(ct)).Play.TeamIds ?? [];
+        NoteTeam(area, shown);
+        var (data, _, _, _) = await Account(ct);
+        if (TeamRules.Resolve(TeamChoiceOf(area, TeamVariant.Default), TeamVariant.Default, shown, data.Champions) is not { } team || team.ToHashSet().SetEquals(shown)) return true;
+        log($"autoplay: STEP {area}: the default team from the Teams card");
+        return await SetRunTeam(team, teamView, ct);
+    }
+
     /// <summary>The team screen set to this team (the arena's own screen); Cursed City's remembered team is left as it was.</summary>
     private async Task SetArenaTeam(IReadOnlyList<int> team, CancellationToken ct)
     {
@@ -104,7 +128,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         finally { _ccLastTeam = cc; }
     }
 
-    private async Task<BattleOutcome> FightArena(long userId, bool dryRun, bool affinities, CancellationToken ct)
+    private async Task<BattleOutcome> FightArena(long userId, bool dryRun, TeamVariant variant, CancellationToken ct)
     {
         var started = DateTime.UtcNow;
         var (s, _, play) = await Read(ct);
@@ -124,18 +148,20 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         // put back before the next arena fight. A dry run sets it and puts the old one back at once (nothing is saved without Start).
         var (_, _, teamRead) = await Read(ct);
         var shownTeam = teamRead.TeamIds ?? [];
-        var restore = !affinities ? SavedArenaTeam() : null;
-        if (affinities)
+        NoteTeam(ClassicArenaAreaId, shownTeam);
+        var quest = variant != TeamVariant.Default;
+        var restore = !quest ? SavedArenaTeam() : null;
+        if (quest)
         {
             var (data, _, _, _) = await Account(ct);
-            var team = ArenaAffinityTeam.Build(shownTeam, data.Champions)
-                ?? throw new PlayStopException("No team of 4 different affinities can be built (a geared champion of each affinity is needed).");
+            var team = TeamRules.Resolve(TeamChoiceOf(ClassicArenaAreaId, variant), variant, shownTeam, data.Champions)
+                ?? throw new PlayStopException($"No {variant} team can be set: see the Teams card, or a geared champion is missing.");
             if (!dryRun && !File.Exists(ArenaTeamFile))
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(ArenaTeamFile)!);
                 File.WriteAllText(ArenaTeamFile, System.Text.Json.JsonSerializer.Serialize(shownTeam));
             }
-            log($"autoplay: STEP the 4-affinity team for the quest: {string.Join(", ", team.Select(i => $"#{i}"))} (the arena team was {string.Join(", ", shownTeam.Select(i => $"#{i}"))})");
+            log($"autoplay: STEP the {variant} team for the quest: {string.Join(", ", team.Select(i => $"#{i}"))} (the arena team was {string.Join(", ", shownTeam.Select(i => $"#{i}"))})");
             await SetArenaTeam(team, ct);
             if (dryRun) await SetArenaTeam(shownTeam, ct);
         }
@@ -143,6 +169,11 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         {
             log($"autoplay: STEP the arena team back after the quest fight: {string.Join(", ", restore.Select(i => $"#{i}"))}");
             await SetArenaTeam(restore, ct);
+        }
+        else if (TeamRules.Resolve(TeamChoiceOf(ClassicArenaAreaId, TeamVariant.Default), TeamVariant.Default, shownTeam, (await Account(ct)).Data.Champions) is { } chosen && !chosen.ToHashSet().SetEquals(shownTeam))
+        {
+            log($"autoplay: STEP the arena's default team: {string.Join(", ", chosen.Select(i => $"#{i}"))}");
+            await SetArenaTeam(chosen, ct);
         }
 
         if (dryRun)

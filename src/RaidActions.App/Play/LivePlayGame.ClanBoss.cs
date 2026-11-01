@@ -112,6 +112,8 @@ public sealed partial class LivePlayGame : IClanBossGame
         }
         var teamView = Top(after) ?? "";
         if (!PlayTargets.IsTeamView(teamView)) await Refuse(after, $"{label} {difficulty}", ct);
+        if (!await ApplyDefaultTeam(enemyType == 2 ? "hydra" : "clan-boss", teamView, ct))
+            return new BattleOutcome(BattleResult.NotStarted, "the Teams card's team was refused here");
         // An empty team screen (no team ever saved there; seen 2026-10-31 on the Hydra): nothing to start with, the row waits.
         if (((await Read(ct)).Play.TeamIds ?? []).Count == 0)
         {

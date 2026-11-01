@@ -114,8 +114,8 @@ public sealed class ClassicArenaActivity : IActivity
         await ctx.ThinkAsync(ct);
         BattleOutcome outcome;
         // The quest "a team from 4 different Affinities": this fight with a team the bot builds (win or lose, the fight is what counts).
-        var affinities = ctx.QuestLeft(QuestNeedKind.ArenaAffinities) > 0;
-        try { outcome = affinities ? await ctx.Game.FightArenaAffinitiesAsync(target.UserId, ctx.DryRun, ct) : await ctx.Game.FightArenaOpponentAsync(target.UserId, ctx.DryRun, ct); }
+        var variant = ctx.QuestLeft(QuestNeedKind.ArenaAffinities) > 0 ? TeamVariant.Affinities : ctx.QuestLeft(QuestNeedKind.ArenaFaction) > 0 ? TeamVariant.Faction : TeamVariant.Default;
+        try { outcome = variant != TeamVariant.Default ? await ctx.Game.FightArenaVariantAsync(target.UserId, variant, ctx.DryRun, ct) : await ctx.Game.FightArenaOpponentAsync(target.UserId, ctx.DryRun, ct); }
         catch (PlayStopException)
         {
             _skip.Add(target.UserId); // do not try the same one again on this board
@@ -137,10 +137,11 @@ public sealed class ClassicArenaActivity : IActivity
         }
         _board = _board is null ? null : _board with { Utc = DateTime.MinValue }; // the board changed: read it again next turn
         ctx.Event(AreaId, "battle", $"{outcome.Result} vs {who}. {outcome.Text}");
-        if (affinities)
+        if (variant != TeamVariant.Default)
         {
-            ctx.QuestNeeds = [.. ctx.QuestNeeds.Where(n => n.Kind != QuestNeedKind.ArenaAffinities)];
-            ctx.Event(AreaId, "quest", $"fought with a team of 4 affinities ({outcome.Result}); the arena team goes back before the next fight");
+            var kind = variant == TeamVariant.Affinities ? QuestNeedKind.ArenaAffinities : QuestNeedKind.ArenaFaction;
+            ctx.QuestNeeds = [.. ctx.QuestNeeds.Where(n => n.Kind != kind)];
+            ctx.Event(AreaId, "quest", $"fought with the {variant} team ({outcome.Result}); the arena team goes back before the next fight");
         }
         return $"{outcome.Result} vs {who}";
     }

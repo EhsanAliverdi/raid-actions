@@ -54,6 +54,7 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         }
         var teamView = Top(after) ?? "";
         if (!PlayTargets.IsTeamView(teamView)) await Refuse(after, $"Doom Tower {name}", ct);
+        if (!await ApplyDefaultTeam("doom-tower", teamView, ct)) return new BattleOutcome(BattleResult.NotStarted, "the Teams card's team was refused here");
         if (((await Read(ct)).Play.TeamIds ?? []).Count == 0)
         {
             await Back(teamView, ct);

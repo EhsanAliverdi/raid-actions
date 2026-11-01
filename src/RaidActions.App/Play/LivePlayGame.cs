@@ -330,6 +330,8 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     private async Task<PlayScan?> WaitBattle(CancellationToken ct, string resultView = PlayTargets.ArenaResultView)
     {
         var until = DateTime.UtcNow + TimeSpan.FromMinutes(20); // dungeon runs took 9-10 minutes at x1 (2026-10-30)
+        // An arena round that stalls (healers on both sides, 2026-11-01: 20 minutes in round 1 of 3) is skipped: a defeat, the rest of the game goes on.
+        var skipAt = resultView is PlayTargets.ArenaResultView or "BattleFinishArena3x3Dialog" ? DateTime.UtcNow + TimeSpan.FromMinutes(6) : (DateTime?)null;
         var autoTried = false;
         var speedTries = 0;
         while (DateTime.UtcNow < until)
@@ -343,6 +345,18 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 return play;
             }
             if (!s.InBattle) return null; // the battle ended somewhere else (the game moved on)
+            if (skipAt is { } skip && DateTime.UtcNow >= skip && Has(s, PlayTargets.BattleHudView) && !s.UiBlocked)
+            {
+                log("autoplay: this arena round has run 6 minutes: skipping it");
+                skipAt = DateTime.UtcNow + TimeSpan.FromMinutes(6); // the next round's own limit
+                await Click("battle-pause", null, (s2, _) => Top(s2) == "BattlePauseDialog", "the pause menu", ct, within: TimeSpan.FromSeconds(6));
+                await Task.Delay(500, ct);
+                await Click("battle-giveup", null, (s2, _) => Top(s2) == UiState.MessageBoxView, "Skip Battle", ct, within: TimeSpan.FromSeconds(6));
+                await Task.Delay(500, ct);
+                await Click("battle-giveup-yes", null, (s2, _) => Top(s2) != UiState.MessageBoxView, "the skip confirmed", ct, within: TimeSpan.FromSeconds(6));
+                until = DateTime.UtcNow + TimeSpan.FromMinutes(20);
+                continue;
+            }
             // Another battle's result screen (a name not known for this battle; 2026-10-31 the Iron Twins' waited 20 minutes): the end too.
             if (Top(s) is { } other && other.StartsWith("BattleFinish", StringComparison.Ordinal) && other != resultView)
             {

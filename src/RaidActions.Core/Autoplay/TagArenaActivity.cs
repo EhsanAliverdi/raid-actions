@@ -35,13 +35,25 @@ public sealed class TagArenaActivity(ITagArenaGame game) : IActivity
     private double? _tokens;
     private DateTime _checkedAt = DateTime.MinValue;
     private readonly HashSet<long> _skip = [];
+
+    /// <summary>Opponents fought before a restart since the last refresh, by name: the events hold no user id.</summary>
+    private readonly HashSet<string> _foughtBefore = [];
     private bool _dryShown;
     private int _battles, _wins, _losses, _refreshes;
 
     public bool IsEnabled(AutoplaySettings settings) => settings.TagArena.Enabled;
 
     private List<ArenaOpponentInfo> Eligible(ClassicArenaSettings s) =>
-        _board is null ? [] : [.. ArenaRules.Eligible(_board.Opponents, s).Where(o => !_skip.Contains(o.UserId))];
+        _board is null ? [] : [.. ArenaRules.Eligible(_board.Opponents, s).Where(o => !_skip.Contains(o.UserId) && !_foughtBefore.Contains(o.Name))];
+
+    public void Restore(IEnumerable<AutoplayEvent> events)
+    {
+        foreach (var e in events.Where(e => e.Area == AreaId))
+        {
+            if (e.Kind == "refresh") _foughtBefore.Clear();
+            if (e.Kind == "battle" && System.Text.RegularExpressions.Regex.Match(e.Text, @" vs (.+) \([\d,]+\)") is { Success: true } m) _foughtBefore.Add(m.Groups[1].Value);
+        }
+    }
 
     public bool Full(PlayContext ctx) => _tokens >= 9;
 
@@ -88,6 +100,7 @@ public sealed class TagArenaActivity(ITagArenaGame game) : IActivity
             if (fresh is null) return "";
             _board = fresh;
             _skip.Clear();
+            _foughtBefore.Clear();
             _refreshes++;
             ctx.Event(AreaId, "refresh", $"free refresh: {Eligible(s).Count} opponent(s) under {s.MaxOpponentPower:N0} now");
             return "free refresh";

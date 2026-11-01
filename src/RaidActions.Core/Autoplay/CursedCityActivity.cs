@@ -56,6 +56,8 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
         {
             var ids = System.Text.RegularExpressions.Regex.Matches(e.Text, @"#(\d+)").Select(m => int.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture));
             if (e.Kind == "gear") foreach (var id in ids) _geared.Add(id);
+            // Today's losses count after a restart too: a replay that failed is not paid for again (2026-11-02).
+            if (e.Kind == "battle" && e.Text.StartsWith("Defeat", StringComparison.Ordinal)) _questLosses++;
             if (e.Kind == "remove") foreach (var id in ids) _geared.Remove(id);
         }
     }

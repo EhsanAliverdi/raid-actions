@@ -131,6 +131,7 @@ public static class AutoplayCommand
             var choresActivity = new ChoresActivity(game);
             var liveActivity = new LiveArenaActivity(game);
             var tagActivity = new TagArenaActivity(game);
+            tagActivity.Restore(LiveAutoplayHost.Recent(dir));
             // Keys before energy (Ehsan 2026-10-31: "use keys smartly, the first priority is the quests, especially the daily ones like Faction
             // Wars"): energy can always play (the farm), so it comes last and takes every turn the key areas leave.
             IActivity[] activities = [giftsActivity, arena, tagActivity, cbActivity, hydraActivity, fwActivity, ccActivity, dtActivity, liveActivity, choresActivity, energyActivity];

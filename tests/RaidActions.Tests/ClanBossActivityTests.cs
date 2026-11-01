@@ -47,6 +47,19 @@ public class ClanBossActivityTests
     }
 
     [Fact]
+    public async Task A_restart_keeps_the_top_chest_when_the_game_cannot_be_read()
+    {
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 }, ClanBoss = new ClanBossSettings { Enabled = true, Plan = [new("Nightmare", 2)] } } };
+        var game = new FakeClanBossGame(() => host.UtcNow);
+        game.Standing["Nightmare"] = new ClanStanding(44_000_000, 1, null);
+        host.OnDelay = h => { if (h.UtcNow - Start >= TimeSpan.FromHours(2)) h.Stop = true; };
+        var clan = new ClanBossActivity(game);
+        clan.Restore([new AutoplayEvent(Start.AddDays(-1), ClanBossActivity.AreaId, "standing", "Nightmare: 0 damage today, top chest 39,170,000, 0 key(s)")], Start);
+        await new AutoplayEngine([clan], new FakeArenaGame(() => host.UtcNow), host, false).RunAsync(once: false, Limit());
+        Assert.Empty(game.Calls);
+    }
+
+    [Fact]
     public async Task The_games_count_of_keys_replaces_the_bots()
     {
         var (_, game, engine) = Make(new ClanBossSettings { Enabled = true, Plan = [new("Brutal", 1), new("Nightmare", 1)] }, TimeSpan.FromHours(2));

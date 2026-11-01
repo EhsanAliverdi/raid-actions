@@ -111,6 +111,9 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
     /// <summary>Today's battles per difficulty (the key plan's counts), restored from today's events.</summary>
     private readonly Dictionary<string, int> _today = [];
     private readonly HashSet<string> _topChest = [];
+
+    /// <summary>Each difficulty's top chest as last read, kept over restarts (2026-11-01: the read failed once, and the value was only in memory).</summary>
+    private readonly Dictionary<string, long> _knownTop = [];
     private DateOnly? _day;
 
     private void NewDay(PlayContext ctx)
@@ -128,6 +131,7 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
     public string Name => "Clan Boss";
 
     private static readonly TimeSpan Recheck = TimeSpan.FromMinutes(30);
+    private static readonly TimeSpan ResetWindow = TimeSpan.FromHours(4);
     private ClanBossAccount? _account;
     private DateTime _readAt = DateTime.MinValue;
     private DateTime _retryAt = DateTime.MinValue;
@@ -141,6 +145,9 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
     {
         var day = ClanBossRules.Day(utc);
         _day = day;
+        foreach (var e in events.Where(e => e.Area == AreaId && e.Kind == "standing"))
+            if (System.Text.RegularExpressions.Regex.Match(e.Text, @"^(\w+):.*top chest ([\d,]+)") is { Success: true } m)
+                _knownTop[m.Groups[1].Value] = long.Parse(m.Groups[2].Value.Replace(",", ""), System.Globalization.CultureInfo.InvariantCulture);
         foreach (var e in events.Where(e => e.Area == AreaId && e.Kind == "battle" && ClanBossRules.Day(e.Utc) == day))
         {
             _battles++;
@@ -170,11 +177,21 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
         NewDay(ctx);
         if (!HasKey(ctx)) return "";
         var s = ctx.Settings.ClanBoss;
+        // The boss's real reset moves (Ehsan 2026-11-02): in the hours before the usual one, the game saying the first row has no key today is the new boss.
+        if (ClanBossRules.NextReset(ctx.Utc) - ctx.Utc <= ResetWindow && s.Plan.FirstOrDefault()?.Difficulty is { } first && _today.GetValueOrDefault(first) > 0
+            && await game.ReadClanStandingAsync(first, ct) is { KeysSpent: 0, Damage: 0 })
+        {
+            _today.Clear();
+            _topChest.Clear();
+            ctx.Event(AreaId, "reset", "the Clan Boss has reset: a new day of keys");
+        }
         if (ClanBossRules.Next(s, _account.BestDamage, _today, _topChest) is not { } difficulty) return "";
         // The game's own numbers before any key (Ehsan 2026-11-01: a key past the top chest is a key thrown away): its keys spent replace the bot's
         // count, and a difficulty past its top chest gets no more.
-        if (await game.ReadClanStandingAsync(difficulty, ct) is { } standing)
+        if (await game.ReadClanStandingAsync(difficulty, ct) is { } read)
         {
+            if (read.TopChest is { } topRead) _knownTop[difficulty] = topRead;
+            var standing = _knownTop.TryGetValue(difficulty, out var known) ? read with { TopChest = known } : read;
             _today[difficulty] = Math.Max(_today.GetValueOrDefault(difficulty), standing.KeysSpent);
             ctx.Event(AreaId, "standing", $"{difficulty}: {standing.Damage:N0} damage today, top chest {standing.TopChest?.ToString("N0") ?? "not read"}, {standing.KeysSpent} key(s)");
             if (standing.Full)

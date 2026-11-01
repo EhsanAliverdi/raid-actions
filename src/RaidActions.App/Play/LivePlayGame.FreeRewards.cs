@@ -112,6 +112,7 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
                     var (sm, mt, mp) = await Read(ct);
                     foreach (var q in mp.Quests ?? []) read[(q.Tab, q.Id, q.Text)] = q;
                     var done = mt.FirstOrDefault(t => t.Kind == "mission-item" && t.Note == "state 2" && t.NotClickable is null);
+                    if (i == 0) log($"autoplay: missions: {string.Join("; ", mt.Where(t => t.Kind == "mission-item").Select(t => $"{t.Name} [{t.Note}] {t.NotClickable}"))}. Screen dump: {DumpScreen("missions")}");
                     if (!claim || done is null) break;
                     if (dryRun)
                     {
@@ -119,7 +120,7 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
                         break;
                     }
                     var topM = Top(sm);
-                    await Click("mission-item", t => t.Path == done.Path, (s3, scan) => Top(s3) != topM || !scan().Targets.Any(t => t.Path == done.Path && t.Note == "state 2"),
+                    await Click("mission-item", t => t.Id == done.Id, (s3, scan) => Top(s3) != topM || !scan().Targets.Any(t => t.Id == done.Id && t.Note == "state 2"),
                         $"{done.Name} collected", ct, within: TimeSpan.FromSeconds(8));
                     claimed++;
                     log($"autoplay: collected {done.Name}");

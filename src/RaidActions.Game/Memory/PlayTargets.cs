@@ -603,7 +603,9 @@ public static partial class PlayTargets
                     var state = Try(() => IntValue(g, g.Ref(c.Address, MissionItem, "_state")), null, notes, "RecommendedQuestItemContext._state");
                     var progress = Try(() => StringValue(g, g.Ref(c.Address, MissionItem, "_progressValue")), null, notes, "RecommendedQuestItemContext._progressValue");
                     var id = Try(() => (int?)g.Int(c.Address, MissionItem, "_questId"), null, notes, "RecommendedQuestItemContext._questId") ?? 0;
-                    targets.Add(Make("mission-item", $"mission: {text}", n, Own(i), $"state {state}", id: id));
+                    // The card has no button: its reward tile is what a click reaches (seen 2026-11-01).
+                    var tile = SelfAndBelow(i).FirstOrDefault(x => x.Context?.Class.EndsWith(".RecommendedQuestRewardContext", StringComparison.Ordinal) == true && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null);
+                    targets.Add(Make("mission-item", $"mission: {text}", n, tile ?? Own(i), $"state {state}", id: id));
                     if (!string.IsNullOrWhiteSpace(text) && state is 1 or 2)
                         quests.Add(new RaidExtractor.Autoplay.QuestRead(id, "Mission", text.Trim(), null, progress, state == 2, state == 2));
                     break;

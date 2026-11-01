@@ -310,7 +310,16 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             var (w, why) = GameWindow.Find();
             if (w is null) throw new PlayStopException(why!);
             var down = mine.Rect.Value.Center.Y > cy;
-            if (MouseInput.Wheel(w, cx, cy, down ? -2 : 2) is { } notSent) throw new PlayStopException("Not scrolled: " + notSent);
+            // The wheel first; a board that does not follow it is dragged (2026-11-01, as the Tag Team board).
+            if (i < 5)
+            {
+                if (MouseInput.Wheel(w, cx, cy, down ? -2 : 2) is { } notSent) throw new PlayStopException("Not scrolled: " + notSent);
+            }
+            else
+            {
+                var dy = Math.Clamp(mine.Rect.Value.Center.Y - cy, -w.Client.Height * 0.3f, w.Client.Height * 0.3f);
+                if (MouseInput.Drag(w, cx, cy + dy / 2, cx, cy - dy / 2) is { } notDragged) throw new PlayStopException("Not dragged: " + notDragged);
+            }
             log($"autoplay: scrolled the board {(down ? "down" : "up")} towards opponent {userId}");
             await Task.Delay(400, ct);
         }

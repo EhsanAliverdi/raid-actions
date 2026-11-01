@@ -90,7 +90,9 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                     continue;
                 }
 
-                var enabled = activities.Where(a => a.IsEnabled(settings)).ToList();
+                // The order set on the page; an area not in it keeps its place after those that are.
+                var order = settings.AreaOrder;
+                var enabled = activities.Where(a => a.IsEnabled(settings)).OrderBy(a => order.IndexOf(a.Id) is >= 0 and var at ? at : int.MaxValue).ToList();
                 _decisions = activities.ToDictionary(a => a.Id, a => a.IsEnabled(settings) ? a.Decide(ctx) : Decision.Off("switched off"));
                 if (enabled.Count == 0)
                 {

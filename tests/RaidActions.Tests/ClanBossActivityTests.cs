@@ -47,6 +47,27 @@ public class ClanBossActivityTests
     }
 
     [Fact]
+    public async Task The_page_s_order_decides_which_area_plays_first()
+    {
+        var host = new FakeHost(Start)
+        {
+            Settings = new AutoplaySettings
+            {
+                Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 }, ClanBoss = new ClanBossSettings { Enabled = true }, DoomTower = new DoomTowerSettings { Enabled = true },
+                AreaOrder = [DoomTowerActivity.AreaId, ClanBossActivity.AreaId],
+            },
+        };
+        var order = new List<string>();
+        var clan = new FakeClanBossGame(() => host.UtcNow);
+        var tower = new FakeDoomTowerGame { Silver = 1 };
+        tower.Stages.Add(new DtStage(120, DtKind.Boss, 2, 120, false));
+        host.OnDelay = h => { if (h.UtcNow - Start >= TimeSpan.FromMinutes(5)) h.Stop = true; };
+        await new AutoplayEngine([new ClanBossActivity(clan), new DoomTowerActivity(tower)], new FakeArenaGame(() => host.UtcNow), host, false).RunAsync(once: false, Limit());
+        Assert.Single(tower.Calls);
+        Assert.True(host.Events.FindIndex(e => e.Area == DoomTowerActivity.AreaId && e.Kind == "battle") < host.Events.FindIndex(e => e.Area == ClanBossActivity.AreaId && e.Kind == "battle"));
+    }
+
+    [Fact]
     public void The_clan_boss_day_starts_at_its_reset_not_at_local_midnight()
     {
         var before = new DateTime(2026, 11, 1, 9, 59, 0, DateTimeKind.Utc);

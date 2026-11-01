@@ -82,7 +82,9 @@ public sealed partial class LivePlayGame : IChoresGame
             var (s, targets, _) = await Read(ct);
             if (targets.Any(t => t.Kind == "market-item")) return;
             if (Top(s) != PlayTargets.VillageHudView) { await ToVillage(ct); continue; }
-            await Click("village-market", null, (_, scan) => scan().Targets.Any(t => t.Kind == "market-item"), "the Market opens", ct, within: TimeSpan.FromSeconds(12));
+            // The tap can end on the Missions screen seconds after coming back to the village (seen twice): the loop closes it and tries again.
+            try { await Click("village-market", null, (_, scan) => scan().Targets.Any(t => t.Kind == "market-item"), "the Market opens", ct, within: TimeSpan.FromSeconds(12)); }
+            catch (PlayStopException e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal)) { log($"autoplay: the Market did not open: {e.Message}"); }
             await Task.Delay(1000, ct);
         }
         throw new PlayStopException($"The Market was not reached. Screen dump: {DumpScreen("market not reached")}");

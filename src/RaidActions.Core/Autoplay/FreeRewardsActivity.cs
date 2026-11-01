@@ -28,6 +28,7 @@ public sealed class FreeRewardsActivity(IFreeRewardsGame game) : IActivity
     public string Name => "Free rewards";
 
     private DateTime _checkedAt = DateTime.MinValue;
+    private DateTime _questAt = DateTime.MinValue;
     private string? _lastQuestText;
     private int _collected;
     private bool _dryShown;
@@ -67,8 +68,9 @@ public sealed class FreeRewardsActivity(IFreeRewardsGame game) : IActivity
             }
             catch (PlayStopException e) { ctx.Event(AreaId, "error", $"playtime gifts not collected (tried again at the next check): {e.Message}"); }
         }
-        if (s.Quests || ctx.Settings.Quests.Enabled)
+        if ((s.Quests || ctx.Settings.Quests.Enabled) && ctx.Utc >= _questAt)
         {
+            _questAt = ctx.Utc + TimeSpan.FromMinutes(Math.Max(10, s.QuestEveryMinutes));
             try
             {
                 var claim = s.Quests && ctx.Settings.Quests.ClaimRewards;

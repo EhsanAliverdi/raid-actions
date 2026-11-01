@@ -211,7 +211,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 break;
             }
             var count = play.Inbox.Count(match);
-            await Click("inbox-collect", t => t.Path == entry.Collect!.Path, (s2, lazy) => Top(s2) != PlayTargets.InboxView || lazy().Inbox.Count(match) < count,
+            await Click("inbox-collect", t => t.Id == entry.Collect!.Id, (s2, lazy) => Top(s2) != PlayTargets.InboxView || lazy().Inbox.Count(match) < count,
                 $"\"{entry.Title}\" is collected", ct);
             // A rewards popup after collecting: closed with its own close.
             var s3 = await Settled(ct);

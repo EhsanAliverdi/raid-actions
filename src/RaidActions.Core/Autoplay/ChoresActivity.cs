@@ -61,7 +61,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         if (s.InboxExpiringTokens && ctx.Utc >= _inboxAt && Open(ctx, "inbox")) return "inbox";
         if (s.PassRewards && ctx.Utc >= _passAt && Open(ctx, "pass")) return "pass";
         if (s.FreeItems && ctx.Utc >= _freeAt && Open(ctx, "free")) return "free";
-        if ((s.MarketShards || s.MarketFood) && ctx.Utc >= _marketAt && Open(ctx, "market")) return "market";
+        if (s.MarketShards && ctx.Utc >= _marketAt && Open(ctx, "market")) return "market";
         if (s.ArtifactUpgrades && ctx.Utc >= _upgradeAt && Open(ctx, "advised")) return "advised";
         return null;
     }

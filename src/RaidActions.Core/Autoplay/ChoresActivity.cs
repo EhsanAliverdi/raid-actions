@@ -14,6 +14,9 @@ public interface IChoresGame
     /// <summary>Arena and Tag Team tokens in the inbox expiring within a day claimed; how many items.</summary>
     Task<int> CollectExpiringTokensAsync(bool dryRun, CancellationToken ct);
 
+    /// <summary>The Forge Pass's and the Challenges' rewards claimed; how many claims.</summary>
+    Task<int> ClaimPassRewardsAsync(bool dryRun, CancellationToken ct);
+
     /// <summary>The gem Mine's bubble and the Shop's offers the game marks free; returns how many offers came.</summary>
     Task<int> CollectFreeAsync(bool dryRun, CancellationToken ct);
 
@@ -38,7 +41,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
     public string Name => "Chores";
 
     private static readonly TimeSpan Pause = TimeSpan.FromHours(1);
-    private DateTime _marketAt = DateTime.MinValue, _upgradeAt = DateTime.MinValue, _freeAt = DateTime.MinValue, _inboxAt = DateTime.MinValue;
+    private DateTime _marketAt = DateTime.MinValue, _upgradeAt = DateTime.MinValue, _freeAt = DateTime.MinValue, _inboxAt = DateTime.MinValue, _passAt = DateTime.MinValue;
     private readonly Dictionary<string, DateTime> _paused = [];
     private int _bought, _levelUps, _upgrades, _free;
     private string _last = "";
@@ -56,6 +59,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         if (s.ArtifactUpgrades && ctx.QuestLeft(QuestNeedKind.ArtifactAttempts) > 0 && Open(ctx, "attempts")) return "attempts";
         if (s.ArtifactUpgrades && ctx.QuestLeft(QuestNeedKind.ArtifactLevel) > 0 && Open(ctx, "piece")) return "piece";
         if (s.InboxExpiringTokens && ctx.Utc >= _inboxAt && Open(ctx, "inbox")) return "inbox";
+        if (s.PassRewards && ctx.Utc >= _passAt && Open(ctx, "pass")) return "pass";
         if (s.FreeItems && ctx.Utc >= _freeAt && Open(ctx, "free")) return "free";
         if ((s.MarketShards || s.MarketFood) && ctx.Utc >= _marketAt && Open(ctx, "market")) return "market";
         if (s.ArtifactUpgrades && ctx.Utc >= _upgradeAt && Open(ctx, "advised")) return "advised";
@@ -65,7 +69,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
     public Decision Decide(PlayContext ctx)
     {
         if (Next(ctx) is { } job) return Decision.Now(job);
-        var at = new[] { _marketAt, _upgradeAt, _freeAt, _inboxAt }.Where(t => t > ctx.Utc).DefaultIfEmpty(ctx.Utc + TimeSpan.FromMinutes(10)).Min();
+        var at = new[] { _marketAt, _upgradeAt, _freeAt, _inboxAt, _passAt }.Where(t => t > ctx.Utc).DefaultIfEmpty(ctx.Utc + TimeSpan.FromMinutes(10)).Min();
         return Decision.Wait(at, "nothing due");
     }
 
@@ -84,6 +88,10 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
                     _inboxAt = ctx.Utc + TimeSpan.FromMinutes(Math.Max(30, s.InboxEveryMinutes));
                     var tokens = await game.CollectExpiringTokensAsync(ctx.DryRun, ct);
                     return tokens > 0 ? Report(ctx, "inbox", $"claimed {tokens} expiring token item(s)") : "";
+                case "pass":
+                    _passAt = ctx.Utc + TimeSpan.FromMinutes(Math.Max(15, s.PassEveryMinutes));
+                    var claims = await game.ClaimPassRewardsAsync(ctx.DryRun, ct);
+                    return claims > 0 ? Report(ctx, "pass", $"claimed {claims} Forge Pass or Challenges reward(s)") : "";
                 case "free":
                     _freeAt = ctx.Utc + TimeSpan.FromMinutes(Math.Max(10, s.FreeEveryMinutes));
                     var free = await game.CollectFreeAsync(ctx.DryRun, ct);

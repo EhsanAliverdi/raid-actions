@@ -205,7 +205,7 @@ public static partial class PlayTargets
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-demonlord", "clan-hydra", "clan-difficulty", "clan-battle", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-state", "live-phase", "live-slot", "live-confirm",
-        "mode-dt", "dt-stage", "dt-final-boss", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
+        "mode-dt", "dt-stage", "dt-final-boss", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "village-pass", "village-challenges", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
     };
@@ -1076,6 +1076,21 @@ public static partial class PlayTargets
         if (t.View == BattleMenuView)
             foreach (var x in nodes.Where(x => x.Name == "OpenLiveArenaButton" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
                 targets.Add(Make("live-open", "battle menu: Live Arena", x, x, null));
+
+        // The Forge Pass and Challenges: the ways in, the tabs, and only their claim buttons (never "BuyPassOrLevels" or a Go).
+        if (t.View == VillageHudView)
+            foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null))
+            {
+                if (x.Name == "BattlePass_h") targets.Add(Make("village-pass", "village: Passes", x, x, null));
+                else if (x.Name == "ChallengesButton_h") targets.Add(Make("village-challenges", "village: Challenges", x, x, null));
+            }
+        if (t.View is "BattlePassDialog" or "ChallengesDialog")
+            foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null))
+            {
+                if (x.IsOn is not null && x.Name is "LevelReward" or "DailyQuests" or "WeeklyQuests_h") targets.Add(Make("pass-tab", $"forge pass: {x.Name}", x, x, null));
+                else if (x.IsOn is not null && x.Name is "0_Heroes" or "1_Artifacts" or "2_Dungeons" or "3_Arena") targets.Add(Make("challenge-tab", $"challenges: {x.Name}", x, x, null));
+                else if (x.Name.Contains("Claim", StringComparison.OrdinalIgnoreCase) || x.Name == "CollectAllRewardsButton") targets.Add(Make("pass-claim", $"claim: {x.Name}", x, x, x.Path));
+            }
 
         // The Tavern's Upgrade Level tab, the main slot's X and Upgrade.
         if (t.View == TavernView)

@@ -31,6 +31,12 @@ public class ChoresActivityTests
             return Task.FromResult(0);
         }
 
+        public Task<int> ClaimPassRewardsAsync(bool dryRun, CancellationToken ct)
+        {
+            Calls.Add("pass");
+            return Task.FromResult(0);
+        }
+
         public Task<int> CollectFreeAsync(bool dryRun, CancellationToken ct)
         {
             Calls.Add("free");

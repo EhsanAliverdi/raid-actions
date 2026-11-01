@@ -190,6 +190,45 @@ public sealed partial class LivePlayGame : IChoresGame
         return before.Keys.Count(k => k.Contains("Token", StringComparison.OrdinalIgnoreCase) && after.GetValueOrDefault(k) > before[k]);
     }
 
+    public async Task<int> ClaimPassRewardsAsync(bool dryRun, CancellationToken ct)
+    {
+        _nav.FitWindow();
+        var claimed = 0;
+        foreach (var (open, view, tab) in new[] { ("village-pass", "BattlePassDialog", "pass-tab"), ("village-challenges", "ChallengesDialog", "challenge-tab") })
+        {
+            var (s, _, _) = await Read(ct);
+            if (Top(s) != PlayTargets.VillageHudView) await ToVillage(ct);
+            await Click(open, null, (s2, _) => Top(s2) == view, $"{view} opens", ct, within: TimeSpan.FromSeconds(10));
+            await Task.Delay(1500, ct);
+            var tabs = (await Read(ct)).Targets.Where(t => t.Kind == tab).Select(t => t.Path).ToList();
+            foreach (var path in tabs.DefaultIfEmpty(""))
+            {
+                if (path.Length > 0)
+                {
+                    await Click(tab, t => t.Path == path, (_, _) => true, "the tab", ct);
+                    await Task.Delay(1000, ct);
+                }
+                for (var i = 0; i < 6; i++)
+                {
+                    var (_, now, _) = await Read(ct);
+                    var claim = now.FirstOrDefault(t => t.Kind == "pass-claim" && t.NotClickable is null);
+                    if (claim is null) break;
+                    if (dryRun) { log($"autoplay: WOULD CLAIM {claim.Name} (dry run)"); break; }
+                    await Click("pass-claim", t => t.Path == claim.Path, (_, _) => true, $"{claim.Name}", ct);
+                    log($"autoplay: claimed {claim.Name} on {view}");
+                    claimed++;
+                    await Task.Delay(2000, ct);
+                    var s3 = await Settled(ct);
+                    if (Top(s3) is { } top && top != view) await Back(top, ct);
+                    await Task.Delay(800, ct);
+                }
+            }
+            await Back(view, ct);
+            await Task.Delay(1500, ct);
+        }
+        return claimed;
+    }
+
     public async Task<int> CollectFreeAsync(bool dryRun, CancellationToken ct)
     {
         _nav.FitWindow();

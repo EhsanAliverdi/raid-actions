@@ -49,6 +49,12 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         _nav.FitWindow();
         // The arena result has no back button (a tap closes it), so the gear driver's way home cannot leave it.
         if (Has(await ReadState(ct), PlayTargets.ArenaResultView)) await LeaveResult(ct);
+        // A Live Arena match under way (a restart mid-draft, 2026-11-03): played to its end; the draft's X would leave it.
+        if (InLiveMatch(await ReadState(ct)))
+        {
+            var outcome = await FinishLiveMatchAsync(AutoplaySettings.Load(ExtractorOutput).LiveArena, DateTime.UtcNow, ct);
+            log($"autoplay: the Live Arena match under way ended: {outcome.Result}");
+        }
         await _nav.GoHome(Action("go home"), ct);
     }
 

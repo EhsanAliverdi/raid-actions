@@ -52,6 +52,7 @@ public sealed partial class LivePlayGame : ILiveArenaGame
     public async Task<BattleOutcome> PlayLiveArenaAsync(LiveArenaSettings s, bool dryRun, CancellationToken ct)
     {
         var started = DateTime.UtcNow;
+        if (InLiveMatch(await ReadState(ct))) return await FinishLiveMatchAsync(s, started, ct);
         if (!await OpenLiveArena(ct)) return new BattleOutcome(BattleResult.NotStarted, "closed now");
         if (dryRun)
         {
@@ -61,6 +62,14 @@ public sealed partial class LivePlayGame : ILiveArenaGame
         }
         await Click("live-find", null, (s2, _) => Has(s2, LiveDraftView) || Top(s2) == "LiveArenaMatchMakingDialog" || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView, "the match is searched", ct, within: TimeSpan.FromSeconds(5));
         log("autoplay: looking for a Live Arena opponent");
+        return await FinishLiveMatchAsync(s, started, ct);
+    }
+
+    private bool InLiveMatch(UiState state) => Has(state, LiveDraftView) || Has(state, "LiveArenaMatchMakingDialog") || Has(state, LiveResultView);
+
+    /// <summary>From the search on: the draft, the battle and its result.</summary>
+    private async Task<BattleOutcome> FinishLiveMatchAsync(LiveArenaSettings s, DateTime started, CancellationToken ct)
+    {
         var (data, _, _, _) = await Account(ct);
         var phasesSeen = new HashSet<string>();
         var leaders = new List<int>();

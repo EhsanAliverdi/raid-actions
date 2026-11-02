@@ -201,6 +201,7 @@ public static partial class UiTargets
                 "RemoveButton_h" => ("popup-remove", "popup: Manage (opens the manage-gear dialog)"),
                 // The manage-gear dialog (RemoveArtifactOverlay).
                 "Unequip_h" when t.View == "RemoveArtifactOverlay" => ("manage-remove", "manage gear: Remove"),
+                "CancelButton" when t.View == "OpenLastAvailableTreeOverlay" => ("back", "second tree: Cancel"),
                 "SaveResultButton" when t.View == "ChimeraQuickBattleOverlay" => ("back", "chimera result: Keep Result"),
                 "SaveResultButton_h" when t.View is "BattleFinishAllianceHydraDialog" or "BattleFinishAllianceChimeraDialog" => ("back", "result: Keep Result"),
                 "OkButton" when t.View == "PaymentWaitingOverlay" => ("back", "the payment notice: OK (nothing is paid here)"),

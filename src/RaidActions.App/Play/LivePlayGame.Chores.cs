@@ -295,6 +295,12 @@ public sealed partial class LivePlayGame : IChoresGame
             }
             await Click("mastery-learn", null, (_, _) => true, $"mastery {id}", ct);
             await Task.Delay(1800, ct);
+            // The build's second tree: a third tree holding nothing is what gets locked (the build was checked before it was sent).
+            if (Top(await ReadState(ct)) == "OpenLastAvailableTreeOverlay")
+            {
+                await Click("mastery-unlock", null, (s2, _) => Top(s2) != "OpenLastAvailableTreeOverlay", "the second tree", ct, within: TimeSpan.FromSeconds(8));
+                await Task.Delay(1800, ct);
+            }
             var (s6, _, _) = await Read(ct);
             if (Top(s6) == "MasteryInfoOverlay") { await Back("MasteryInfoOverlay", ct); await Task.Delay(800, ct); }
             var now = (await Account(ct)).Data.Champions.First(c => c.Id == request.ChampionId).Masteries;

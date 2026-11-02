@@ -107,6 +107,7 @@ public static partial class PlayTargets
     private const string Opponent = "SharedModel.Meta.Battle.Arena.ArenaOpponent";
     private const string BattleHud = "ECS.ViewModel.BattleHUDContext";
     private const string ArenaResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishArenaDialogContext";
+    private const string LiveResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishLiveArenaDialogContext";
     private const string UserResource = "Client.ViewModel.Contextes.Generic.UserResources.UserResourceContext";
     private const string InboxItem = "Client.ViewModel.Contextes.InboxDialog.Contexts.InboxItemContext";
     private const string ResourceEnum = "SharedModel.Meta.Account.ResourceTypeId";
@@ -913,6 +914,12 @@ public static partial class PlayTargets
                         Try(() => IntValue(g, g.Ref(c.Address, ArenaResult, "_battleResultType")), null, notes, "BattleFinishArenaDialogContext._battleResultType"),
                         Try(() => IntValue(g, g.Ref(c.Address, ArenaResult, "_enemyCombatPower")), null, notes, "BattleFinishArenaDialogContext._enemyCombatPower"),
                         Try(() => StringValue(g, g.Ref(c.Address, ArenaResult, "_enemyUserName")), null, notes, "BattleFinishArenaDialogContext._enemyUserName"));
+                    break;
+                case LiveResult:
+                    result = new ArenaResultRead(
+                        Try(() => IntValue(g, g.Ref(c.Address, LiveResult, "_battleResultType")), null, notes, "BattleFinishLiveArenaDialogContext._battleResultType"),
+                        null,
+                        Try(() => StringValue(g, g.Ref(c.Address, LiveResult, "_enemyUserName")), null, notes, "BattleFinishLiveArenaDialogContext._enemyUserName"));
                     break;
                 case UserResource:
                 {

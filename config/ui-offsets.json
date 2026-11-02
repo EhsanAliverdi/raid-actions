@@ -772,6 +772,26 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishLiveArenaDialogContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_battleResultType": {
+          "offset": "0x90",
+          "type": "IntProperty",
+          "field": "_battleResultType",
+          "source": "field",
+          "status": "direct"
+        },
+        "_enemyUserName": {
+          "offset": "0xC0",
+          "type": "StringProperty",
+          "field": "_enemyUserName",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishArenaDialogContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

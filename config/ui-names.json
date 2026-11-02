@@ -161,6 +161,7 @@
                                                          "_speedInt",
                                                          "_speedString"
                                                      ],
+                  "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishLiveArenaDialogContext":  [ "_battleResultType", "_enemyUserName" ],
                   "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishArenaDialogContext":  [
                                                                                                        "_battleResultType",
                                                                                                        "_enemyCombatPower",

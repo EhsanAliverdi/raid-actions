@@ -69,7 +69,8 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
         }
         if (_drawCheckAt is { } check && DateTime.UtcNow >= check)
         {
-            _drawCheckAt = null;
+            // Every 10 minutes: the game can stop drawing later too (2026-11-02: black an hour after the handoff, and the bot played on by memory).
+            _drawCheckAt = DateTime.UtcNow + TimeSpan.FromMinutes(10);
             RestartIfBlank();
         }
         var (w, why) = Game.Window.GameWindow.Find();
@@ -84,7 +85,7 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
     private DateTime _lastHandoff = DateTime.MinValue;
 
     /// <summary>When to look at the game after a handoff.</summary>
-    private DateTime? _drawCheckAt;
+    private DateTime? _drawCheckAt = DateTime.UtcNow + TimeSpan.FromMinutes(2);
 
     /// <summary>
     /// The game can stop drawing when the session moves (2026-11-02: a black window, the memory still fine, so everything looked healthy). The bot is tied to the

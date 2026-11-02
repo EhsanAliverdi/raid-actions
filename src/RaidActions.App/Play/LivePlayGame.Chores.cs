@@ -319,6 +319,9 @@ public sealed partial class LivePlayGame : IChoresGame
         var path = Path.Combine(AppPaths.Config(), "village", name + ".png");
         if (!File.Exists(path)) return false;
         using var label = OpenCvSharp.Cv2.ImRead(path, OpenCvSharp.ImreadModes.Color);
+        // A window on top leaves the capture blank: the game comes to the front first.
+        if (MouseInput.EnsureForeground(w) is { } behind) { log($"autoplay: {behind}"); return false; }
+        await Task.Delay(500, ct);
         var (capture, problem) = WindowCapture.Take(w);
         if (capture is null) { log($"autoplay: the village could not be captured: {problem}"); return false; }
         (float X, float Y)? spot;

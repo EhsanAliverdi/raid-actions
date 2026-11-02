@@ -47,6 +47,18 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     public async Task GoHomeAsync(CancellationToken ct)
     {
         _nav.FitWindow();
+        // A frozen game (2026-11-03: stuck in a Live Arena battle, no longer drawing, its UI unreadable): looked at again after 20 s, then restarted.
+        try { await ReadState(ct); }
+        catch (PlayStopException e) when (e.Message.StartsWith("The UI state could not be read", StringComparison.Ordinal))
+        {
+            await Task.Delay(20000, ct);
+            try { await ReadState(ct); }
+            catch (PlayStopException again) when (again.Message.StartsWith("The UI state could not be read", StringComparison.Ordinal))
+            {
+                log("autoplay: the game's UI cannot be read: the game is frozen; restarting it and playing on");
+                LiveAutoplayHost.Relaunch(ExtractorOutput);
+            }
+        }
         // The arena result has no back button (a tap closes it), so the gear driver's way home cannot leave it.
         if (Has(await ReadState(ct), PlayTargets.ArenaResultView)) await LeaveResult(ct);
         // A Live Arena match under way (a restart mid-draft, 2026-11-03): played to its end; the draft's X would leave it.

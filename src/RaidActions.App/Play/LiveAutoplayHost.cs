@@ -109,6 +109,14 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
         Thread.Sleep(15000);
         if (!Black()) return;
         Event(new AutoplayEvent(DateTime.UtcNow, "engine", "restart", "the game went black after the session moved: restarting it and playing on"));
+        Relaunch(dir);
+    }
+
+    /// <summary>
+    /// Restarts the game and plays on: the bot is tied to the game's process, so a new bot (autoplay --restart-first) does it and this one ends.
+    /// </summary>
+    public static void Relaunch(string dir)
+    {
         var exe = Environment.ProcessPath!;
         var log = Environment.GetEnvironmentVariable("AUTOPLAY_LOG") ?? Path.Combine(dir, AutoplaySettings.Folder, "bot.log");
         // Through "start", in its own process tree: a plain child died with this process (2026-11-02: the old bot left and no new one came).

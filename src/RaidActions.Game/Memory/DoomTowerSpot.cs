@@ -22,7 +22,7 @@ public static class DoomTowerSpot
         foreach (var c in contours)
         {
             var box = Cv2.BoundingRect(c);
-            if (box.Y < 60 * scale || box.Width < 85 * scale || box.Width > 150 * scale || box.Height < 110 * scale || box.Height > 190 * scale) continue;
+            if (box.Y < 60 * scale || box.Width < 75 * scale || box.Width > 170 * scale || box.Height < 95 * scale || box.Height > 215 * scale) continue;
             using var middle = new Mat(gold, new Rect(box.X + box.Width / 3, box.Y + box.Height / 3, box.Width / 3, box.Height / 3));
             if (Cv2.CountNonZero(middle) < 0.5 * middle.Total()) continue;
             var area = Cv2.ContourArea(c);

@@ -17,10 +17,18 @@ public static class VillageSpot
         using var sized = new Mat();
         if (Math.Abs(scale - 1) > 0.01) Cv2.Resize(image, sized, new Size(1298, (int)Math.Round(image.Height / scale)));
         else image.CopyTo(sized);
-        using var scores = new Mat();
-        Cv2.MatchTemplate(sized, label, scores, TemplateMatchModes.CCoeffNormed);
-        Cv2.MinMaxLoc(scores, out _, out var best, out _, out var at);
+        // The village's camera has two zooms (2026-11-02: labels 8% apart): the label is tried at several sizes.
+        var (best, at, size) = (0.0, new Point(), label.Size());
+        for (var f = 0.85; f <= 1.25; f += 0.03)
+        {
+            using var sizedLabel = new Mat();
+            Cv2.Resize(label, sizedLabel, new Size(0, 0), f, f, f < 1 ? InterpolationFlags.Area : InterpolationFlags.Cubic);
+            using var scores = new Mat();
+            Cv2.MatchTemplate(sized, sizedLabel, scores, TemplateMatchModes.CCoeffNormed);
+            Cv2.MinMaxLoc(scores, out _, out double score, out _, out Point place);
+            if (score > best) (best, at, size) = (score, place, sizedLabel.Size());
+        }
         if (best < MinScore) return null;
-        return ((float)((at.X + label.Width / 2f) * scale), (float)((at.Y + label.Height / 2f) * scale));
+        return ((float)((at.X + size.Width / 2f) * scale), (float)((at.Y + size.Height / 2f) * scale));
     }
 }

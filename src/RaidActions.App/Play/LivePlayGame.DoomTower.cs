@@ -98,7 +98,11 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         var (capture, problem) = WindowCapture.Take(w);
         if (capture is null) throw new PlayStopException($"The tower could not be captured: {problem}");
         (float X, float Y)? spot;
-        using (capture) spot = DoomTowerSpot.Find(capture.Image);
+        using (capture)
+        {
+            spot = DoomTowerSpot.Find(capture.Image);
+            if (spot is null) { var saved = Path.Combine(folder, $"tower-hard-{DateTime.Now:HHmmss}.png"); OpenCvSharp.Cv2.ImWrite(saved, capture.Image); log($"autoplay: no gold floor found; the map as seen: {saved}"); }
+        }
         if (spot is not { } at)
         {
             await SelectTowerDifficulty("Normal", ct);

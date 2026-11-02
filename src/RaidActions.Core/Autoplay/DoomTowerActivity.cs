@@ -13,6 +13,9 @@ public interface IDoomTowerGame
 
     /// <summary>One battle of the stage with the team the game shows there; a dry run shows Start only.</summary>
     Task<BattleOutcome> FightDoomTowerAsync(DtStage stage, bool dryRun, CancellationToken ct);
+
+    /// <summary>One floor of the Hard tower, the one the game offers; a boss floor takes a gold key for a win.</summary>
+    Task<BattleOutcome> ClimbDoomTowerAsync(bool dryRun, CancellationToken ct);
 }
 
 /// <summary>
@@ -44,7 +47,36 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
     {
         if (_map is null || ctx.Utc - _readAt >= Recheck) return Decision.Now("reading the Doom Tower");
         var (stage, why) = Pick(ctx);
+        if (stage is null && ClimbDue(ctx)) return Decision.Now("climbing the Hard tower");
         return stage is not null ? Decision.Now(why) : Decision.Wait(_readAt + Recheck, why);
+    }
+
+    /// <summary>Climbing rests after a loss until tomorrow: the next floor is too strong for now, and a loss must not repeat all day.</summary>
+    private DateTime _climbAfter = DateTime.MinValue;
+
+    private bool ClimbDue(PlayContext ctx) => ctx.Settings.DoomTower.Climb && ctx.Utc >= _climbAfter;
+
+    private async Task<string> Climb(PlayContext ctx, CancellationToken ct)
+    {
+        await ctx.ThinkAsync(ct);
+        var outcome = await game.ClimbDoomTowerAsync(ctx.DryRun, ct);
+        if (outcome.Result is BattleResult.NotStarted or BattleResult.Retry)
+        {
+            _climbAfter = ctx.Utc + TimeSpan.FromHours(6);
+            ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", $"Hard tower: {outcome.Text}");
+            return "";
+        }
+        _battles++;
+        if (outcome.Result == BattleResult.Victory) _wins++;
+        else
+        {
+            _losses++;
+            _climbAfter = ctx.Utc + TimeSpan.FromDays(1);
+        }
+        _last = $"{outcome.Result} Hard tower floor. {outcome.Text}";
+        ctx.Event(AreaId, "battle", _last);
+        _readAt = DateTime.MinValue;
+        return $"{outcome.Result}: Hard tower floor";
     }
 
     public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
@@ -52,7 +84,7 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
         _map = await game.ReadDoomTowerAsync(ct);
         _readAt = ctx.Utc;
         var (stage, why) = Pick(ctx);
-        if (stage is null) return "";
+        if (stage is null) return ClimbDue(ctx) ? await Climb(ctx, ct) : "";
         await ctx.ThinkAsync(ct);
         var outcome = await game.FightDoomTowerAsync(stage, ctx.DryRun, ct);
         var name = DoomTowerRules.Name(stage);

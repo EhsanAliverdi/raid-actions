@@ -85,6 +85,7 @@ public sealed partial class LivePlayGame : ITagArenaGame
         }
         var teamView = Top(after) ?? "";
         if (!PlayTargets.IsTeamView(teamView)) await Refuse(after, "Tag Team Arena battle", ct);
+        if (!await ApplyDefaultTeam("tag-arena", teamView, ct)) return new BattleOutcome(BattleResult.NotStarted, "the Teams card's team was refused here");
         var (_, t2, _) = await Read(ct);
         var start = t2.FirstOrDefault(t => t.Kind == "team-start" && t.View == teamView);
         if (dryRun || start is null)

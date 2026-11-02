@@ -70,6 +70,31 @@ public class ClanBossActivityTests
     }
 
     [Fact]
+    public void The_gold_floor_is_found_and_a_finished_floor_is_not()
+    {
+        using var image = new OpenCvSharp.Mat(732, 1298, OpenCvSharp.MatType.CV_8UC3, new OpenCvSharp.Scalar(20, 30, 90));
+        var gold = new OpenCvSharp.Scalar(60, 150, 190);
+        OpenCvSharp.Cv2.Rectangle(image, new OpenCvSharp.Rect(868, 423, 97, 134), gold, 12);
+        OpenCvSharp.Cv2.Rectangle(image, new OpenCvSharp.Rect(31, 652, 266, 50), gold, -1);
+        Assert.Null(RaidActions.Game.Memory.DoomTowerSpot.Find(image));
+        OpenCvSharp.Cv2.Rectangle(image, new OpenCvSharp.Rect(675, 383, 112, 145), gold, -1);
+        var at = RaidActions.Game.Memory.DoomTowerSpot.Find(image);
+        Assert.NotNull(at);
+        Assert.InRange(at.Value.X, 725, 737);
+        Assert.InRange(at.Value.Y, 450, 460);
+    }
+
+    [Fact]
+    public async Task The_tower_climbs_and_rests_a_day_after_a_loss()
+    {
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 }, DoomTower = new DoomTowerSettings { Enabled = true, Climb = true } } };
+        var tower = new FakeDoomTowerGame { ClimbResult = BattleResult.Defeat };
+        host.OnDelay = h => { if (h.UtcNow - Start >= TimeSpan.FromHours(3)) h.Stop = true; };
+        await new AutoplayEngine([new DoomTowerActivity(tower)], new FakeArenaGame(() => host.UtcNow), host, false).RunAsync(once: false, Limit());
+        Assert.Equal(1, tower.Climbs);
+    }
+
+    [Fact]
     public async Task The_games_count_of_keys_replaces_the_bots()
     {
         var (_, game, engine) = Make(new ClanBossSettings { Enabled = true, Plan = [new("Brutal", 1), new("Nightmare", 1)] }, TimeSpan.FromHours(2));

@@ -208,7 +208,7 @@ public static partial class PlayTargets
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-state", "live-phase", "live-slot", "live-confirm",
-        "mode-dt", "dt-stage", "dt-final-boss", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "village-pass", "village-challenges", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
+        "mode-dt", "dt-stage", "dt-final-boss", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "village-pass", "village-challenges", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
     };
@@ -772,7 +772,7 @@ public static partial class PlayTargets
                         Try(() => BoolValue(g, g.Ref(c.Address, PveResult, "_nextStageAvailable")), null, notes, "BattleFinishPveDialogContext._nextStageAvailable"));
                     break;
                 case var slotClass when (slotClass == SelectionSlot || slotClass.EndsWith(".SelectableHeroSlotContext", StringComparison.Ordinal))
-                    && IsTeamView(t.View) && UnderBinding(i, "MySquad"):
+                    && IsTeamView(t.View) && (UnderBinding(i, "MySquad") || UnderBinding(i, "UserSquads")):
                 {
                     // Our team's slots (seen 2026-10-29: the team screen's own HeroSlotContext under the group bound to MySquad; the enemy's
                     // under EnemySquad): the champion is the slot's Hero avatar's entity id; an empty slot is not filled.
@@ -1109,6 +1109,14 @@ public static partial class PlayTargets
                 if (x.IsOn is not null && x.Name is "LevelReward" or "DailyQuests" or "WeeklyQuests_h") targets.Add(Make("pass-tab", $"forge pass: {x.Name}", x, x, null));
                 else if (x.IsOn is not null && x.Name is "0_Heroes" or "1_Artifacts" or "2_Dungeons" or "3_Arena") targets.Add(Make("challenge-tab", $"challenges: {x.Name}", x, x, null));
                 else if (x.Name.Contains("Claim", StringComparison.OrdinalIgnoreCase) || x.Name == "CollectAllRewardsButton") targets.Add(Make("pass-claim", $"claim: {x.Name}", x, x, x.Path));
+            }
+
+        // The tower's Normal / Hard dropdown (seen 2026-11-02): its button, and its items while it is open.
+        if (t.View == "DoomTowerHUD")
+            foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null))
+            {
+                if (x.Name == "Dropdown") targets.Add(Make("dt-difficulty", "doom tower: difficulty", x, x, null));
+                else if (x.Name.StartsWith("Item ", StringComparison.Ordinal) && x.IsOn is not null) targets.Add(Make("dt-difficulty-item", $"doom tower: {x.Name}", x, x, x.IsOn == true ? "selected" : null));
             }
 
         // A stalled arena round: pause, Skip Battle, its Skip (never Quit Series).

@@ -13,6 +13,17 @@ public sealed class FakeDoomTowerGame : IDoomTowerGame
 
     public Task<DoomTowerMap> ReadDoomTowerAsync(CancellationToken ct) => Task.FromResult(new DoomTowerMap([.. Stages], Gold, Silver));
 
+    /// <summary>Floors climbed; the outcome of the next climb.</summary>
+    public int Climbs { get; private set; }
+    public BattleResult ClimbResult { get; set; } = BattleResult.Victory;
+
+    public Task<BattleOutcome> ClimbDoomTowerAsync(bool dryRun, CancellationToken ct)
+    {
+        if (dryRun) return Task.FromResult(new BattleOutcome(BattleResult.NotStarted, "Start shown"));
+        Climbs++;
+        return Task.FromResult(new BattleOutcome(ClimbResult, "60 s"));
+    }
+
     public Task<BattleOutcome> FightDoomTowerAsync(DtStage stage, bool dryRun, CancellationToken ct)
     {
         if (dryRun) return Task.FromResult(new BattleOutcome(BattleResult.NotStarted, "Start shown, not pressed"));

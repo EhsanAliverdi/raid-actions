@@ -171,7 +171,7 @@ public static class Cli
         // A bot that found the game black restarts it, then plays (LiveAutoplayHost).
         if (args.Contains("--restart-first"))
         {
-            await RestartGameCommand.RunAsync(["restart-game"], outDir, output);
+            await RestartGameCommand.RunAsync(["restart-game"], AppPaths.Resolve(null, null), output);
             args = [.. args.Where(a => a != "--restart-first")];
         }
         if (args.Length > 0 && args[0].Equals("restart-game", StringComparison.OrdinalIgnoreCase))

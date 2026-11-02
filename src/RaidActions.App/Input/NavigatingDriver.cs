@@ -595,7 +595,8 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
         // Desktop screen keeps the small window Ehsan allows.
         if (policy.Problem(w) is null)
         {
-            if (w.Client.Width < FullWidth && WindowFit.Plan(w, FullWidth, FullHeight) is var full && full.Window.Width <= full.WorkArea.Width && full.Window.Height <= full.WorkArea.Height)
+            // Never larger either (Ehsan 2026-11-03: a big game window hides the log and the app).
+            if ((w.Client.Width < FullWidth || w.Client.Width > FullWidth + 20) && WindowFit.Plan(w, FullWidth, FullHeight) is var full && full.Window.Width <= full.WorkArea.Width && full.Window.Height <= full.WorkArea.Height)
             {
                 var (bigger, _) = WindowFit.Apply(w, full);
                 if (bigger is not null) log($"window fit: {w.Client.Width}x{w.Client.Height} → {bigger.Client.Width}x{bigger.Client.Height}");

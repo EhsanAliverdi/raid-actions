@@ -160,6 +160,8 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
     }
 
     /// <summary>Today's events (to carry today's counters over a restart).</summary>
+    public IReadOnlyList<AutoplayEvent> RecentEvents() => Recent(dir);
+
     public static List<AutoplayEvent> Today(string dir) => Day(dir, DateTime.Now);
 
     /// <summary>Yesterday's and today's events: for a day that does not start at local midnight (the Clan Boss's).</summary>

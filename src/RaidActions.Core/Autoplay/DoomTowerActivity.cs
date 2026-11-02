@@ -41,7 +41,7 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
     private static bool SilverQuest(PlayContext ctx) => ctx.QuestLeft(QuestNeedKind.DoomTower) > 0;
 
     private (DtStage? Stage, string Why) Pick(PlayContext ctx) =>
-        _map is null ? (null, "not read") : DoomTowerRules.Pick([.. _map.Stages.Where(s => !_skip.Contains(s.Id))], _map.Gold, _map.Silver, ctx.Settings.DoomTower, SilverQuest(ctx));
+        _map is null ? (null, "not read") : DoomTowerRules.Pick([.. _map.Stages.Where(s => !_skip.Contains(s.Id) && ctx.Held($"{AreaId}:stage:{s.Id}") is null)], _map.Gold, _map.Silver, ctx.Settings.DoomTower, SilverQuest(ctx));
 
     public Decision Decide(PlayContext ctx)
     {
@@ -54,7 +54,9 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
     /// <summary>Climbing rests after a loss until tomorrow: the next floor is too strong for now, and a loss must not repeat all day.</summary>
     private DateTime _climbAfter = DateTime.MinValue;
 
-    private bool ClimbDue(PlayContext ctx) => ctx.Settings.DoomTower.Climb && ctx.Utc >= _climbAfter;
+    private const string ClimbKey = AreaId + ":climb";
+
+    private bool ClimbDue(PlayContext ctx) => ctx.Settings.DoomTower.Climb && ctx.Utc >= _climbAfter && ctx.Held(ClimbKey) is null;
 
     private async Task<string> Climb(PlayContext ctx, CancellationToken ct)
     {
@@ -63,6 +65,7 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
         if (outcome.Result is BattleResult.NotStarted or BattleResult.Retry)
         {
             _climbAfter = ctx.Utc + TimeSpan.FromHours(6);
+            if (!ctx.DryRun) ctx.Hold(ClimbKey, _climbAfter, $"Hard tower: {outcome.Text}");
             ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", $"Hard tower: {outcome.Text}");
             return "";
         }
@@ -72,6 +75,8 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
         {
             _losses++;
             _climbAfter = ctx.Utc + TimeSpan.FromDays(1);
+            // The same team would lose again (Ehsan 2026-11-03: "it tries with exactly the same champions and loses on wave one").
+            ctx.Hold(ClimbKey, _climbAfter, "the Hard floor was lost: tried again in a day");
         }
         _last = $"{outcome.Result} Hard tower floor. {outcome.Text}";
         ctx.Event(AreaId, "battle", _last);
@@ -98,7 +103,11 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
         if (outcome.Result == BattleResult.Victory) _wins++;
         else if (outcome.Result == BattleResult.Defeat) _losses++;
         // A lost room or boss is not tried again today (the planner only picks beaten ones, so a loss means the team is not set).
-        if (outcome.Result == BattleResult.Defeat) _skip.Add(stage.Id);
+        if (outcome.Result == BattleResult.Defeat)
+        {
+            _skip.Add(stage.Id);
+            ctx.Hold($"{AreaId}:stage:{stage.Id}", ClanBossRules.NextReset(ctx.Utc), $"{name} was lost");
+        }
         if (DoomTowerRules.KeyOf(stage) == DoomTowerRules.Silver)
             ctx.QuestNeeds = [.. ctx.QuestNeeds.Select(n => n.Kind == QuestNeedKind.DoomTower ? n with { Remaining = n.Remaining - DoomTowerRules.Cost(stage) } : n).Where(n => n.Remaining > 0)];
         _last = $"{outcome.Result} {name}. {outcome.Text}";

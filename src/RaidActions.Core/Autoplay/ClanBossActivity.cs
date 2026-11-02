@@ -75,7 +75,12 @@ public sealed class HydraActivity(IClanBossGame game) : IActivity
     {
         _account = await game.ReadHydraAsync(ct);
         _readAt = ctx.Utc;
-        if (!HasKey(ctx)) return "";
+        if (!HasKey(ctx))
+        {
+            // Keys come with the reset: no point looking again before it, even after a restart.
+            ctx.Hold(AreaId, ClanBossRules.NextReset(ctx.Utc), $"no key to spend ({_account.Keys:0.##}): next look after the reset");
+            return "";
+        }
         var difficulty = HydraRules.Pick(ctx.Settings.Hydra, _account.BestDamage);
         await ctx.ThinkAsync(ct);
         var outcome = await game.FightHydraAsync(difficulty, ctx.DryRun, ct);
@@ -84,6 +89,8 @@ public sealed class HydraActivity(IClanBossGame game) : IActivity
             _dryShown = ctx.DryRun;
             ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", $"{difficulty}: {outcome.Text}");
             _retryAt = ctx.Utc + TimeSpan.FromHours(6);
+            // No team could be set (2026-11-02: every champion dead for this rotation): not again before the reset, even after a restart.
+            if (!ctx.DryRun) ctx.Hold(AreaId, ClanBossRules.NextReset(ctx.Utc), $"{difficulty}: {outcome.Text}; tried again after the reset");
             _last = $"{difficulty}: {outcome.Text}";
             return "";
         }
@@ -141,7 +148,12 @@ public sealed class ChimeraActivity(IClanBossGame game) : IActivity
     {
         _account = await game.ReadChimeraAsync(ct);
         _readAt = ctx.Utc;
-        if (!HasKey(ctx)) return "";
+        if (!HasKey(ctx))
+        {
+            // Keys come with the reset: no point looking again before it, even after a restart.
+            ctx.Hold(AreaId, ClanBossRules.NextReset(ctx.Utc), $"no key to spend ({_account.Keys:0.##}): next look after the reset");
+            return "";
+        }
         var difficulty = ChimeraRules.Pick(ctx.Settings.Chimera, _account.BestDamage);
         await ctx.ThinkAsync(ct);
         var outcome = await game.FightChimeraAsync(difficulty, ctx.DryRun, ct);
@@ -150,6 +162,8 @@ public sealed class ChimeraActivity(IClanBossGame game) : IActivity
             _dryShown = ctx.DryRun;
             ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", $"{difficulty}: {outcome.Text}");
             _retryAt = ctx.Utc + TimeSpan.FromHours(6);
+            // No team could be set (2026-11-02: every champion dead for this rotation): not again before the reset, even after a restart.
+            if (!ctx.DryRun) ctx.Hold(AreaId, ClanBossRules.NextReset(ctx.Utc), $"{difficulty}: {outcome.Text}; tried again after the reset");
             _last = $"{difficulty}: {outcome.Text}";
             return "";
         }

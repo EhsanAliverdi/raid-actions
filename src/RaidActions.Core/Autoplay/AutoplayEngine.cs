@@ -20,6 +20,9 @@ public interface IAutoplayHost
 
     void WriteStatus(AutoplayStatus status);
     void Event(AutoplayEvent e);
+
+    /// <summary>Yesterday's and today's events, for what earlier runs learned (holds).</summary>
+    IReadOnlyList<AutoplayEvent> RecentEvents() => [];
 }
 
 /// <summary>
@@ -56,6 +59,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     {
         var settings = host.LoadSettings();
         var ctx = _ctx = new PlayContext(settings, game, host, dryRun, Remember) { QuestNeeds = [.. StartNeeds] };
+        ctx.RestoreHolds(host.RecentEvents());
         var errors = 0;
         var sessionEnd = host.UtcNow + Jitter(settings.Pacing.SessionMinutes);
         try
@@ -106,7 +110,8 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                     catch (Exception e) when (e is not OperationCanceledException) { }
                 }
                 var enabled = activities.Where(a => a.IsEnabled(settings)).OrderBy(a => order.IndexOf(a.Id) is >= 0 and var at ? at : int.MaxValue).ToList();
-                _decisions = activities.ToDictionary(a => a.Id, a => a.IsEnabled(settings) ? a.Decide(ctx) : Decision.Off("switched off"));
+                _decisions = activities.ToDictionary(a => a.Id, a => !a.IsEnabled(settings) ? Decision.Off("switched off")
+                    : ctx.Held(a.Id) is { } held ? Decision.Wait(held.Until, held.Why) : a.Decide(ctx));
                 if (enabled.Count == 0)
                 {
                     if (once) return Stop("no area is switched on");

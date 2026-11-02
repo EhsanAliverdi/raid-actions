@@ -74,6 +74,35 @@ public sealed class PlayContext(AutoplaySettings settings, IPlayGame game, IAuto
 
     public void Event(string area, string kind, string text) => (events ?? host.Event)(new AutoplayEvent(Utc, area, kind, text));
 
+    private readonly Dictionary<string, (DateTime Until, string Why)> _holds = [];
+
+    /// <summary>
+    /// Nothing to try at <paramref name="key"/> before <paramref name="until"/> (no key, no team left, a floor lost with the same team): kept as an event,
+    /// so a restart remembers it (Ehsan 2026-11-03: "every time it starts it does the same thing"). The key is an area's id, or "area:thing".
+    /// </summary>
+    public void Hold(string key, DateTime until, string why)
+    {
+        _holds[key] = (until, why);
+        Event(key.Split(':')[0], "hold", $"{key}|{until:O}|{why}");
+    }
+
+    /// <summary>The hold on a key while it lasts.</summary>
+    public (DateTime Until, string Why)? Held(string key) => _holds.TryGetValue(key, out var h) && h.Until > Utc ? h : null;
+
+    /// <summary>Lifts a hold (the thing changed: a key came, the team won).</summary>
+    public void Release(string key) => _holds.Remove(key);
+
+    /// <summary>The holds from earlier runs' events; the latest per key.</summary>
+    public void RestoreHolds(IEnumerable<AutoplayEvent> events)
+    {
+        foreach (var e in events.Where(e => e.Kind == "hold").OrderBy(e => e.Utc))
+        {
+            var parts = e.Text.Split('|', 3);
+            if (parts.Length == 3 && DateTime.TryParse(parts[1], System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var until))
+                _holds[parts[0]] = (until.ToUniversalTime(), parts[2]);
+        }
+    }
+
     /// <summary>A person's pause before an action (the pacing settings' range).</summary>
     public Task ThinkAsync(CancellationToken ct)
     {

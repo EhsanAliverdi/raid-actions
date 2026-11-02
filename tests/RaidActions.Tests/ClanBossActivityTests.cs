@@ -119,6 +119,16 @@ public class ClanBossActivityTests
     }
 
     [Fact]
+    public async Task After_three_turns_the_area_waiting_longest_plays_not_the_next_in_line()
+    {
+        var turns = new List<string>();
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 } } };
+        host.OnDelay = h => { if (turns.Count >= 12) h.Stop = true; };
+        await new AutoplayEngine([new FullArea("a", turns), new FullArea("b", turns), new FullArea("c", turns)], new FakeArenaGame(() => host.UtcNow), host, false).RunAsync(once: false, Limit());
+        Assert.Contains("c", turns);
+    }
+
+    [Fact]
     public async Task A_full_area_goes_first_but_another_gets_a_turn_after_three()
     {
         var turns = new List<string>();

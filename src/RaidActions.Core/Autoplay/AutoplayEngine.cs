@@ -36,6 +36,8 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     private const int MaxTurnsInARow = 3;
     private string? _lastArea;
     private int _sameArea;
+    private readonly Dictionary<string, int> _playedAt = [];
+    private int _turnNumber;
     private DateTime _resourcesAt = DateTime.MinValue;
 
     /// <summary>Quests as if read (autoplay --test-quest): to try an area's quest on the live game when no such quest is open.</summary>
@@ -115,13 +117,15 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 // so full energy and short-lived chances (Live Arena's hours) do not wait for it (2026-11-01).
                 var act = enabled.FirstOrDefault(a => _decisions[a.Id].Act);
                 if (act is not null && act.Id == _lastArea && _sameArea >= MaxTurnsInARow)
-                    act = enabled.FirstOrDefault(a => _decisions[a.Id].Act && a.Id != _lastArea) ?? act;
+                    // The one waiting longest, not the next in line: that one and the leader would take turns and the rest never play (2026-11-02: Chores waited 25 minutes).
+                    act = enabled.Where(a => _decisions[a.Id].Act && a.Id != _lastArea).OrderBy(a => _playedAt.GetValueOrDefault(a.Id)).FirstOrDefault() ?? act;
                 // A full resource stops regenerating: its area first, whatever the order; but after three turns in a row another area gets one, or long runs with
                 // energy near its cap starve the rest (2026-11-02: only Energy played for 30 minutes).
                 if (enabled.FirstOrDefault(a => _decisions[a.Id].Act && a.Full(ctx) && !(a.Id == _lastArea && _sameArea >= MaxTurnsInARow)) is { } full) act = full;
                 if (act is not null)
                 {
                     _sameArea = act.Id == _lastArea ? _sameArea + 1 : 1;
+                    _playedAt[act.Id] = ++_turnNumber;
                     _lastArea = act.Id;
                 }
                 if (act is null)

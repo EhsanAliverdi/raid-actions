@@ -176,6 +176,7 @@ public static partial class PlayTargets
     // Tag Team Arena (plan/tag-arena.md; from the dump 2026-10-31).
     private const string TagOpponent = "Client.ViewModel.Contextes.Arena3x3Dialog.Tabs.Battle.Arena3x3BattleOpponentItemContext";
     private const string TagTab = "Client.ViewModel.Contextes.Arena3x3Dialog.Tabs.Battle.Arena3x3BattleTabContext";
+    private const string TagReward = "Client.ViewModel.Contextes.BattleFinishArena3x3Dialog.BattleFinishArena3x3RewardDialogContext";
     private const string TagResult = "Client.ViewModel.Contextes.BattleFinishArena3x3Dialog.BattleFinishArena3x3DialogContext";
     private const string QuestItem = "Client.ViewModel.Contextes.Quests.QuestItemContext";
     private const string PeriodicQuest = "Client.ViewModel.Contextes.Quests.PeriodicQuestItemContext";
@@ -644,6 +645,13 @@ public static partial class PlayTargets
                     // The Tag Team series' result: _summaryDefeat (seen 2026-10-31).
                     var defeat = Try(() => BoolValue(g, g.Ref(c.Address, TagResult, "_summaryDefeat")), null, notes, "BattleFinishArena3x3DialogContext._summaryDefeat");
                     if (defeat is { } d) result = new ArenaResultRead(d ? 2 : 1, null, Try(() => StringValue(g, g.Ref(c.Address, TagResult, "_enemyUserName")), null, notes, "_enemyUserName"));
+                    break;
+                }
+                case TagReward:
+                {
+                    // The screen a series ends on (2026-11-02): every series was "Unknown" because only the summary screen was read.
+                    var won = Try(() => BoolValue(g, g.Ref(c.Address, TagReward, "_isBattleWon")), null, notes, "BattleFinishArena3x3RewardDialogContext._isBattleWon");
+                    if (won is { } w) result = new ArenaResultRead(w ? 1 : 2, null, null);
                     break;
                 }
                 case GiftPrize:

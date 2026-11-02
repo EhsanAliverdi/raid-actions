@@ -236,6 +236,7 @@
                   "Client.ViewModel.Contextes.Quests.QuestsDialogContext":  [ "_activeTabIndex" ],
                   "Client.ViewModel.Contextes.Arena3x3Dialog.Tabs.Battle.Arena3x3BattleOpponentItemContext":  [ "_arenaOpponent", "_teamPower", "_opponentStatusId", "_onQuarantine" ],
                   "Client.ViewModel.Contextes.Arena3x3Dialog.Tabs.Battle.Arena3x3BattleTabContext":  [ "_freeRefreshAvailable", "_freeRefreshTimeLeft" ],
+                  "Client.ViewModel.Contextes.BattleFinishArena3x3Dialog.BattleFinishArena3x3RewardDialogContext":  [ "_isBattleWon" ],
                   "Client.ViewModel.Contextes.BattleFinishArena3x3Dialog.BattleFinishArena3x3DialogContext":  [ "_summaryDefeat", "_enemyUserName" ],
                   "Client.ViewModel.Contextes.DoomTowerMap.DoomTowerMapItemContext":  [ "_id", "_status", "_level" ],
                   "Client.ViewModel.Contextes.MarketSlotContext":  [ "_item", "_isEmpty", "_state" ],

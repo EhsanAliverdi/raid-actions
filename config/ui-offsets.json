@@ -1340,6 +1340,19 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.BattleFinishArena3x3Dialog.BattleFinishArena3x3RewardDialogContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_isBattleWon": {
+          "offset": "0x78",
+          "type": "BoolProperty",
+          "field": "_isBattleWon",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.BattleFinishArena3x3Dialog.BattleFinishArena3x3DialogContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

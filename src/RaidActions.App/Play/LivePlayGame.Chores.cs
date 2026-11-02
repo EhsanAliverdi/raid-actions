@@ -231,8 +231,24 @@ public sealed partial class LivePlayGame : IChoresGame
         }
         if (request.DryRun)
         {
+            var price = "";
+            if (request.BuyWithGems && request.Ids.Count > 0)
+            {
+                await Click("mastery-node", t => t.Id == request.Ids[0], (s2, _) => Top(s2) == "MasteryInfoOverlay", "the first mastery opens", ct, within: TimeSpan.FromSeconds(6));
+                await Task.Delay(800, ct);
+                log($"autoplay: mastery panel. Screen dump: {DumpScreen("mastery panel")}");
+                if ((await Read(ct)).Targets.Any(t => t.Kind == "mastery-getmax"))
+                {
+                    await Click("mastery-getmax", null, (s2, _) => Top(s2) != "MasteryInfoOverlay", "the buy screen opens", ct, within: TimeSpan.FromSeconds(8));
+                    await Task.Delay(1000, ct);
+                    var (s4, t4, p4) = await Read(ct);
+                    price = $"; buy screen {Top(s4)}, {string.Join("; ", p4.Notes.Where(n => n.Contains("price", StringComparison.Ordinal)))}, buy button: {t4.Any(t => t.Kind == "mastery-buy")}";
+                    log($"autoplay: buy screen. Screen dump: {DumpScreen("mastery buy")}");
+                    Shot("autoplay: the buy screen, not pressed", new ClientRect(0, 0, 1, 1), always: true);
+                }
+            }
             await _nav.GoHome(Action("from the masteries"), ct);
-            return $"dry run: the screen matches the account; {request.Ids.Count} mastery(ies) would be learned";
+            return $"dry run: the screen matches the account; {request.Ids.Count} mastery(ies) would be learned{price}";
         }
         var learned = 0;
         foreach (var id in request.Ids)

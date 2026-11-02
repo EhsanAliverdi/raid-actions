@@ -57,18 +57,21 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
 
     public bool IsEnabled(AutoplaySettings settings) => settings.Chores.Enabled;
 
+    /// <summary>A mastery request from the app goes first: someone is waiting for it.</summary>
+    public bool Full(PlayContext ctx) => game.MasteryRequested();
+
     private bool Open(PlayContext ctx, string job) => !_paused.TryGetValue(job, out var until) || ctx.Utc >= until;
 
     /// <summary>The job due now, or null; the quests' first.</summary>
     private string? Next(PlayContext ctx)
     {
         var s = ctx.Settings.Chores;
+        if (game.MasteryRequested()) return "masteries";
         if (ctx.QuestLeft(QuestNeedKind.Market) > 0 && Open(ctx, "market")) return "market";
         if (s.TavernLevelUps && ctx.QuestLeft(QuestNeedKind.LevelUp) > 0 && Open(ctx, "level")) return "level";
         if (s.ArtifactUpgrades && ctx.QuestLeft(QuestNeedKind.ArtifactAttempts) > 0 && Open(ctx, "attempts")) return "attempts";
         if (s.ArtifactUpgrades && ctx.QuestLeft(QuestNeedKind.ArtifactLevel) > 0 && Open(ctx, "piece")) return "piece";
         if (s.InboxExpiringTokens && ctx.Utc >= _inboxAt && Open(ctx, "inbox")) return "inbox";
-        if (game.MasteryRequested()) return "masteries";
         if (s.PassRewards && ctx.Utc >= _passAt && Open(ctx, "pass")) return "pass";
         if (s.SparringPit && ctx.Utc >= _pitAt && Open(ctx, "pit")) return "pit";
         if (s.FreeItems && ctx.Utc >= _freeAt && Open(ctx, "free")) return "free";

@@ -1340,6 +1340,19 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.Masteries.BuyMasteriesOverlayContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_gemsPrice": {
+          "offset": "0x78",
+          "type": "StringProperty",
+          "field": "_gemsPrice",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.Masteries.MasteryContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

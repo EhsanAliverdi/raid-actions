@@ -349,7 +349,15 @@ public sealed partial class LivePlayGame : IChoresGame
         }
         else await Click("village-academy", null, (s2, _) => Top(s2) == "AcademyDialog", "the Guardian Ring opens", ct, within: TimeSpan.FromSeconds(10));
         await Task.Delay(1500, ct);
-        await Click("pit-slot", null, (s2, _) => Top(s2) == "TrainingCampHeroSelectionOverlay", "the Sparring Pit's list opens", ct, within: TimeSpan.FromSeconds(10));
+        // A filled slot does not open the list (2026-11-03): its champion is training, nothing to do.
+        try { await Click("pit-slot", null, (s2, _) => Top(s2) == "TrainingCampHeroSelectionOverlay", "the Sparring Pit's list opens", ct, within: TimeSpan.FromSeconds(10)); }
+        catch (PlayStopException e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal))
+        {
+            log("autoplay: the Sparring Pit's slot is filled: training");
+            await Back("AcademyDialog", ct);
+            await Task.Delay(1000, ct);
+            return null;
+        }
         await Task.Delay(1000, ct);
         var (_, items, _) = await Read(ct);
         // HeroSelectionItemState: 0 free, 1 in this slot, 3 at max level, 4 blocked.

@@ -168,6 +168,12 @@ public static class Cli
             return await UnequipCommand.RunAsync(args, outDir, output, abortHook);
         }
         if (args.Length > 1 && args[0].Equals("poke", StringComparison.OrdinalIgnoreCase)) return PokeCommand.Run(args, AppPaths.Resolve(null, null).Output, output);
+        // A bot that found the game black restarts it, then plays (LiveAutoplayHost).
+        if (args.Contains("--restart-first"))
+        {
+            await RestartGameCommand.RunAsync(["restart-game"], outDir, output);
+            args = [.. args.Where(a => a != "--restart-first")];
+        }
         if (args.Length > 0 && args[0].Equals("restart-game", StringComparison.OrdinalIgnoreCase))
         {
             var outIndex = Array.IndexOf(args, "--output");

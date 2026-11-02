@@ -62,9 +62,15 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
                     ? "Remote Desktop disconnected: handed the session to the console so Auto Play keeps playing"
                     : "Remote Desktop disconnected; the console handoff did not run: " + ran));
                 Thread.Sleep(5000);
+                _drawCheckAt = DateTime.UtcNow + TimeSpan.FromSeconds(20);
                 if (MouseInput.SessionProblem() is null) return null;
             }
             return session;
+        }
+        if (_drawCheckAt is { } check && DateTime.UtcNow >= check)
+        {
+            _drawCheckAt = null;
+            RestartIfBlank();
         }
         var (w, why) = Game.Window.GameWindow.Find();
         if (w is null) return why;
@@ -76,6 +82,28 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
     }
 
     private DateTime _lastHandoff = DateTime.MinValue;
+
+    /// <summary>When to look at the game after a handoff.</summary>
+    private DateTime? _drawCheckAt;
+
+    /// <summary>
+    /// The game can stop drawing when the session moves (2026-11-02: a black window, the memory still fine, so everything looked healthy). The bot is tied to the
+    /// game's process, so a new bot restarts the game and plays on, and this one ends.
+    /// </summary>
+    private void RestartIfBlank()
+    {
+        var (w, _) = Game.Window.GameWindow.Find();
+        if (w is null) return;
+        var (capture, problem) = Game.Window.WindowCapture.Take(w);
+        if (capture is not null) { capture.Dispose(); return; }
+        if (problem?.Contains("blank", StringComparison.OrdinalIgnoreCase) != true) return;
+        Event(new AutoplayEvent(DateTime.UtcNow, "engine", "restart", "the game went black after the session moved: restarting it and playing on"));
+        var exe = Environment.ProcessPath!;
+        var log = Environment.GetEnvironmentVariable("AUTOPLAY_LOG") ?? Path.Combine(dir, AutoplaySettings.Folder, "bot.log");
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c ping -n 8 127.0.0.1 >nul & \"{exe}\" autoplay --restart-first >> \"{log}\" 2>&1")
+            { UseShellExecute = false, CreateNoWindow = true });
+        Environment.Exit(0);
+    }
 
     /// <summary>Runs the on-demand "Raid console handoff" task (raid-extractor scripts/disconnect-to-console.ps1); null when it ran.</summary>
     private static string? RunHandoff()

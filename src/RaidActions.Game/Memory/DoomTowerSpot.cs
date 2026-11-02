@@ -15,7 +15,7 @@ public static class DoomTowerSpot
         using var hsv = new Mat();
         Cv2.CvtColor(bgr, hsv, ColorConversionCodes.BGR2HSV);
         using var gold = new Mat();
-        Cv2.InRange(hsv, new Scalar(16, 90, 120), new Scalar(30, 255, 255), gold);
+        Cv2.InRange(hsv, new Scalar(14, 70, 90), new Scalar(32, 255, 255), gold);
         Cv2.FindContours(gold, out var contours, out _, RetrievalModes.External, ContourApproximationModes.ApproxSimple);
         (float X, float Y)? best = null;
         var bestArea = 0.0;

@@ -98,13 +98,16 @@ public sealed partial class LivePlayGame : ILiveArenaGame
                     break;
                 }
                 case "ban":
-                    // The game marks its best slot to block by itself; a click on the first open enemy slot when none is marked.
-                    if (!targets.Any(t => t.Kind == "live-confirm" && t.NotClickable is null) && targets.FirstOrDefault(t => t.Kind == "live-slot" && t.Note == "enemy" && t.NotClickable is null) is { } slot)
+                {
+                    var enemy = targets.Where(t => t.Kind == "live-slot" && t.Note == "enemy" && t.NotClickable is null && t.Id is not null)
+                        .Select(t => (Slot: t.Id!.Value, Name: t.Name.Split(": ", 2).ElementAtOrDefault(1))).ToList();
+                    if (LiveArenaDraft.Ban(s.BanList, enemy) is { } slot)
                     {
-                        await Click("live-slot", t => t.Path == slot.Path, (_, _) => true, "the slot to block", ct);
-                        log($"autoplay: Live Arena: blocked {slot.Name}");
+                        await Click("live-slot", t => t.Id == slot && t.Note == "enemy", (_, _) => true, "the slot to ban", ct);
+                        log($"autoplay: Live Arena: banned slot {slot} ({enemy.First(e => e.Slot == slot).Name}) of {string.Join(", ", enemy.Select(e => e.Name))}");
                     }
                     break;
+                }
                 default:
                 {
                     var offered = (play.Picks ?? []).Where(p => p.State is null or 0 && p.Pick is { NotClickable: null }).Select(p => p.HeroId).ToList();

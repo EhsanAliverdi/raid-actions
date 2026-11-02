@@ -555,7 +555,9 @@ public static partial class PlayTargets
                     var avatar = Try(() => g.Ref(c.Address, SelectionSlot, "Hero"), 0UL, notes, "HeroSlotContext.Hero");
                     var hero = avatar == 0 ? null : Try(() => (int?)g.Int(avatar, HeroAvatar, "_EntityId_k__BackingField"), null, notes, "HeroAvatarContext._EntityId");
                     var left = n.Screen.Value.Center.X < t.ClientWidth / 2f;
-                    targets.Add(Make("live-slot", $"live arena slot {n.Name}", n, Own(i) ?? n, left ? "mine" : "enemy", id: hero));
+                    // Mine by the champion's id; the enemy's by slot number (0 is their first pick), with the name for the ban list.
+                    var who = left || avatar == 0 ? null : Try(() => StringValue(g, g.Ref(avatar, HeroAvatar, "_name")), null, notes, "HeroAvatarContext._name");
+                    targets.Add(Make("live-slot", $"live arena slot {n.Name}: {who}", n, Own(i) ?? n, left ? "mine" : "enemy", id: left ? hero : int.TryParse(n.Name, out var number) ? number : null));
                     break;
                 }
                 case ClanScore:

@@ -70,6 +70,19 @@ public class ClanBossActivityTests
     }
 
     [Fact]
+    public void A_building_label_is_found_wherever_the_camera_is()
+    {
+        using var image = new OpenCvSharp.Mat(732, 1298, OpenCvSharp.MatType.CV_8UC3, new OpenCvSharp.Scalar(40, 40, 40));
+        OpenCvSharp.Cv2.PutText(image, "Market", new OpenCvSharp.Point(400, 300), OpenCvSharp.HersheyFonts.HersheySimplex, 1, new OpenCvSharp.Scalar(255, 255, 255), 2);
+        using var label = new OpenCvSharp.Mat(image, new OpenCvSharp.Rect(395, 270, 120, 40)).Clone();
+        var at = RaidActions.Game.Memory.VillageSpot.Find(image, label);
+        Assert.NotNull(at);
+        Assert.InRange(at.Value.X, 450, 460);
+        OpenCvSharp.Cv2.Rectangle(image, new OpenCvSharp.Rect(395, 270, 120, 40), new OpenCvSharp.Scalar(40, 40, 40), -1);
+        Assert.Null(RaidActions.Game.Memory.VillageSpot.Find(image, label));
+    }
+
+    [Fact]
     public void The_gold_floor_is_found_and_a_finished_floor_is_not()
     {
         using var image = new OpenCvSharp.Mat(732, 1298, OpenCvSharp.MatType.CV_8UC3, new OpenCvSharp.Scalar(20, 30, 90));

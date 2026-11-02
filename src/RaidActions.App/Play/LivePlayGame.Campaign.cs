@@ -379,7 +379,8 @@ public sealed partial class LivePlayGame
             var (_, targets, _) = await Read(ct);
             if (targets.Any(t => t.Kind == "portal-shard")) return;
             if (!Input.NavigatingDriver.AtVillage(s)) { await _nav.GoHome(Action("to the village"), ct); continue; }
-            try
+            if (await TapBuilding("portal", ct)) await Task.Delay(1500, ct);
+            else try
             {
                 await Click("village-portal", null, (s2, scan) => !Input.NavigatingDriver.AtVillage(s2) || scan().Targets.Any(t => t.Kind == "portal-shard"), "the Portal opens", ct,
                     within: TimeSpan.FromSeconds(15), shot: true);

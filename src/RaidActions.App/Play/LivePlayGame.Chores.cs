@@ -1,3 +1,4 @@
+using RaidActions.Game.Window;
 using RaidActions.App.Input;
 using RaidActions.Autoplay;
 using RaidActions.Game.Memory;
@@ -83,6 +84,7 @@ public sealed partial class LivePlayGame : IChoresGame
             if (targets.Any(t => t.Kind == "market-item")) return;
             if (Top(s) != PlayTargets.VillageHudView) { await ToVillage(ct); continue; }
             // The tap can end on the Missions screen seconds after coming back to the village (seen twice): the loop closes it and tries again.
+            if (await TapBuilding("market", ct)) { await Task.Delay(2500, ct); continue; }
             try { await Click("village-market", null, (_, scan) => scan().Targets.Any(t => t.Kind == "market-item"), "the Market opens", ct, within: TimeSpan.FromSeconds(12)); }
             catch (PlayStopException e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal)) { log($"autoplay: the Market did not open: {e.Message}"); }
             await Task.Delay(1000, ct);
@@ -193,12 +195,38 @@ public sealed partial class LivePlayGame : IChoresGame
         return before.Keys.Count(k => k.Contains("Token", StringComparison.OrdinalIgnoreCase) && after.GetValueOrDefault(k) > before[k]);
     }
 
+    /// <summary>The building above its label tapped; false when the label is not on screen, so the caller falls back to the fixed spot.</summary>
+    private async Task<bool> TapBuilding(string name, CancellationToken ct)
+    {
+        var (w, why) = GameWindow.Find();
+        if (w is null) throw new PlayStopException(why!);
+        var path = Path.Combine(AppPaths.Config(), "village", name + ".png");
+        if (!File.Exists(path)) return false;
+        using var label = OpenCvSharp.Cv2.ImRead(path, OpenCvSharp.ImreadModes.Color);
+        var (capture, problem) = WindowCapture.Take(w);
+        if (capture is null) { log($"autoplay: the village could not be captured: {problem}"); return false; }
+        (float X, float Y)? spot;
+        using (capture) spot = VillageSpot.Find(capture.Image, label);
+        if (spot is not { } at) { log($"autoplay: the {name} label is not on screen"); return false; }
+        var scale = w.Client.Width / 1298f;
+        log($"autoplay: the {name} building, by its label at ({at.X:0},{at.Y:0})");
+        if (MouseInput.Click(w, at.X, at.Y - 60 * scale, new Random()) is { } notSent) throw new PlayStopException(notSent);
+        await Task.Delay(800, ct);
+        return true;
+    }
+
     public async Task<string?> FillSparringPitAsync(bool dryRun, CancellationToken ct)
     {
         _nav.FitWindow();
         var (s0, _, _) = await Read(ct);
         if (Top(s0) != PlayTargets.VillageHudView) await ToVillage(ct);
-        await Click("village-academy", null, (s2, _) => Top(s2) == "AcademyDialog", "the Guardian Ring opens", ct, within: TimeSpan.FromSeconds(10));
+        if (await TapBuilding("guardian", ct))
+        {
+            var until = DateTime.UtcNow + TimeSpan.FromSeconds(10);
+            while (DateTime.UtcNow < until && Top(await ReadState(ct)) != "AcademyDialog") await Task.Delay(500, ct);
+            if (Top(await ReadState(ct)) != "AcademyDialog") throw new PlayStopException("A tap on the Guardian Ring's label opened nothing.");
+        }
+        else await Click("village-academy", null, (s2, _) => Top(s2) == "AcademyDialog", "the Guardian Ring opens", ct, within: TimeSpan.FromSeconds(10));
         await Task.Delay(1500, ct);
         await Click("pit-slot", null, (s2, _) => Top(s2) == "TrainingCampHeroSelectionOverlay", "the Sparring Pit's list opens", ct, within: TimeSpan.FromSeconds(10));
         await Task.Delay(1000, ct);

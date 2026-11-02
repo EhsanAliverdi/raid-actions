@@ -1050,7 +1050,8 @@ public static partial class PlayTargets
 
         // The Tag Team Arena's result screens (BattleFinishArena3x3RewardDialog, seen 2026-10-31: prizes and the league bar, no button) close
         // on a tap: the target is the empty strip near the bottom.
-        if (t.View.StartsWith("BattleFinishArena3x3", StringComparison.Ordinal) && !targets.Any(x => x.Kind == "result-close"))
+        // Live Arena's result (2026-11-03) too: its RETURN TO ARENA bar at the bottom is no element.
+        if ((t.View.StartsWith("BattleFinishArena3x3", StringComparison.Ordinal) || t.View == "BattleFinishLiveArenaDialog") && !targets.Any(x => x.Kind == "result-close"))
             targets.Add(new UiTarget("result-close", "tag arena result: tap to continue", null, t.View,
                 new ClientRect(t.ClientWidth * 0.40f, t.ClientHeight * 0.86f, t.ClientWidth * 0.2f, t.ClientHeight * 0.06f), true, true, true, false, t.View,
                 "a tap on the empty bottom strip", ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));

@@ -18,8 +18,9 @@ public sealed partial class LivePlayGame : ILiveArenaGame
         // Out of its hours the battle menu has no Live Arena button (seen 2026-11-01): closed, not an error.
         if (!await OpenLiveArena(ct)) return new LiveArenaState(false, false);
         var (_, targets, _) = await Read(ct);
-        var active = targets.FirstOrDefault(t => t.Kind == "live-state")?.Note == "active";
         var can = targets.Any(t => t.Kind == "live-find" && t.NotClickable is null && t.Note == "enabled");
+        // The hours' context is not always read (2026-11-03: open for 2h, read as closed every time); an enabled Find Opponent is the game saying it is open.
+        var active = can || targets.FirstOrDefault(t => t.Kind == "live-state")?.Note == "active";
         return new LiveArenaState(active, can);
     }
 

@@ -673,7 +673,7 @@ public static partial class PlayTargets
                 {
                     var hero = Try(() => (int?)g.Int(c.Address, PitHero, "_heroId"), null, notes, "TrainingCampHeroSelectionItemContext._heroId");
                     var state = Try(() => IntValue(g, g.Ref(c.Address, PitHero, "_state")), null, notes, "TrainingCampHeroSelectionItemContext._state");
-                    if (hero is > 0) targets.Add(Make("pit-hero", $"sparring pit: #{hero}", n, n, $"state {state}", id: hero));
+                    if (hero is > 0) targets.Add(Make("pit-hero", $"sparring pit: #{hero}", n, Own(i), $"state {state}", id: hero));
                     break;
                 }
                 case TagReward:

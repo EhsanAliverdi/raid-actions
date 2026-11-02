@@ -54,6 +54,8 @@ public sealed class LiveArenaActivity(ILiveArenaGame game) : IActivity
             {
                 _dryShown = ctx.DryRun;
                 _checkAt = ctx.Utc + wait;
+                // No token: one comes back about an hour later; restarts keep to it.
+                if (!ctx.DryRun && outcome.Text.StartsWith("out of Live Arena tokens", StringComparison.Ordinal)) ctx.Hold(AreaId, ctx.Utc + TimeSpan.FromHours(1), outcome.Text);
                 ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", outcome.Text);
                 return "";
             }

@@ -61,6 +61,13 @@ public sealed partial class LivePlayGame : ILiveArenaGame
             return new BattleOutcome(BattleResult.NotStarted, "Find Opponent shown, not pressed");
         }
         await Click("live-find", null, (s2, _) => Has(s2, LiveDraftView) || Top(s2) == "LiveArenaMatchMakingDialog" || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView, "the match is searched", ct, within: TimeSpan.FromSeconds(5));
+        // Out of tokens the game offers to buy some (2026-11-03: Find Opponent stays enabled at 0): closed, nothing bought, no match.
+        var (after, _, _) = await Read(ct);
+        if (Top(after) is PlayTargets.RefillView or UiState.MessageBoxView)
+        {
+            await _nav.GoHome(Action("from the token offer"), ct);
+            return new BattleOutcome(BattleResult.NotStarted, "out of Live Arena tokens (the game offered to buy some; closed, nothing bought)");
+        }
         log("autoplay: looking for a Live Arena opponent");
         return await FinishLiveMatchAsync(s, started, ct);
     }

@@ -177,7 +177,9 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         var s = ctx.Settings.Energy;
         return s with
         {
-            Targets = [.. QuestRows(ctx).Where(t => !_dryShown.Contains(t.Id)), .. s.Targets.Where(t => !_dryShown.Contains(t.Id))],
+            Targets = ctx.Settings.Rules.AllEnergyToFood
+                ? [.. s.Targets.Where(t => !_dryShown.Contains(t.Id) && (t.Region.StartsWith("Region", StringComparison.Ordinal) || t.Region.Contains("IronTwins", StringComparison.Ordinal)))]
+                : [.. QuestRows(ctx).Where(t => !_dryShown.Contains(t.Id)), .. s.Targets.Where(t => !_dryShown.Contains(t.Id))],
             Food = s.Food with
             {
                 RankUp = s.Food.RankUp && ctx.Utc >= _rankUpBlockedUntil,

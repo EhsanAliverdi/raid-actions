@@ -12,7 +12,7 @@ namespace RaidActions.App.Play;
 public sealed partial class LivePlayGame : IClanBossGame
 {
     private readonly HashSet<string> _clanDumped = [];
-    private const string QuickResult = "AllianceBossQuickBattleOverlay";
+    private const string QuickResult = "AllianceBossQuickBattleOverlay", ChimeraQuickResult = "ChimeraQuickBattleOverlay";
 
     public async Task<ClanBossAccount> ReadClanBossAsync(CancellationToken ct)
     {
@@ -75,6 +75,16 @@ public sealed partial class LivePlayGame : IClanBossGame
         return new ClanBossAccount(data.Account.Resources.GetValueOrDefault(HydraRules.Key), clan?.HydraBestDamage ?? [], clan?.HydraMaxQuickBattle);
     }
 
+    public async Task<ClanBossAccount> ReadChimeraAsync(CancellationToken ct)
+    {
+        var (data, _, _, _) = await Account(ct);
+        var clan = data.Progress?.Clan;
+        return new ClanBossAccount(data.Account.Resources.GetValueOrDefault(ChimeraRules.Key), clan?.ChimeraBestDamage ?? [], clan?.ChimeraMaxQuickBattle);
+    }
+
+    public Task<BattleOutcome> FightChimeraAsync(string difficulty, bool dryRun, CancellationToken ct) =>
+        FightAllianceAsync("Chimera", "clan-chimera", 3, PlayTargets.ChimeraResultView, difficulty, dryRun, ct);
+
     public Task<BattleOutcome> FightHydraAsync(string difficulty, bool dryRun, CancellationToken ct) =>
         FightAllianceAsync("Hydra", "clan-hydra", 2, PlayTargets.HydraResultView, difficulty, dryRun, ct);
 
@@ -112,7 +122,7 @@ public sealed partial class LivePlayGame : IClanBossGame
         }
         var teamView = Top(after) ?? "";
         if (!PlayTargets.IsTeamView(teamView)) await Refuse(after, $"{label} {difficulty}", ct);
-        if (!await ApplyDefaultTeam(enemyType == 2 ? "hydra" : "clan-boss", teamView, ct))
+        if (!await ApplyDefaultTeam(enemyType == 3 ? "chimera" : enemyType == 2 ? "hydra" : "clan-boss", teamView, ct))
             return new BattleOutcome(BattleResult.NotStarted, "the Teams card's team was refused here");
         // An empty team screen (no team ever saved there; seen 2026-10-31 on the Hydra): nothing to start with, the row waits.
         if (((await Read(ct)).Play.TeamIds ?? []).Count == 0)
@@ -165,7 +175,7 @@ public sealed partial class LivePlayGame : IClanBossGame
         await Click("team-start", t => t.View == teamView, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView or "AllianceBossQuickBattleConfirmOverlay",
             "the battle starts", ct, within: TimeSpan.FromSeconds(25), shot: true);
         // The game asks before a normal battle where Quick Battle is open (seen 2026-11-01): its one action is Continue.
-        if (Top(await ReadState(ct)) == "AllianceBossQuickBattleConfirmOverlay")
+        if (Top(await ReadState(ct)) is "AllianceBossQuickBattleConfirmOverlay" or "ChimeraQuickBattleConfirmOverlay")
         {
             await Task.Delay(800, ct);
             log($"autoplay: the Quick Battle question. Screen dump: {DumpScreen("clan confirm")}");
@@ -173,10 +183,10 @@ public sealed partial class LivePlayGame : IClanBossGame
                 "the battle starts", ct, within: TimeSpan.FromSeconds(25), shot: true);
         }
         // Quick Battle on (the team screen's switch, set in the game): no fight, the result at once (seen 2026-11-01: 23.03M on Brutal, a key spent).
-        if (Top(await ReadState(ct)) == QuickResult)
+        if (Top(await ReadState(ct)) is QuickResult or ChimeraQuickResult)
         {
             await Task.Delay(1000, ct);
-            await LeaveResult(ct, QuickResult);
+            await LeaveResult(ct, Top(await ReadState(ct)) ?? QuickResult);
             log($"autoplay: {label} {difficulty}: Quick Battle done");
             return new BattleOutcome(BattleResult.Victory, $"Quick Battle, {(DateTime.UtcNow - started).TotalSeconds:0} s");
         }
@@ -209,7 +219,7 @@ public sealed partial class LivePlayGame : IClanBossGame
             if (Top(s) is { } top && PlayTargets.IsTeamView(top)) { await Back(top, ct); continue; }
             var (_, targets, _) = await Read(ct);
             // The list of the wanted boss: its rows' enemy type (a list of the other boss is left).
-            var want = mapKind == "clan-hydra" ? "type 2" : "type 1";
+            var want = mapKind == "clan-chimera" ? "type 3" : mapKind == "clan-hydra" ? "type 2" : "type 1";
             if (targets.Any(t => t.Kind == "clan-difficulty" && t.Note?.Contains(want, StringComparison.Ordinal) == true)) return;
             if (targets.Any(t => t.Kind == "clan-difficulty")) { await Back(Top(s)!, ct); continue; }
             if (targets.Any(t => t.Kind == mapKind))

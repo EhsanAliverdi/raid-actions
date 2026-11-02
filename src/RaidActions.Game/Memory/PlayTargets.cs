@@ -81,7 +81,7 @@ public static partial class PlayTargets
         CampaignMapView = "Map",
         // Clan Boss (plan/clan-boss.md; from the dump 2026-10-31, names to confirm live).
         ClanMapView = "AllianceActivityMap", ClanDialogView = "AllianceBossesDialog", ClanResultView = "BattleFinishAllianceBossDialog",
-        HydraResultView = "BattleFinishAllianceHydraDialog", DtResultView = "BattleFinishDoomTowerDialog",
+        HydraResultView = "BattleFinishAllianceHydraDialog", ChimeraResultView = "BattleFinishAllianceChimeraDialog", DtResultView = "BattleFinishDoomTowerDialog",
         StoryResultView = "BattleFinishStoryDialog", TavernView = "HeroesDevelopmentDialog", FastRankUpView = "FastRankUpOverlay";
 
     /// <summary>A team screen (the views where a squad is picked before a battle).</summary>
@@ -206,7 +206,7 @@ public static partial class PlayTargets
         "mode-dungeon", "dungeon-region", "dungeon-stage", "dungeon-difficulty", "dungeon-dropdown", "super-raid",
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
-        "mode-clan", "clan-demonlord", "clan-hydra", "clan-difficulty", "clan-battle", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-state", "live-phase", "live-slot", "live-confirm",
+        "mode-clan", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-state", "live-phase", "live-slot", "live-confirm",
         "mode-dt", "dt-stage", "dt-final-boss", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "village-pass", "village-challenges", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
@@ -944,6 +944,7 @@ public static partial class PlayTargets
                 // The battle menu's Clan Boss card (AllianceActivityModeContext, field _allianceActivity; binding to confirm live).
                 (BattleMenuView, "ClanActivity") => ("mode-clan", "battle menu: Clan Boss"), // seen live 2026-10-31
                 (ClanMapView, var b) when b.Contains("DemonLord", StringComparison.OrdinalIgnoreCase) => ("clan-demonlord", "clan: Demon Lord"),
+                (ClanMapView, var b) when b.Contains("Chimera", StringComparison.OrdinalIgnoreCase) => ("clan-chimera", "clan: Chimera"),
                 (ClanMapView, var b) when b.Contains("Hydra", StringComparison.OrdinalIgnoreCase) => ("clan-hydra", "clan: Hydra"),
                 // The battle menu's Arena card (seen 2026-10-29: "Arena" bound to Arenas, its clickable Panel below).
                 (BattleMenuView, "Arenas") => ("mode-arena", "battle menu: Arena"),
@@ -994,7 +995,7 @@ public static partial class PlayTargets
 
         // The arena result closes on a tap (seen 2026-10-29: "CloseBlock", a click area with no button, over the lower part of the
         // screen with the champion avatars on it): the target is a strip at its bottom, clear of the avatars.
-        if (t.View is ArenaResultView or FwResultView or DungeonResultView or StoryResultView or ClanResultView or HydraResultView or TwinsResultView)
+        if (t.View is ArenaResultView or FwResultView or DungeonResultView or StoryResultView or ClanResultView or HydraResultView or ChimeraResultView or TwinsResultView)
             foreach (var cb in nodes.Where(x => x.Name == "CloseBlock" && x.ActiveInHierarchy && x.Screen is not null).Take(1))
             {
                 // Its "Content" child is the RETURN TO ARENA bar (seen 2026-10-29): the middle of that bar.
@@ -1067,7 +1068,7 @@ public static partial class PlayTargets
             }
 
         // Clan Boss: the question before a normal battle (Continue; the rest is its close and the "don't ask again" box).
-        if (t.View == "AllianceBossQuickBattleConfirmOverlay")
+        if (t.View is "AllianceBossQuickBattleConfirmOverlay" or "ChimeraQuickBattleConfirmOverlay")
             foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null && x.IsOn is null && !x.Name.Contains("Close", StringComparison.OrdinalIgnoreCase)
                 && !x.Name.Contains("Check", StringComparison.OrdinalIgnoreCase)).OrderByDescending(x => x.Screen!.Value.X).Take(1))
                 targets.Add(Make("clan-continue", "clan boss: Continue", x, x, x.Path));

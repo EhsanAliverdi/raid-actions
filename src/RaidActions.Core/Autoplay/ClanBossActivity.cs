@@ -30,6 +30,12 @@ public interface IClanBossGame
 
     /// <summary>One Hydra key spent on the difficulty with the team the game shows; a dry run shows Start only.</summary>
     Task<BattleOutcome> FightHydraAsync(string difficulty, bool dryRun, CancellationToken ct);
+
+    /// <summary>The Chimera's keys and best damage.</summary>
+    Task<ClanBossAccount> ReadChimeraAsync(CancellationToken ct);
+
+    /// <summary>One Chimera key spent on the difficulty.</summary>
+    Task<BattleOutcome> FightChimeraAsync(string difficulty, bool dryRun, CancellationToken ct);
 }
 
 /// <summary>
@@ -92,6 +98,72 @@ public sealed class HydraActivity(IClanBossGame game) : IActivity
     public AreaStatus Status(PlayContext ctx, Decision decision)
     {
         var s = ctx.Settings.Hydra;
+        var state = !s.Enabled ? AreaState.Off : decision.Act ? AreaState.Playing : decision.UntilUtc is null ? AreaState.Done : AreaState.Waiting;
+        var counters = new Dictionary<string, int> { ["Battles"] = _battles };
+        if (_account is { } a) counters["Keys"] = (int)Math.Floor(a.Keys);
+        var timers = new Dictionary<string, DateTime>();
+        if (decision.UntilUtc is { } u) timers["Next check"] = u;
+        return new AreaStatus(Id, Name, s.Enabled, state, _last.Length > 0 ? $"{decision.Why} · last: {_last}" : decision.Why, decision.UntilUtc, counters, timers);
+    }
+}
+
+/// <summary>The Chimera (Auto Play, plan/clan-boss.md): the Hydra's turn on its own keys and difficulties.</summary>
+public sealed class ChimeraActivity(IClanBossGame game) : IActivity
+{
+    public const string AreaId = "chimera";
+    public string Id => AreaId;
+    public string Name => "Chimera";
+
+    private static readonly TimeSpan Recheck = TimeSpan.FromMinutes(30);
+    private ClanBossAccount? _account;
+    private DateTime _readAt = DateTime.MinValue;
+    private bool _dryShown;
+    private int _battles;
+    private string _last = "";
+
+    public bool IsEnabled(AutoplaySettings settings) => settings.Chimera.Enabled;
+
+    private bool HasKey(PlayContext ctx) => _account is { } a && Math.Floor(a.Keys) >= 1 + Math.Max(0, ctx.Settings.Chimera.KeepKeys);
+
+    /// <summary>A battle that could not start (no team saved, ...): not tried again before this (2026-10-31: it looped and held the areas after it).</summary>
+    private DateTime _retryAt = DateTime.MinValue;
+
+    public Decision Decide(PlayContext ctx)
+    {
+        if (_dryShown) return Decision.Off("shown in this dry run");
+        if (ctx.Utc < _retryAt) return Decision.Wait(_retryAt, _last.Length > 0 ? _last : "could not start: tried again later");
+        if (_account is null || ctx.Utc - _readAt >= Recheck) return Decision.Now("reading the keys");
+        if (HasKey(ctx)) return Decision.Now($"{Math.Floor(_account.Keys)} key(s): {ChimeraRules.Pick(ctx.Settings.Chimera, _account.BestDamage)}");
+        return Decision.Wait(_readAt + Recheck, $"no key to spend ({_account.Keys:0.##}, keeping {ctx.Settings.Chimera.KeepKeys})");
+    }
+
+    public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
+    {
+        _account = await game.ReadChimeraAsync(ct);
+        _readAt = ctx.Utc;
+        if (!HasKey(ctx)) return "";
+        var difficulty = ChimeraRules.Pick(ctx.Settings.Chimera, _account.BestDamage);
+        await ctx.ThinkAsync(ct);
+        var outcome = await game.FightChimeraAsync(difficulty, ctx.DryRun, ct);
+        if (outcome.Result is BattleResult.NotStarted)
+        {
+            _dryShown = ctx.DryRun;
+            ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", $"{difficulty}: {outcome.Text}");
+            _retryAt = ctx.Utc + TimeSpan.FromHours(6);
+            _last = $"{difficulty}: {outcome.Text}";
+            return "";
+        }
+        _battles++;
+        _last = $"{difficulty}: {outcome.Text}";
+        ctx.Event(AreaId, "battle", _last);
+        _account = await game.ReadChimeraAsync(ct);
+        _readAt = ctx.Utc;
+        return _last;
+    }
+
+    public AreaStatus Status(PlayContext ctx, Decision decision)
+    {
+        var s = ctx.Settings.Chimera;
         var state = !s.Enabled ? AreaState.Off : decision.Act ? AreaState.Playing : decision.UntilUtc is null ? AreaState.Done : AreaState.Waiting;
         var counters = new Dictionary<string, int> { ["Battles"] = _battles };
         if (_account is { } a) counters["Keys"] = (int)Math.Floor(a.Keys);

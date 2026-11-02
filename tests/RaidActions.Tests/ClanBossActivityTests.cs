@@ -60,6 +60,16 @@ public class ClanBossActivityTests
     }
 
     [Fact]
+    public async Task The_Chimera_spends_its_keys_on_its_best_difficulty()
+    {
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 }, Chimera = new HydraSettings { Enabled = true } } };
+        var game = new FakeClanBossGame(() => host.UtcNow);
+        host.OnDelay = h => { if (h.UtcNow - Start >= TimeSpan.FromHours(2)) h.Stop = true; };
+        await new AutoplayEngine([new ChimeraActivity(game)], new FakeArenaGame(() => host.UtcNow), host, false).RunAsync(once: false, Limit());
+        Assert.Equal(["chimera Normal", "chimera Normal"], game.Calls);
+    }
+
+    [Fact]
     public async Task The_games_count_of_keys_replaces_the_bots()
     {
         var (_, game, engine) = Make(new ClanBossSettings { Enabled = true, Plan = [new("Brutal", 1), new("Nightmare", 1)] }, TimeSpan.FromHours(2));

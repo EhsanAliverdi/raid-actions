@@ -51,6 +51,19 @@ public sealed class FakeClanBossGame(Func<DateTime> now) : IClanBossGame
     }
 
     public double HydraKeys { get; set; } = 3;
+    public double ChimeraKeys { get; set; } = 2;
+
+    public Task<ClanBossAccount> ReadChimeraAsync(CancellationToken ct) =>
+        Task.FromResult(new ClanBossAccount(ChimeraKeys, new Dictionary<string, long> { ["Normal"] = 6_890_421 }, null));
+
+    public Task<BattleOutcome> FightChimeraAsync(string difficulty, bool dryRun, CancellationToken ct)
+    {
+        if (dryRun) return Task.FromResult(new BattleOutcome(BattleResult.NotStarted, "Start shown"));
+        if (ChimeraKeys < 1) throw new PlayStopException("no chimera key");
+        ChimeraKeys--;
+        Calls.Add($"chimera {difficulty}");
+        return Task.FromResult(new BattleOutcome(BattleResult.Victory, "damage 1M"));
+    }
 
     public Task<ClanBossAccount> ReadHydraAsync(CancellationToken ct) =>
         Task.FromResult(new ClanBossAccount(HydraKeys, new Dictionary<string, long> { ["Normal"] = 776_000 }, null));

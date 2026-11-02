@@ -329,7 +329,9 @@ public sealed partial class LivePlayGame : IChoresGame
         if (spot is not { } at) { log($"autoplay: the {name} label is not on screen"); return false; }
         var scale = w.Client.Width / 1298f;
         log($"autoplay: the {name} building, by its label at ({at.X:0},{at.Y:0})");
-        if (MouseInput.Click(w, at.X, at.Y - 60 * scale, new Random()) is { } notSent) throw new PlayStopException(notSent);
+        // The Market's tent is tapped high: the game's "Progress Mission available" banner covers the part just above its label, and a tap there opens Missions.
+        var above = (name == "market" ? 130 : 60) * scale;
+        if (MouseInput.Click(w, at.X, at.Y - above, new Random()) is { } notSent) throw new PlayStopException(notSent);
         await Task.Delay(800, ct);
         return true;
     }

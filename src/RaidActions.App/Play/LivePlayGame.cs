@@ -105,9 +105,8 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         catch (Exception e) when (e is IOException or UnauthorizedAccessException) { log($"autoplay: the team seen was not saved: {e.Message}"); }
     }
 
-    /// <summary>The page's choice for this team, read fresh so a change acts at once.</summary>
-    private TeamChoice TeamChoiceOf(string area, TeamVariant variant) =>
-        TeamRules.Choice(AutoplaySettings.Load(ExtractorOutput).Teams.GetValueOrDefault(area), variant);
+    /// <summary>The page's teams for this area, read fresh so a change acts at once.</summary>
+    private AreaTeams? TeamsOf(string area) => AutoplaySettings.Load(ExtractorOutput).Teams.GetValueOrDefault(area);
 
     /// <summary>A team screen open: what it shows noted, and the area's default set when the page says so. False: the game refused a champion.</summary>
     private async Task<bool> ApplyDefaultTeam(string area, string teamView, CancellationToken ct)
@@ -115,7 +114,14 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         var shown = (await Read(ct)).Play.TeamIds ?? [];
         NoteTeam(area, shown);
         var (data, _, _, _) = await Account(ct);
-        if (TeamRules.Resolve(TeamChoiceOf(area, TeamVariant.Default), TeamVariant.Default, shown, data.Champions) is not { } team || team.ToHashSet().SetEquals(shown)) return true;
+        var pick = TeamRules.Resolve(TeamsOf(area), TeamVariant.Default, shown, data.Champions);
+        if (pick.DontPlay)
+        {
+            log($"autoplay: {area}: a champion of the saved team is missing: not played (Teams card)");
+            await Back(teamView, ct);
+            return false;
+        }
+        if (pick.Team is not { } team || team.ToHashSet().SetEquals(shown)) return true;
         log($"autoplay: STEP {area}: the default team from the Teams card");
         return await SetRunTeam(team, teamView, ct);
     }
@@ -154,7 +160,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         if (quest)
         {
             var (data, _, _, _) = await Account(ct);
-            var team = TeamRules.Resolve(TeamChoiceOf(ClassicArenaAreaId, variant), variant, shownTeam, data.Champions)
+            var team = TeamRules.Resolve(TeamsOf(ClassicArenaAreaId), variant, shownTeam, data.Champions).Team
                 ?? throw new PlayStopException($"No {variant} team can be set: see the Teams card, or a geared champion is missing.");
             if (!dryRun && !File.Exists(ArenaTeamFile))
             {
@@ -170,10 +176,19 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             log($"autoplay: STEP the arena team back after the quest fight: {string.Join(", ", restore.Select(i => $"#{i}"))}");
             await SetArenaTeam(restore, ct);
         }
-        else if (TeamRules.Resolve(TeamChoiceOf(ClassicArenaAreaId, TeamVariant.Default), TeamVariant.Default, shownTeam, (await Account(ct)).Data.Champions) is { } chosen && !chosen.ToHashSet().SetEquals(shownTeam))
+        else
         {
-            log($"autoplay: STEP the arena's default team: {string.Join(", ", chosen.Select(i => $"#{i}"))}");
-            await SetArenaTeam(chosen, ct);
+            var pick = TeamRules.Resolve(TeamsOf(ClassicArenaAreaId), TeamVariant.Default, shownTeam, (await Account(ct)).Data.Champions);
+            if (pick.DontPlay)
+            {
+                await Back(PlayTargets.TeamView, ct);
+                return new BattleOutcome(BattleResult.NotStarted, "a champion of the saved team is missing: the Teams card says not to play");
+            }
+            if (pick.Team is { } chosen && !chosen.ToHashSet().SetEquals(shownTeam))
+            {
+                log($"autoplay: STEP the arena's default team: {string.Join(", ", chosen.Select(i => $"#{i}"))}");
+                await SetArenaTeam(chosen, ct);
+            }
         }
 
         if (dryRun)

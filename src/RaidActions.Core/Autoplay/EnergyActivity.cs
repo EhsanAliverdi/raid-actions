@@ -65,6 +65,8 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     /// <summary>Dungeons seen closed today (a Keep or Iron Twins fortress not open on this day): "whichever is open" rows skip them.</summary>
     private readonly HashSet<string> _closedToday = [];
     private int _refillsToday, _wins, _losses;
+    private const int MaxQuestRowLosses = 2;
+    private readonly Dictionary<string, int> _questRowLosses = [];
     private DateOnly? _day;
     private DateTime _inboxAt = DateTime.MinValue;
     private EnergyAccount? _account;
@@ -140,7 +142,9 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         var rows = new List<EnergyTarget>();
         // A quest naming its dungeon and a lowest stage ("Clear Stage 15 or higher of the Phantom Shogun's Grove"): that dungeon, at the
         // highest stage beaten when it counts, else the stage it names; any other dungeon quest: Dragon's Lair's highest Normal stage.
-        foreach (var n in ctx.Settings.Quests.Enabled ? ctx.QuestNeeds.Where(n => n.Kind == QuestNeedKind.DungeonBoss && n.Playable && n.Remaining > 0) : [])
+        // Daily and Advanced first, then the progress missions, and all of it before the list (Ehsan 2026-11-02).
+        var missions = new HashSet<string>();
+        foreach (var n in ctx.QuestNeeds.Where(n => ctx.Settings.Quests.Enabled && n.Kind == QuestNeedKind.DungeonBoss && n.Playable && n.Remaining > 0).OrderBy(n => n.Tab == "Mission"))
         {
             var id = $"quest-dungeon-{n.Region ?? "any"}";
             if (rows.Any(r => r.Id == id)) continue;
@@ -154,10 +158,17 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             var best = ctx.Settings.Quests.HighestStage;
             var stage = n.MinStage is { } min ? best ? hard ?? Math.Max(min, highest ?? min) : min : anyBoss ? 1 : (int?)null;
             rows.Add(new EnergyTarget { Id = id, Area = "Dungeon", Region = n.Region ?? "DragonsLair", Difficulty = best && hard is not null ? "Hard" : "Normal", Stage = stage });
+            if (n.Tab == "Mission") missions.Add(id);
         }
         if (ctx.QuestLeft(QuestNeedKind.CampaignBoss) > 0)
-            rows.Add(new EnergyTarget { Id = "quest-campaign-boss", Area = "Story", Region = "Region12", Difficulty = "Normal", Stage = 7 });
-        return rows;
+            rows.Insert(rows.Count(r => !missions.Contains(r.Id)), new EnergyTarget { Id = "quest-campaign-boss", Area = "Story", Region = "Region12", Difficulty = "Normal", Stage = 7 });
+        foreach (var n in ctx.Settings.Quests.Enabled ? ctx.QuestNeeds.Where(n => n.Kind == QuestNeedKind.CampaignStage && n.Region is not null && n.Remaining > 0) : [])
+        {
+            var id = $"quest-story-{n.Region}-{n.MinStage}";
+            if (rows.All(r => r.Id != id)) rows.Add(new EnergyTarget { Id = id, Area = "Story", Region = n.Region!, Difficulty = QuestPlanner.DifficultyNamed(n.Text), Stage = n.MinStage });
+        }
+        // A quest row that keeps losing stops taking the energy: the list goes on.
+        return [.. rows.Where(r => _questRowLosses.GetValueOrDefault(r.Id) < MaxQuestRowLosses)];
     }
 
     /// <summary>The settings the planner sees: quest rows first, rows shown in a dry run left out, a food step that did nothing switched off for a while.</summary>
@@ -302,12 +313,16 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 _runsToday[run.Target.Id] = _runsToday.GetValueOrDefault(run.Target.Id) + 1;
                 if (outcome.Result == BattleResult.Victory) _wins++; else _losses++;
                 ctx.Event(AreaId, "battle", $"{outcome.Result} {where} [row {run.Target.Id}]. {outcome.Text}");
-                // A quest row's win counts against its quest at once (the next quest pass reads the real progress).
+                if (outcome.Result != BattleResult.Victory && run.Target.Id.StartsWith("quest-", StringComparison.Ordinal))
+                    _questRowLosses[run.Target.Id] = _questRowLosses.GetValueOrDefault(run.Target.Id) + 1;
+                // A quest row's win counts against its quest at once (the next quest pass reads the real progress). A mission is not: a win may not be what
+                // it asks ("Win a 5* Amulet"), so only the game says it is done, and it is asked again now.
                 if (outcome.Result == BattleResult.Victory && run.Target.Id.StartsWith("quest-", StringComparison.Ordinal))
                 {
                     var kind = run.Target.Id.StartsWith("quest-dungeon", StringComparison.Ordinal) ? QuestNeedKind.DungeonBoss : QuestNeedKind.CampaignBoss;
                     var region = run.Target.Id.StartsWith("quest-dungeon-", StringComparison.Ordinal) && run.Target.Id != "quest-dungeon-any" ? run.Target.Region : null;
-                    ctx.QuestNeeds = [.. ctx.QuestNeeds.Select(n => n.Kind == kind && n.Region == region ? n with { Remaining = n.Remaining - 1 } : n).Where(n => n.Remaining > 0)];
+                    ctx.QuestNeeds = [.. ctx.QuestNeeds.Select(n => n.Kind == kind && n.Region == region && n.Tab != "Mission" ? n with { Remaining = n.Remaining - 1 } : n).Where(n => n.Remaining > 0)];
+                    ctx.QuestsStale = true;
                 }
                 // Campaign drops sold when enough have come (the option; a failed sale stops only the sale, not the farm).
                 if (run.Target.Area == "Story" && s.SellGear.Enabled && outcome.Result == BattleResult.Victory)

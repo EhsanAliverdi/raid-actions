@@ -53,6 +53,9 @@ public sealed class PlayContext(AutoplaySettings settings, IPlayGame game, IAuto
     /// </summary>
     public List<QuestNeed> QuestNeeds { get; set; } = [];
 
+    /// <summary>A quest row was won: read the quests at the next chance.</summary>
+    public bool QuestsStale { get; set; }
+
     /// <summary>What is left of a quest kind now (0: no open quest asks it, or quests are off).</summary>
     public int QuestLeft(QuestNeedKind kind) => Settings.Quests.Enabled ? QuestPlanner.Left(QuestNeeds, kind) : 0;
 

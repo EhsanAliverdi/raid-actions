@@ -608,7 +608,8 @@ public static partial class PlayTargets
                     // The card has no button: its reward tile is what a click reaches (seen 2026-11-01).
                     var tile = SelfAndBelow(i).FirstOrDefault(x => x.Context?.Class.EndsWith(".RecommendedQuestRewardContext", StringComparison.Ordinal) == true && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null);
                     targets.Add(Make("mission-item", $"mission: {text}", n, tile ?? Own(i), $"state {state}", id: id));
-                    if (!string.IsNullOrWhiteSpace(text) && state is 1 or 2)
+                    // Every mission on the screen: state 0 ones progress too (Ehsan 2026-11-02: "energy goes to the progress missions first").
+                    if (!string.IsNullOrWhiteSpace(text) && state is 0 or 1 or 2)
                         quests.Add(new RaidExtractor.Autoplay.QuestRead(id, "Mission", text.Trim(), null, progress, state == 2, state == 2));
                     break;
                 }

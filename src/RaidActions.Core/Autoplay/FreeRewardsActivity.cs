@@ -46,6 +46,7 @@ public sealed class FreeRewardsActivity(IFreeRewardsGame game) : IActivity
         if (_dryShown) return Decision.Off("shown in this dry run");
         if (!ctx.Settings.FreeRewards.PlaytimeGifts && !ctx.Settings.FreeRewards.Quests && !ctx.Settings.Quests.Enabled) return Decision.Off("nothing switched on");
         var next = _checkedAt + Every(ctx);
+        if (ctx.QuestsStale) return Decision.Now("reading the quests after a quest fight");
         return ctx.Utc >= next ? Decision.Now("checking the free rewards") : Decision.Wait(next, "next check of the free rewards");
     }
 
@@ -68,8 +69,9 @@ public sealed class FreeRewardsActivity(IFreeRewardsGame game) : IActivity
             }
             catch (PlayStopException e) { ctx.Event(AreaId, "error", $"playtime gifts not collected (tried again at the next check): {e.Message}"); }
         }
-        if ((s.Quests || ctx.Settings.Quests.Enabled) && ctx.Utc >= _questAt)
+        if ((s.Quests || ctx.Settings.Quests.Enabled) && (ctx.Utc >= _questAt || ctx.QuestsStale))
         {
+            ctx.QuestsStale = false;
             _questAt = ctx.Utc + TimeSpan.FromMinutes(Math.Max(10, s.QuestEveryMinutes));
             try
             {

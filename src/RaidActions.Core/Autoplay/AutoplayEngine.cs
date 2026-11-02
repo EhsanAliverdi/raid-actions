@@ -116,8 +116,9 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 var act = enabled.FirstOrDefault(a => _decisions[a.Id].Act);
                 if (act is not null && act.Id == _lastArea && _sameArea >= MaxTurnsInARow)
                     act = enabled.FirstOrDefault(a => _decisions[a.Id].Act && a.Id != _lastArea) ?? act;
-                // A full resource stops regenerating: its area first, whatever the order and the turns in a row.
-                if (enabled.FirstOrDefault(a => _decisions[a.Id].Act && a.Full(ctx)) is { } full) act = full;
+                // A full resource stops regenerating: its area first, whatever the order; but after three turns in a row another area gets one, or long runs with
+                // energy near its cap starve the rest (2026-11-02: only Energy played for 30 minutes).
+                if (enabled.FirstOrDefault(a => _decisions[a.Id].Act && a.Full(ctx) && !(a.Id == _lastArea && _sameArea >= MaxTurnsInARow)) is { } full) act = full;
                 if (act is not null)
                 {
                     _sameArea = act.Id == _lastArea ? _sameArea + 1 : 1;

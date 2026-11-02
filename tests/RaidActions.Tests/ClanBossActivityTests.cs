@@ -107,6 +107,27 @@ public class ClanBossActivityTests
         Assert.Equal(1, tower.Climbs);
     }
 
+    private sealed class FullArea(string id, List<string> turns) : IActivity
+    {
+        public string Id => id;
+        public string Name => id;
+        public bool IsEnabled(AutoplaySettings settings) => true;
+        public bool Full(PlayContext ctx) => id == "full";
+        public Decision Decide(PlayContext ctx) => Decision.Now("go");
+        public Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct) { turns.Add(id); return Task.FromResult("turn"); }
+        public AreaStatus Status(PlayContext ctx, Decision decision) => new(Id, Name, true, AreaState.Playing, "", null, [], []);
+    }
+
+    [Fact]
+    public async Task A_full_area_goes_first_but_another_gets_a_turn_after_three()
+    {
+        var turns = new List<string>();
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 } } };
+        host.OnDelay = h => { if (turns.Count >= 8) h.Stop = true; };
+        await new AutoplayEngine([new FullArea("other", turns), new FullArea("full", turns)], new FakeArenaGame(() => host.UtcNow), host, false).RunAsync(once: false, Limit());
+        Assert.Equal(["full", "full", "full", "other", "full", "full", "full", "other"], turns.Take(8));
+    }
+
     [Fact]
     public async Task The_games_count_of_keys_replaces_the_bots()
     {

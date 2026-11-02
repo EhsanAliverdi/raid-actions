@@ -45,11 +45,24 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         var name = DoomTowerRules.Name(stage);
         log($"autoplay: STEP Doom Tower {name}");
         await OpenDoomTower(ct);
-        await SelectTowerDifficulty("Normal", ct);
-        await Click("dt-final-boss", null, (s2, _) => s2.Top?.Name is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView),
-            $"{name} opens", ct, within: TimeSpan.FromSeconds(10));
+        // Choosing a difficulty moves the map, so only when the bot left it on Hard; a miss (Hard left from elsewhere) chooses Normal and tries once more.
+        if (_towerOnHard) await SelectTowerDifficulty("Normal", ct);
+        try
+        {
+            await Click("dt-final-boss", null, (s2, _) => s2.Top?.Name is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView),
+                $"{name} opens", ct, within: TimeSpan.FromSeconds(10));
+        }
+        catch (PlayStopException e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal))
+        {
+            log("autoplay: the Final Boss's spot missed: choosing Normal and trying again");
+            await SelectTowerDifficulty("Normal", ct);
+            await Click("dt-final-boss", null, (s2, _) => s2.Top?.Name is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView),
+                $"{name} opens", ct, within: TimeSpan.FromSeconds(10));
+        }
         return await PlayTowerTeam(name, started, dryRun, ct);
     }
+
+    private bool _towerOnHard;
 
     /// <summary>The Normal or Hard tower on the map; the game keeps the last one chosen.</summary>
     private async Task SelectTowerDifficulty(string name, CancellationToken ct)
@@ -57,7 +70,8 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         await Click("dt-difficulty", null, (_, scan) => scan().Targets.Any(t => t.Kind == "dt-difficulty-item"), "the difficulty list opens", ct, within: TimeSpan.FromSeconds(6));
         await Task.Delay(500, ct);
         await Click("dt-difficulty-item", t => t.Name.EndsWith(name, StringComparison.Ordinal), (_, scan) => !scan().Targets.Any(t => t.Kind == "dt-difficulty-item"), $"{name} chosen", ct, within: TimeSpan.FromSeconds(6));
-        await Task.Delay(2500, ct); // the map redraws and moves to its current floor
+        await Task.Delay(5000, ct); // the map redraws and moves to its current floor
+        _towerOnHard = name == "Hard";
     }
 
     /// <summary>

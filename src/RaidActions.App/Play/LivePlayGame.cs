@@ -362,7 +362,8 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     {
         var until = DateTime.UtcNow + TimeSpan.FromMinutes(20); // dungeon runs took 9-10 minutes at x1 (2026-10-30)
         // An arena round that stalls (healers on both sides, 2026-11-01: 20 minutes in round 1 of 3) is skipped: a defeat, the rest of the game goes on.
-        var skipAt = resultView is PlayTargets.ArenaResultView or "BattleFinishArena3x3Dialog" ? DateTime.UtcNow + TimeSpan.FromMinutes(6) : (DateTime?)null;
+        var skipMinutes = AutoplaySettings.Load(ExtractorOutput).Rules.ArenaRoundSkipMinutes;
+        var skipAt = skipMinutes > 0 && resultView is PlayTargets.ArenaResultView or "BattleFinishArena3x3Dialog" ? DateTime.UtcNow + TimeSpan.FromMinutes(skipMinutes) : (DateTime?)null;
         var autoTried = false;
         var speedTries = 0;
         while (DateTime.UtcNow < until)
@@ -378,8 +379,8 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             if (!s.InBattle) return null; // the battle ended somewhere else (the game moved on)
             if (skipAt is { } skip && DateTime.UtcNow >= skip && Has(s, PlayTargets.BattleHudView) && !s.UiBlocked)
             {
-                log("autoplay: this arena round has run 6 minutes: skipping it");
-                skipAt = DateTime.UtcNow + TimeSpan.FromMinutes(6); // the next round's own limit
+                log($"autoplay: this arena round has run {skipMinutes} minutes: skipping it");
+                skipAt = DateTime.UtcNow + TimeSpan.FromMinutes(skipMinutes); // the next round's own limit
                 await Click("battle-pause", null, (s2, _) => Top(s2) == "BattlePauseDialog", "the pause menu", ct, within: TimeSpan.FromSeconds(6));
                 await Task.Delay(500, ct);
                 await Click("battle-giveup", null, (s2, _) => Top(s2) == UiState.MessageBoxView, "Skip Battle", ct, within: TimeSpan.FromSeconds(6));

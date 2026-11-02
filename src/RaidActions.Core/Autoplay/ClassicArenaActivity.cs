@@ -40,7 +40,7 @@ public sealed class ClassicArenaActivity : IActivity
         }
     }
 
-    public bool Full(PlayContext ctx) => ctx.LastResources is { } r && r.Tokens >= (r.TokenCap ?? 10) - 1;
+    public bool Full(PlayContext ctx) => ctx.LastResources is { } r && r.Tokens >= (r.TokenCap ?? 10) - ctx.Settings.Rules.TokenMargin;
 
     public Decision Decide(PlayContext ctx)
     {

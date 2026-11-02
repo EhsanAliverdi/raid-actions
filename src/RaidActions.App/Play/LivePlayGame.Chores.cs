@@ -290,7 +290,9 @@ public sealed partial class LivePlayGame : IChoresGame
         var context = AdviceContext.From(data);
         var advice = data.Artifacts.Select(a => GearAdvice.Advise(a, rules, gd, stage.Stage, protection.GetValueOrDefault(a.Id), context: context)).ToList();
         var pieces = data.Artifacts.ToDictionary(a => a.Id);
-        if (ChoreRules.Upgrade(advice, pieces, minLevel, attempts) is not { } pick) return null;
+        // A piece whose price would take the silver under the floor is not started (2026-11-02: one went from 500K to 420K).
+        var maxSilver = keepSilver > 0 ? data.Account.Resources.GetValueOrDefault("Silver") - keepSilver : double.MaxValue;
+        if (ChoreRules.Upgrade(advice, pieces, minLevel, attempts, maxSilver) is not { } pick) return null;
         var piece = pieces[pick.Id];
         log($"autoplay: STEP upgrade {piece.SetName} {piece.Slot} #{pick.Id} +{piece.Level} to +{pick.Target}: {pick.Reason}");
         _upgrader ??= new NavigatingDriver(game, ui, null, folder, policy, log, upgrade: true);

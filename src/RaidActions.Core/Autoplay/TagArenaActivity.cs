@@ -55,7 +55,7 @@ public sealed class TagArenaActivity(ITagArenaGame game) : IActivity
         }
     }
 
-    public bool Full(PlayContext ctx) => _tokens >= 9;
+    public bool Full(PlayContext ctx) => _tokens >= 10 - ctx.Settings.Rules.TokenMargin;
 
     public Decision Decide(PlayContext ctx)
     {

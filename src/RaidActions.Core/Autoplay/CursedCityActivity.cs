@@ -81,7 +81,7 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
         // Nothing to play: why, once per reason (seen 2026-10-31: a whole day without one line from Cursed City).
         if (!playable && _plan.Why != _lastWhy) ctx.Event(AreaId, "plan", $"nothing to play: {_plan.Why}");
         _lastWhy = playable ? null : _plan.Why;
-        if (!_planForQuest && !playable && Spendable(s) >= 1 && _questLosses < MaxQuestLosses) _idleUntil = ctx.Utc + IdleReplay;
+        if (ctx.Settings.Rules.CursedCityReplayIdleKeys && !_planForQuest && !playable && Spendable(s) >= 1 && _questLosses < ctx.Settings.Rules.CursedCityMaxReplayLosses) _idleUntil = ctx.Utc + IdleReplay;
 
         // Gear this bot added that the next level does not use (or all of it when no level is played now): off again.
         var keep = playable ? level!.Team.Members.Select(m => m.Id).ToHashSet() : [];
@@ -175,7 +175,7 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
     }
 
     /// <summary>The quest "Clear N Stages in the Cursed City" is open (Ehsan 2026-10-31: beaten levels pass it).</summary>
-    private bool ForQuest(PlayContext ctx) => (ctx.QuestLeft(QuestNeedKind.CursedCity) > 0 || ctx.Utc < _idleUntil) && _questLosses < MaxQuestLosses;
+    private bool ForQuest(PlayContext ctx) => (ctx.QuestLeft(QuestNeedKind.CursedCity) > 0 || ctx.Utc < _idleUntil) && _questLosses < ctx.Settings.Rules.CursedCityMaxReplayLosses;
 
     /// <summary>
     /// Keys and nothing the spare team can play (2026-11-01: 8 keys idle; Ehsan: "nothing stays at its cap"): beaten levels with the strong team, as a quest
@@ -184,8 +184,7 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
     private static readonly TimeSpan IdleReplay = TimeSpan.FromHours(6);
     private DateTime _idleUntil = DateTime.MinValue;
 
-    /// <summary>Quest replays lost (2026-11-01: a spare team lost a beaten level, 20 minutes a try): after these the quest is given up for this run.</summary>
-    private const int MaxQuestLosses = 2;
+    // Quest replays lost (2026-11-01: a spare team lost a beaten level, 20 minutes a try): after Rules.CursedCityMaxReplayLosses the quest is given up.
     private int _questLosses;
 
     private double Spendable(CursedCityPlaySettings s) => Math.Floor(_plan?.Keys ?? 0) - Math.Max(0, s.KeepKeys);

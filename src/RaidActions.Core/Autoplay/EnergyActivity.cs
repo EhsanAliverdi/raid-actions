@@ -176,9 +176,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     }
 
     // Before the cap, not at it: a turn elsewhere can last minutes, and energy above the cap stops regenerating (Ehsan 2026-11-01).
-    private const double FullMargin = 40;
-
-    public bool Full(PlayContext ctx) => ctx.LastResources is { } r && r.Energy >= (r.EnergyCap ?? 124) - FullMargin;
+    public bool Full(PlayContext ctx) => ctx.LastResources is { } r && r.Energy >= (r.EnergyCap ?? 124) - ctx.Settings.Rules.EnergyMargin;
 
     public Decision Decide(PlayContext ctx)
     {

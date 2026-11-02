@@ -50,7 +50,8 @@ public class CursedCityActivityTests
     [Fact]
     public async Task Idle_keys_go_to_beaten_levels_with_the_strong_team_and_two_losses_end_it()
     {
-        var (_, game, engine) = Make(stopAfter: TimeSpan.FromHours(3));
+        var (host, game, engine) = Make(stopAfter: TimeSpan.FromHours(3));
+        host.Settings = host.Settings with { Rules = new BotRules { CursedCityReplayIdleKeys = true } };
         game.Keys = 8;
         game.SpareTeamNotReady = true;
         game.WinsUpTo = 0;

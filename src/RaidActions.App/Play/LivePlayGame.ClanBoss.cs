@@ -128,7 +128,7 @@ public sealed partial class LivePlayGame : IClanBossGame
                 List<int>? team = null;
                 for (var attempt = 0; attempt < 5 && team is null; attempt++)
                 {
-                    var next = data.Champions.Where(c => !c.InVault && !c.InBathhouse && c.Artifacts.Count > 0 && c.Level >= 40 && !locked.Contains(c.Id))
+                    var next = data.Champions.Where(c => !c.InVault && !c.InBathhouse && c.Artifacts.Count > 0 && c.Level >= AutoplaySettings.Load(ExtractorOutput).Rules.BuiltTeamMinLevel && !locked.Contains(c.Id))
                         .OrderByDescending(c => CursedCityPlanner.Score(c, ratings)).DistinctBy(c => c.BaseTypeId).Take(6).Select(c => c.Id).ToList();
                     if (next.Count < 6) break;
                     log($"autoplay: STEP team: {string.Join(", ", next.Select(Who))}");

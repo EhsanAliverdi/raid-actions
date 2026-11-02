@@ -54,8 +54,18 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         }
         catch (PlayStopException e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal))
         {
-            log("autoplay: the Final Boss's spot missed: choosing Normal and trying again");
+            // The map opens on the floor last played (2026-11-02: floor 80 of Normal), so the top is dragged to, where the Final Boss has its spot.
+            log("autoplay: the Final Boss's spot missed: choosing Normal, going to the top of the tower, trying again");
             await SelectTowerDifficulty("Normal", ct);
+            var (w, why) = GameWindow.Find();
+            if (w is null) throw new PlayStopException(why!);
+            var scale = w.Client.Width / 1298f;
+            for (var i = 0; i < 12; i++)
+            {
+                if (MouseInput.Drag(w, 760 * scale, 130 * scale, 760 * scale, 640 * scale) is { } notSent) throw new PlayStopException(notSent);
+                await Task.Delay(500, ct);
+            }
+            await Task.Delay(1500, ct);
             await Click("dt-final-boss", null, (s2, _) => s2.Top?.Name is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView),
                 $"{name} opens", ct, within: TimeSpan.FromSeconds(10));
         }

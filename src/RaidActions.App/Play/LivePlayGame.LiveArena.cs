@@ -59,7 +59,7 @@ public sealed partial class LivePlayGame : ILiveArenaGame
             if (t0.FirstOrDefault(t => t.Kind == "live-find")?.Rect is { } r) Shot("autoplay: WOULD CLICK Find Opponent (dry run: NOT pressed)", r, always: true);
             return new BattleOutcome(BattleResult.NotStarted, "Find Opponent shown, not pressed");
         }
-        await Click("live-find", null, (s2, _) => Has(s2, LiveDraftView) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView, "the match is searched", ct, within: TimeSpan.FromSeconds(5));
+        await Click("live-find", null, (s2, _) => Has(s2, LiveDraftView) || Top(s2) == "LiveArenaMatchMakingDialog" || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView, "the match is searched", ct, within: TimeSpan.FromSeconds(5));
         log("autoplay: looking for a Live Arena opponent");
         var (data, _, _, _) = await Account(ct);
         var phasesSeen = new HashSet<string>();

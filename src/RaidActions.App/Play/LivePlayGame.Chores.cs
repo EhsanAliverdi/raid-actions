@@ -250,6 +250,39 @@ public sealed partial class LivePlayGame : IChoresGame
             await _nav.GoHome(Action("from the masteries"), ct);
             return $"dry run: the screen matches the account; {request.Ids.Count} mastery(ies) would be learned{price}";
         }
+        // The scroll set, only when this request allows it and the champion cannot pay: the price is checked, then the account proves it.
+        var champion = data.Champions.First(c => c.Id == request.ChampionId);
+        if (request.BuyWithGems && request.Ids.Count > 0 && (champion.MasteryScrolls?.Values.Sum() ?? 0) == 0)
+        {
+            var gemsBefore = data.Account.Resources.GetValueOrDefault("Gem");
+            await Click("mastery-node", t => t.Id == request.Ids[0], (s2, _) => Top(s2) == "MasteryInfoOverlay", "the first mastery opens", ct, within: TimeSpan.FromSeconds(6));
+            await Task.Delay(800, ct);
+            await Click("mastery-getmax", null, (s2, _) => Top(s2) == "BuyMasteriesOverlay", "the scroll set opens", ct, within: TimeSpan.FromSeconds(8));
+            await Task.Delay(1000, ct);
+            var (_, offer, _) = await Read(ct);
+            var button = offer.FirstOrDefault(t => t.Kind == "mastery-buy");
+            var price = int.TryParse((button?.Note ?? "").Replace(",", "", StringComparison.Ordinal), out var p) ? p : -1;
+            log($"autoplay: the scroll set costs {price} gems, {gemsBefore:0} held, {request.MaxGems} allowed");
+            if (button is null || price <= 0 || price > request.MaxGems || price > gemsBefore)
+            {
+                await _nav.GoHome(Action("from the masteries"), ct);
+                return $"nothing bought: the scroll set costs {price} gems and {request.MaxGems} were allowed";
+            }
+            await Click("mastery-buy", null, (s2, _) => Top(s2) != "BuyMasteriesOverlay", "the scroll set is bought", ct, within: TimeSpan.FromSeconds(10));
+            await Task.Delay(2500, ct);
+            var (after, _, _, _) = await Account(ct);
+            var gemsAfter = after.Account.Resources.GetValueOrDefault("Gem");
+            var scrolls = after.Champions.First(c => c.Id == request.ChampionId).MasteryScrolls;
+            log($"autoplay: bought: gems {gemsBefore:0} to {gemsAfter:0}, scrolls {string.Join(", ", (scrolls ?? []).Select(kv => $"{kv.Key} {kv.Value}"))}");
+            if (gemsBefore - gemsAfter > price || (scrolls?.Values.Sum() ?? 0) == 0)
+            {
+                var dump = DumpScreen("masteries after the purchase");
+                await _nav.GoHome(Action("from the masteries"), ct);
+                return $"stopped after the purchase: the account does not show what was expected. Screen dump: {dump}";
+            }
+            var (s5, _, _) = await Read(ct);
+            if (Top(s5) == "MasteryInfoOverlay") { await Back("MasteryInfoOverlay", ct); await Task.Delay(800, ct); }
+        }
         var learned = 0;
         foreach (var id in request.Ids)
         {
@@ -260,8 +293,10 @@ public sealed partial class LivePlayGame : IChoresGame
                 await Back("MasteryInfoOverlay", ct);
                 break;
             }
-            await Click("mastery-learn", null, (s2, _) => Top(s2) != "MasteryInfoOverlay", $"mastery {id} learned", ct, within: TimeSpan.FromSeconds(8));
-            await Task.Delay(1500, ct);
+            await Click("mastery-learn", null, (_, _) => true, $"mastery {id}", ct);
+            await Task.Delay(1800, ct);
+            var (s6, _, _) = await Read(ct);
+            if (Top(s6) == "MasteryInfoOverlay") { await Back("MasteryInfoOverlay", ct); await Task.Delay(800, ct); }
             var now = (await Account(ct)).Data.Champions.First(c => c.Id == request.ChampionId).Masteries;
             if (!now.Contains(id)) { log($"autoplay: mastery {id} is not in the account after Learn: stopping"); break; }
             learned++;

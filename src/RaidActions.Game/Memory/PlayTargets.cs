@@ -652,7 +652,8 @@ public static partial class PlayTargets
                 case "Client.ViewModel.Contextes.Masteries.BuyMasteriesOverlayContext":
                 {
                     var price = Try(() => StringValue(g, g.Ref(c.Address, c.Class, "_gemsPrice")), null, notes, "BuyMasteriesOverlayContext._gemsPrice");
-                    var buy = SelfAndBelow(i).FirstOrDefault(x => x.Name.StartsWith("Buy", StringComparison.OrdinalIgnoreCase) && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null);
+                    // The price button is named ResetButton (seen 2026-11-02), the only other one is the X.
+                    var buy = SelfAndBelow(i).FirstOrDefault(x => x.Name == "ResetButton" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null);
                     if (buy is not null) targets.Add(Make("mastery-buy", "masteries: buy for gems", buy, buy, price));
                     notes.Add($"the masteries' price in gems: {price}");
                     break;

@@ -116,12 +116,13 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 // Priority decides who goes first, but an area with many turns in hand (Faction Wars, 24 keys: two hours) steps aside after three in a row,
                 // so full energy and short-lived chances (Live Arena's hours) do not wait for it (2026-11-01).
                 var act = enabled.FirstOrDefault(a => _decisions[a.Id].Act);
-                if (act is not null && act.Id == _lastArea && _sameArea >= MaxTurnsInARow)
+                var stepAside = act is not null && _sameArea >= MaxTurnsInARow;
+                if (stepAside)
                     // The one waiting longest, not the next in line: that one and the leader would take turns and the rest never play (2026-11-02: Chores waited 25 minutes).
                     act = enabled.Where(a => _decisions[a.Id].Act && a.Id != _lastArea).OrderBy(a => _playedAt.GetValueOrDefault(a.Id)).FirstOrDefault() ?? act;
                 // A full resource stops regenerating: its area first, whatever the order; but after three turns in a row another area gets one, or long runs with
                 // energy near its cap starve the rest (2026-11-02: only Energy played for 30 minutes).
-                if (enabled.FirstOrDefault(a => _decisions[a.Id].Act && a.Full(ctx) && !(a.Id == _lastArea && _sameArea >= MaxTurnsInARow)) is { } full) act = full;
+                if (!stepAside && enabled.FirstOrDefault(a => _decisions[a.Id].Act && a.Full(ctx)) is { } full) act = full;
                 if (act is not null)
                 {
                     _sameArea = act.Id == _lastArea ? _sameArea + 1 : 1;

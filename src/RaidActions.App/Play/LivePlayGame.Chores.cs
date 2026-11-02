@@ -189,7 +189,10 @@ public sealed partial class LivePlayGame : IChoresGame
     public async Task<int> CollectExpiringTokensAsync(bool dryRun, CancellationToken ct)
     {
         var before = new Dictionary<string, double>((await Account(ct)).Data.Account.Resources);
-        bool Soon(InboxEntry e) => PlayTargets.IsAnyTokens(e) && ChoreRules.ExpiresWithinADay(e.Expires);
+        // A Classic Arena Refill fills the tokens to the top (2026-11-03): Classic Arena takes it when they run out; here only in its last 2 hours.
+        static bool LastHours(string? left) => ChoreRules.ExpiresWithinADay(left)
+            && System.Text.RegularExpressions.Regex.Match(left!, @"(\d+)\s*h") is var h && (!h.Success || int.Parse(h.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) < 2);
+        bool Soon(InboxEntry e) => PlayTargets.IsAnyTokens(e) && (e.Icon?.Contains("TokensMax", StringComparison.Ordinal) == true ? LastHours(e.Expires) : ChoreRules.ExpiresWithinADay(e.Expires));
         await CollectInbox(Soon, "Token", "tokens expiring within a day", dryRun, ct);
         var after = (await Account(ct)).Data.Account.Resources;
         return before.Keys.Count(k => k.Contains("Token", StringComparison.OrdinalIgnoreCase) && after.GetValueOrDefault(k) > before[k]);

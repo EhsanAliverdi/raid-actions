@@ -939,6 +939,14 @@ public static partial class PlayTargets
                     var rewardAvatar = reward == 0 ? 0UL : Try(() => g.Ref(reward, InboxReward, "_itemAvatar"), 0UL, notes, "InboxRewardItemContext._itemAvatar");
                     var resourceId = rewardAvatar == 0 ? null : Try(() => IntValue(g, g.Ref(rewardAvatar, ItemAvatarCtx, "_resourceType")), null, notes, "ItemAvatarContext._resourceType");
                     if (resourceId is { } rid) icon = $"{icon} {g.EnumName(ResourceEnum, rid) ?? rid.ToString(System.Globalization.CultureInfo.InvariantCulture)}";
+                    // The item's own kind and picture: a Classic Arena Refill reads as "Silver" by its resource type alone (2026-11-03).
+                    if (rewardAvatar != 0)
+                    {
+                        var itemType = Try(() => IntValue(g, g.Ref(rewardAvatar, ItemAvatarCtx, "_itemType")), null, notes, "ItemAvatarContext._itemType");
+                        var kind = Try(() => IntValue(g, g.Ref(rewardAvatar, ItemAvatarCtx, "_kindId")), null, notes, "ItemAvatarContext._kindId");
+                        var picture = Try(() => StringValue(g, g.Ref(rewardAvatar, ItemAvatarCtx, "_iconUrl")), null, notes, "ItemAvatarContext._iconUrl");
+                        icon = $"{icon} item {itemType}/{kind} {picture}";
+                    }
                     var valid = Try(() => BoolValue(g, g.Ref(c.Address, InboxItem, "_isValid")), null, notes, "InboxItemContext._isValid");
                     // The row's Collect is "BTN_2" (seen 2026-11-01), not a name that says so.
                     var (button, why) = Named(i, CollectName(), null);

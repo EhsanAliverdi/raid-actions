@@ -1537,6 +1537,27 @@
           "field": "_resourceType",
           "source": "field",
           "status": "direct"
+        },
+        "_itemType": {
+          "offset": "0xC0",
+          "type": "IntProperty",
+          "field": "_itemType",
+          "source": "field",
+          "status": "direct"
+        },
+        "_kindId": {
+          "offset": "0xD8",
+          "type": "IntProperty",
+          "field": "_kindId",
+          "source": "field",
+          "status": "direct"
+        },
+        "_iconUrl": {
+          "offset": "0x120",
+          "type": "StringProperty",
+          "field": "_iconUrl",
+          "source": "field",
+          "status": "direct"
         }
       }
     },

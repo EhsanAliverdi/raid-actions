@@ -298,6 +298,19 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
     }
 
     /// <summary>From the village: Champions, until the champion screen is open.</summary>
+    /// <summary>A champion on the champion screen, from wherever the game is (back and close only).</summary>
+    public async Task ShowChampion(int id, CancellationToken ct)
+    {
+        var a = new UiAction(ActionKind.OpenChampion, 0, "autoplay: open a champion", id);
+        await GoHome(a, ct);
+        await OpenChampions(a, ct);
+        var (s, _) = await Read(ct);
+        if (s.ChampionScreen?.Champion == id) return;
+        await ClosePiecePanels(a, ct);
+        await Scrolled(a, "champion-tile", id, "scroll-champions", ct);
+        await Click(a, "champion-tile", id, null, (s2, _) => s2.ChampionScreen?.Champion == id, $"#{id} is shown", ct);
+    }
+
     public async Task OpenChampions(UiAction a, CancellationToken ct)
     {
         var s = await Settled(ct);

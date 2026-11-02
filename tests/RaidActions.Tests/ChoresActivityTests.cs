@@ -31,6 +31,10 @@ public class ChoresActivityTests
             return Task.FromResult(0);
         }
 
+        public bool MasteryRequested() => false;
+
+        public Task<string> ApplyMasteriesAsync(CancellationToken ct) => Task.FromResult("");
+
         public Task<string?> FillSparringPitAsync(bool dryRun, CancellationToken ct)
         {
             Calls.Add("pit");

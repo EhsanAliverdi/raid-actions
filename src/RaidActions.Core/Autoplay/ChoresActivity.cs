@@ -17,6 +17,12 @@ public interface IChoresGame
     /// <summary>The Forge Pass's and the Challenges' rewards claimed; how many claims.</summary>
     Task<int> ClaimPassRewardsAsync(bool dryRun, CancellationToken ct);
 
+    /// <summary>True when the app has asked for masteries to be learned.</summary>
+    bool MasteryRequested();
+
+    /// <summary>The request carried out; what was done.</summary>
+    Task<string> ApplyMasteriesAsync(CancellationToken ct);
+
     /// <summary>The Sparring Pit's free slot kept filled; who was put in, or null when it was already training.</summary>
     Task<string?> FillSparringPitAsync(bool dryRun, CancellationToken ct);
 
@@ -62,6 +68,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         if (s.ArtifactUpgrades && ctx.QuestLeft(QuestNeedKind.ArtifactAttempts) > 0 && Open(ctx, "attempts")) return "attempts";
         if (s.ArtifactUpgrades && ctx.QuestLeft(QuestNeedKind.ArtifactLevel) > 0 && Open(ctx, "piece")) return "piece";
         if (s.InboxExpiringTokens && ctx.Utc >= _inboxAt && Open(ctx, "inbox")) return "inbox";
+        if (game.MasteryRequested()) return "masteries";
         if (s.PassRewards && ctx.Utc >= _passAt && Open(ctx, "pass")) return "pass";
         if (s.SparringPit && ctx.Utc >= _pitAt && Open(ctx, "pit")) return "pit";
         if (s.FreeItems && ctx.Utc >= _freeAt && Open(ctx, "free")) return "free";
@@ -92,6 +99,8 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
                     _inboxAt = ctx.Utc + TimeSpan.FromMinutes(Math.Max(30, s.InboxEveryMinutes));
                     var tokens = await game.CollectExpiringTokensAsync(ctx.DryRun, ct);
                     return tokens > 0 ? Report(ctx, "inbox", $"claimed {tokens} expiring token item(s)") : "";
+                case "masteries":
+                    return Report(ctx, "masteries", await game.ApplyMasteriesAsync(ct));
                 case "pit":
                     _pitAt = ctx.Utc + TimeSpan.FromMinutes(Math.Max(15, s.PitEveryMinutes));
                     return await game.FillSparringPitAsync(ctx.DryRun, ct) is { } trained ? Report(ctx, "pit", $"Sparring Pit: {trained} training") : "";

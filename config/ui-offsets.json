@@ -1340,6 +1340,40 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.Masteries.MasteryContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_treeId": {
+          "offset": "0x68",
+          "type": "IntProperty",
+          "field": "_treeId",
+          "source": "field",
+          "status": "direct"
+        },
+        "_row": {
+          "offset": "0x58",
+          "type": "IntProperty",
+          "field": "_row",
+          "source": "field",
+          "status": "direct"
+        },
+        "_column": {
+          "offset": "0x60",
+          "type": "IntProperty",
+          "field": "_column",
+          "source": "field",
+          "status": "direct"
+        },
+        "_state": {
+          "offset": "0x70",
+          "type": "IntProperty",
+          "field": "_state",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.Academy.Tabs.TrainingCamp.Overlays.TrainingCampHeroSelectionItemContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

@@ -176,6 +176,7 @@ public static partial class PlayTargets
     // Tag Team Arena (plan/tag-arena.md; from the dump 2026-10-31).
     private const string TagOpponent = "Client.ViewModel.Contextes.Arena3x3Dialog.Tabs.Battle.Arena3x3BattleOpponentItemContext";
     private const string TagTab = "Client.ViewModel.Contextes.Arena3x3Dialog.Tabs.Battle.Arena3x3BattleTabContext";
+    private const string MasteryNode = "Client.ViewModel.Contextes.Masteries.MasteryContext";
     private const string PitHero = "Client.ViewModel.Contextes.Academy.Tabs.TrainingCamp.Overlays.TrainingCampHeroSelectionItemContext";
     private const string TagReward = "Client.ViewModel.Contextes.BattleFinishArena3x3Dialog.BattleFinishArena3x3RewardDialogContext";
     private const string TagResult = "Client.ViewModel.Contextes.BattleFinishArena3x3Dialog.BattleFinishArena3x3DialogContext";
@@ -209,7 +210,7 @@ public static partial class PlayTargets
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-state", "live-phase", "live-slot", "live-confirm",
-        "mode-dt", "dt-stage", "dt-final-boss", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "village-pass", "village-challenges", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
+        "mode-dt", "dt-stage", "dt-final-boss", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "village-pass", "village-challenges", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
     };
@@ -646,6 +647,17 @@ public static partial class PlayTargets
                     // The Tag Team series' result: _summaryDefeat (seen 2026-10-31).
                     var defeat = Try(() => BoolValue(g, g.Ref(c.Address, TagResult, "_summaryDefeat")), null, notes, "BattleFinishArena3x3DialogContext._summaryDefeat");
                     if (defeat is { } d) result = new ArenaResultRead(d ? 2 : 1, null, Try(() => StringValue(g, g.Ref(c.Address, TagResult, "_enemyUserName")), null, notes, "_enemyUserName"));
+                    break;
+                }
+                case MasteryNode:
+                {
+                    // Id as in the game data: 500000 + tree×100 + tier×10 + column; a dry read compares it with the account before anything is pressed.
+                    var tree = Try(() => IntValue(g, g.Ref(c.Address, MasteryNode, "_treeId")), null, notes, "MasteryContext._treeId");
+                    var row = Try(() => IntValue(g, g.Ref(c.Address, MasteryNode, "_row")), null, notes, "MasteryContext._row");
+                    var column = Try(() => IntValue(g, g.Ref(c.Address, MasteryNode, "_column")), null, notes, "MasteryContext._column");
+                    var state = Try(() => IntValue(g, g.Ref(c.Address, MasteryNode, "_state")), null, notes, "MasteryContext._state");
+                    if (tree is { } tr && row is { } ro && column is { } co)
+                        targets.Add(Make("mastery-node", $"mastery {tr}/{ro}/{co}", n, n, $"tree {tr} row {ro} column {co} state {state}", id: 500000 + tr * 100 + ro * 10 + co));
                     break;
                 }
                 case PitHero:
@@ -1118,6 +1130,19 @@ public static partial class PlayTargets
                 else if (x.IsOn is not null && x.Name is "0_Heroes" or "1_Artifacts" or "2_Dungeons" or "3_Arena") targets.Add(Make("challenge-tab", $"challenges: {x.Name}", x, x, null));
                 else if (x.Name.Contains("Claim", StringComparison.OrdinalIgnoreCase) || x.Name == "CollectAllRewardsButton") targets.Add(Make("pass-claim", $"claim: {x.Name}", x, x, x.Path));
             }
+
+        // A champion's masteries: the fourth tab, the big Masteries button (a fixed spot on that tab), and Learn on a mastery's panel. Its GetMaxMasteryButton_h and
+        // the screen's plus buttons buy scrolls: never targets.
+        if (t.View == UiState.ChampionScreenView)
+        {
+            foreach (var x in nodes.Where(x => x.Name == "4" && x.IsOn is not null && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                targets.Add(Make("mastery-tab", "champion: masteries tab", x, x, x.IsOn == true ? "on" : "off"));
+            targets.Add(new UiTarget("mastery-open", "champion: Masteries", null, t.View, new ClientRect(t.ClientWidth * 0.80f, t.ClientHeight * 0.90f, t.ClientWidth * 0.14f, t.ClientHeight * 0.05f),
+                true, true, true, false, t.View + "/(Masteries)", "a fixed spot on the masteries tab", ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
+        }
+        if (t.View == "MasteryInfoOverlay")
+            foreach (var x in nodes.Where(x => x.Name == "LearnButton_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                targets.Add(Make("mastery-learn", "mastery: Learn", x, x, null));
 
         // The Guardian Ring: its building's spot, the first Sparring Pit figure (its plus; the slot's buttons below cost gems and are never targets), and Confirm.
         if (t.View == VillageHudView)

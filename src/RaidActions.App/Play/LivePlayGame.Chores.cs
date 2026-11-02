@@ -195,6 +195,65 @@ public sealed partial class LivePlayGame : IChoresGame
         return before.Keys.Count(k => k.Contains("Token", StringComparison.OrdinalIgnoreCase) && after.GetValueOrDefault(k) > before[k]);
     }
 
+    private string MasteryFile => RaidExtractor.Battle.MasteryRequest.PathIn(ExtractorOutput);
+
+    public bool MasteryRequested() => File.Exists(MasteryFile);
+
+    /// <summary>
+    /// The app's Apply: the champion, its masteries screen, and Learn on each mastery asked for, in order, checked in the account. Before anything is pressed, what the
+    /// screen reads must be the champion's masteries in the account, so a wrong id can never be learned. Whatever happens the request is used once.
+    /// </summary>
+    public async Task<string> ApplyMasteriesAsync(CancellationToken ct)
+    {
+        RaidExtractor.Battle.MasteryRequest? request;
+        try { request = System.Text.Json.JsonSerializer.Deserialize<RaidExtractor.Battle.MasteryRequest>(File.ReadAllText(MasteryFile), AutoplayJson.Options); }
+        finally { File.Delete(MasteryFile); }
+        if (request is null) return "the mastery request could not be read";
+        log($"autoplay: STEP masteries for {Who(request.ChampionId)}: {string.Join(", ", request.Ids)}{(request.DryRun ? " (dry run)" : "")}");
+        await _nav.ShowChampion(request.ChampionId, ct);
+        await Task.Delay(800, ct);
+        await Click("mastery-tab", null, (_, scan) => scan().Targets.Any(t => t.Kind == "mastery-tab" && t.Note == "on"), "the masteries tab", ct, within: TimeSpan.FromSeconds(6));
+        await Task.Delay(800, ct);
+        await Click("mastery-open", null, (s2, _) => Top(s2) == "MasteriesOverlay", "the masteries screen", ct, within: TimeSpan.FromSeconds(8));
+        await Task.Delay(1500, ct);
+        var (_, nodes, _) = await Read(ct);
+        var read = nodes.Where(t => t.Kind == "mastery-node" && t.Id is > 0).ToList();
+        var (data, _, _, _) = await Account(ct);
+        var mine = data.Champions.First(c => c.Id == request.ChampionId).Masteries.ToHashSet();
+        var states = read.GroupBy(t => t.Note?.Split(' ')[^1] ?? "").ToDictionary(g => g.Key, g => g.Select(t => t.Id!.Value).ToHashSet());
+        log($"autoplay: the masteries screen: {read.Count} nodes, by state {string.Join(", ", states.Select(kv => $"{kv.Key}:{kv.Value.Count}"))}; account {mine.Count}");
+        var matched = mine.Count > 0 ? states.Any(kv => kv.Value.SetEquals(mine)) : read.Count == 66;
+        if (read.Count != 66 || !matched || request.Ids.Any(id => read.All(t => t.Id != id)))
+        {
+            var dump = DumpScreen("masteries did not match the account");
+            await _nav.GoHome(Action("from the masteries"), ct);
+            return $"nothing learned: the screen did not match the account. Screen dump: {dump}";
+        }
+        if (request.DryRun)
+        {
+            await _nav.GoHome(Action("from the masteries"), ct);
+            return $"dry run: the screen matches the account; {request.Ids.Count} mastery(ies) would be learned";
+        }
+        var learned = 0;
+        foreach (var id in request.Ids)
+        {
+            await Click("mastery-node", t => t.Id == id, (s2, _) => Top(s2) == "MasteryInfoOverlay", $"mastery {id} opens", ct, within: TimeSpan.FromSeconds(6));
+            await Task.Delay(700, ct);
+            if (!(await Read(ct)).Targets.Any(t => t.Kind == "mastery-learn"))
+            {
+                await Back("MasteryInfoOverlay", ct);
+                break;
+            }
+            await Click("mastery-learn", null, (s2, _) => Top(s2) != "MasteryInfoOverlay", $"mastery {id} learned", ct, within: TimeSpan.FromSeconds(8));
+            await Task.Delay(1500, ct);
+            var now = (await Account(ct)).Data.Champions.First(c => c.Id == request.ChampionId).Masteries;
+            if (!now.Contains(id)) { log($"autoplay: mastery {id} is not in the account after Learn: stopping"); break; }
+            learned++;
+        }
+        await _nav.GoHome(Action("from the masteries"), ct);
+        return $"{Who(request.ChampionId)}: {learned} of {request.Ids.Count} mastery(ies) learned";
+    }
+
     /// <summary>The building above its label tapped; false when the label is not on screen, so the caller falls back to the fixed spot.</summary>
     private async Task<bool> TapBuilding(string name, CancellationToken ct)
     {

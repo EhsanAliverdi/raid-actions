@@ -12,6 +12,8 @@ namespace RaidActions.App.Play;
 /// </summary>
 public sealed partial class LivePlayGame : IEnergyGame
 {
+    private const string MultiRefillView = "ResourceMultiRefillOverlay";
+
     public async Task<EnergyAccount> ReadAccountAsync(CancellationToken ct)
     {
         var (data, _, _, _) = await Account(ct);
@@ -97,7 +99,7 @@ public sealed partial class LivePlayGame : IEnergyGame
         }
         try
         {
-            await Click("team-start", t => t.View == teamView, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView,
+            await Click("team-start", t => t.View == teamView, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or MultiRefillView or UiState.MessageBoxView,
                 "the battle starts", ct, within: TimeSpan.FromSeconds(25), shot: true);
         }
         catch (PlayStopException)
@@ -107,11 +109,12 @@ public sealed partial class LivePlayGame : IEnergyGame
             return new BattleOutcome(BattleResult.NotStarted, "Start did nothing (not enough energy?)");
         }
         var inBattle = await ReadState(ct);
-        if (Top(inBattle) == PlayTargets.RefillView)
+        // The game's offer to buy what the stage costs, energy or keys (2026-11-02: Iron Twins, its multi-refill screen): closed, never pressed; the row rests.
+        if (Top(inBattle) is PlayTargets.RefillView or MultiRefillView)
         {
-            await Back(PlayTargets.RefillView, ct);
+            await Back(Top(inBattle)!, ct);
             await Back(teamView, ct);
-            return new BattleOutcome(BattleResult.NotStarted, "not enough energy (the refill offer was closed)");
+            return new BattleOutcome(BattleResult.NotStarted, "not enough energy or keys (the refill offer was closed)");
         }
         if (!inBattle.Active.Any(v => BattleViews.Contains(v.Name))) await Refuse(inBattle, $"Start {where}", ct);
         log($"autoplay: {where} started");

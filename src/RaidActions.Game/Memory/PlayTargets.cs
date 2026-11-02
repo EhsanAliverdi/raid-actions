@@ -136,6 +136,7 @@ public static partial class PlayTargets
     private const string TavernItem = "Client.ViewModel.Contextes.HeroesDevelopmentDialog.Items.HeroesDevelopmentItemContext";
     private const string ClanScore = "Client.ViewModel.Contextes.AllianceEnemies.ScoreItem.AllianceEnemyScoreItemContext";
     private const string ClanChest = "Client.ViewModel.Contextes.GachaChest.AllianceEnemyRewardItem.AllianceEnemyRewardItemContext";
+    private const string LiveDraftDialog = "Client.ViewModel.Contextes.LiveArenaDraftDialog.LiveArenaDraftDialogContext";
     private const string LiveDraftState = "Client.ViewModel.Contextes.LiveArenaDraftDialog.IterativeHeroSelectionStateContext";
     private const string LiveBattleTab = "Client.ViewModel.Contextes.LiveArenaDialog.Tabs.Battle.LiveArenaBattleTabContext";
     private const string LiveSchedule = "Client.ViewModel.Contextes.LiveArenaDialog.Tabs.Battle.LiveArenaCurrentScheduleContext";
@@ -210,7 +211,7 @@ public static partial class PlayTargets
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-state", "live-phase", "live-slot", "live-confirm",
-        "mode-dt", "dt-stage", "dt-final-boss", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "village-pass", "village-challenges", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
+        "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "village-pass", "village-challenges", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
     };
@@ -533,14 +534,17 @@ public static partial class PlayTargets
                     targets.Add(Make("live-state", "live arena: hours", n, Own(i), open == true ? "active" : "closed"));
                     break;
                 }
-                case LiveDraftState:
+                case LiveDraftDialog:
                 {
-                    var phaseName = Try(() => StringValue(g, g.Ref(c.Address, LiveDraftState, "_phaseName")), null, notes, "IterativeHeroSelectionStateContext._phaseName");
-                    var mine = Try(() => BoolValue(g, g.Ref(c.Address, LiveDraftState, "_isPlayerTurn")), null, notes, "IterativeHeroSelectionStateContext._isPlayerTurn");
-                    var confirm = Try(() => BoolValue(g, g.Ref(c.Address, LiveDraftState, "_canPressConfirm")), null, notes, "IterativeHeroSelectionStateContext._canPressConfirm");
+                    // The draft's state hangs off the dialog, no element is bound to it (recorded 2026-11-03).
+                    var state = Try(() => g.Ref(c.Address, LiveDraftDialog, "_phase"), 0UL, notes, "LiveArenaDraftDialogContext._phase");
+                    if (state == 0) break;
+                    var phaseName = Try(() => StringValue(g, g.Ref(state, LiveDraftState, "_phaseName")), null, notes, "IterativeHeroSelectionStateContext._phaseName");
+                    var mine = Try(() => BoolValue(g, g.Ref(state, LiveDraftState, "_isPlayerTurn")), null, notes, "IterativeHeroSelectionStateContext._isPlayerTurn");
+                    var confirm = Try(() => BoolValue(g, g.Ref(state, LiveDraftState, "_canPressConfirm")), null, notes, "IterativeHeroSelectionStateContext._canPressConfirm");
                     targets.Add(Make("live-phase", "live arena: phase", n, Own(i), $"{phaseName}|{(mine == true ? "mine" : "theirs")}|{(confirm == true ? "confirm" : "no")}"));
                     if (confirm == true)
-                        foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null && ConfirmName().IsMatch(x.Name)).Take(1))
+                        foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null && ConfirmName().IsMatch(x.Name)).OrderByDescending(x => x.Name == "ConfirmButton").Take(1))
                             targets.Add(Make("live-confirm", "live arena: Confirm", x, x, x.Path));
                     break;
                 }
@@ -1162,6 +1166,11 @@ public static partial class PlayTargets
         if (t.View == "MasteryInfoOverlay")
             foreach (var x in nodes.Where(x => x.Name == "GetMaxMasteryButton_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
                 targets.Add(Make("mastery-getmax", "mastery: get the scrolls", x, x, null));
+
+        // Live Arena's badge above the village's Battle button: only while it is open (Ehsan 2026-11-03: "the bot should use that to see when it is live"). Read, never clicked.
+        if (t.View == VillageHudView)
+            foreach (var x in nodes.Where(x => x.Name == "LiveArenaAvailable_h" && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                targets.Add(Make("live-badge", "village: Live Arena is open", x, x, null));
 
         // The Guardian Ring: its building's spot, the first Sparring Pit figure (its plus; the slot's buttons below cost gems and are never targets), and Confirm.
         if (t.View == VillageHudView)

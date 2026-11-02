@@ -1520,6 +1520,19 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.LiveArenaDraftDialog.LiveArenaDraftDialogContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_phase": {
+          "offset": "0x98",
+          "type": "IterativeHeroSelectionStateContext",
+          "field": "_phase",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.LiveArenaDraftDialog.IterativeHeroSelectionStateContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

@@ -15,6 +15,9 @@ public sealed partial class LivePlayGame : ILiveArenaGame
 
     public async Task<LiveArenaState> ReadLiveArenaAsync(CancellationToken ct)
     {
+        // From the village its badge tells, without opening anything.
+        var (s0, t0, _) = await Read(ct);
+        if (Input.NavigatingDriver.AtVillage(s0) && !t0.Any(t => t.Kind == "live-badge")) return new LiveArenaState(false, false);
         // Out of its hours the battle menu has no Live Arena button (seen 2026-11-01): closed, not an error.
         if (!await OpenLiveArena(ct)) return new LiveArenaState(false, false);
         var (_, targets, _) = await Read(ct);
@@ -74,6 +77,12 @@ public sealed partial class LivePlayGame : ILiveArenaGame
             var name = parts.ElementAtOrDefault(0);
             if (phasesSeen.Add(name ?? "?")) log($"autoplay: Live Arena phase '{name}' ({phase?.Note}). Screen dump: {DumpScreen($"live arena {name}")}");
             if (parts.ElementAtOrDefault(1) != "mine") continue;
+            // Confirm lit means the turn's choices are made (first in the draft: 1 pick; second: 2): never a choice more.
+            if (targets.Any(t => t.Kind == "live-confirm" && t.NotClickable is null))
+            {
+                await Click("live-confirm", null, (_, _) => true, "the turn confirmed", ct);
+                continue;
+            }
             switch (LiveArenaDraft.Kind(name))
             {
                 case "leader":
@@ -107,9 +116,6 @@ public sealed partial class LivePlayGame : ILiveArenaGame
                     break;
                 }
             }
-            await Task.Delay(400, ct);
-            var (_, now, _) = await Read(ct);
-            if (now.Any(t => t.Kind == "live-confirm" && t.NotClickable is null)) await Click("live-confirm", null, (_, _) => true, "the turn confirmed", ct);
         }
         var result = await WaitBattle(ct, LiveResultView);
         var (_, _, last) = await Read(ct);

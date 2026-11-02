@@ -245,6 +245,7 @@
                   "Client.ViewModel.Contextes.MarketSlotContext":  [ "_item", "_isEmpty", "_state" ],
                   "Client.ViewModel.Contextes.InboxDialog.Contexts.InboxRewardItemContext":  [ "_itemAvatar" ],
                   "Client.ViewModel.Contextes.Generic.Items.ItemAvatarContext":  [ "_resourceType" ],
+                  "Client.ViewModel.Contextes.LiveArenaDraftDialog.LiveArenaDraftDialogContext":  [ "_phase" ],
                   "Client.ViewModel.Contextes.LiveArenaDraftDialog.IterativeHeroSelectionStateContext":  [ "_phaseName", "_isPlayerTurn", "_canPressConfirm" ],
                   "Client.ViewModel.Contextes.LiveArenaDialog.Tabs.Battle.LiveArenaBattleTabContext":  [ "_battleButtonEnabled" ],
                   "Client.ViewModel.Contextes.LiveArenaDialog.Tabs.Battle.LiveArenaCurrentScheduleContext":  [ "_active" ],

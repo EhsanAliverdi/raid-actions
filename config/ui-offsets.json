@@ -1340,6 +1340,26 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.Academy.Tabs.TrainingCamp.Overlays.TrainingCampHeroSelectionItemContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_heroId": {
+          "offset": "0x70",
+          "type": "int",
+          "field": "_heroId",
+          "source": "field",
+          "status": "direct"
+        },
+        "_state": {
+          "offset": "0x50",
+          "type": "IntProperty",
+          "field": "_state",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.BattleFinishArena3x3Dialog.BattleFinishArena3x3RewardDialogContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

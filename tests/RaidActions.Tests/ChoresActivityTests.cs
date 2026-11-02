@@ -31,6 +31,12 @@ public class ChoresActivityTests
             return Task.FromResult(0);
         }
 
+        public Task<string?> FillSparringPitAsync(bool dryRun, CancellationToken ct)
+        {
+            Calls.Add("pit");
+            return Task.FromResult<string?>(null);
+        }
+
         public Task<int> ClaimPassRewardsAsync(bool dryRun, CancellationToken ct)
         {
             Calls.Add("pass");

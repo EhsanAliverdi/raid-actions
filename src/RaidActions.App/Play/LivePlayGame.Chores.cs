@@ -193,6 +193,44 @@ public sealed partial class LivePlayGame : IChoresGame
         return before.Keys.Count(k => k.Contains("Token", StringComparison.OrdinalIgnoreCase) && after.GetValueOrDefault(k) > before[k]);
     }
 
+    public async Task<string?> FillSparringPitAsync(bool dryRun, CancellationToken ct)
+    {
+        _nav.FitWindow();
+        var (s0, _, _) = await Read(ct);
+        if (Top(s0) != PlayTargets.VillageHudView) await ToVillage(ct);
+        await Click("village-academy", null, (s2, _) => Top(s2) == "AcademyDialog", "the Guardian Ring opens", ct, within: TimeSpan.FromSeconds(10));
+        await Task.Delay(1500, ct);
+        await Click("pit-slot", null, (s2, _) => Top(s2) == "TrainingCampHeroSelectionOverlay", "the Sparring Pit's list opens", ct, within: TimeSpan.FromSeconds(10));
+        await Task.Delay(1000, ct);
+        var (_, items, _) = await Read(ct);
+        // HeroSelectionItemState: 0 free, 1 in this slot, 3 at max level, 4 blocked.
+        var inSlot = items.FirstOrDefault(t => t.Kind == "pit-hero" && t.Note == "state 1");
+        string? put = null;
+        if (inSlot is null)
+        {
+            var (data, _, _, _) = await Account(ct);
+            var offered = items.Where(t => t.Kind == "pit-hero" && t.Note == "state 0" && t.Id is > 0).Select(t => t.Id!.Value).ToList();
+            var settings = AutoplaySettings.Load(ExtractorOutput);
+            if (ChoreRules.PitPick(offered, data.Champions, settings.Energy.Food, [.. settings.Energy.Food.ExtraIds]) is { } id)
+            {
+                log($"autoplay: STEP Sparring Pit: {Who(id)}");
+                if (!dryRun)
+                {
+                    await DragIntoView("pit-hero", ct, t => t.Id == id);
+                    await Click("pit-hero", t => t.Id == id, (_, _) => true, Who(id), ct);
+                    await Task.Delay(600, ct);
+                    await Click("pit-confirm", null, (s2, _) => Top(s2) != "TrainingCampHeroSelectionOverlay", "the champion goes in", ct, within: TimeSpan.FromSeconds(8));
+                    put = Who(id);
+                }
+            }
+        }
+        var (s3, _, _) = await Read(ct);
+        if (Top(s3) == "TrainingCampHeroSelectionOverlay") { await Back("TrainingCampHeroSelectionOverlay", ct); await Task.Delay(800, ct); }
+        await Back("AcademyDialog", ct);
+        await Task.Delay(1000, ct);
+        return put;
+    }
+
     public async Task<int> ClaimPassRewardsAsync(bool dryRun, CancellationToken ct)
     {
         _nav.FitWindow();

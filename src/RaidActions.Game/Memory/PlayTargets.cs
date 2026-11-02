@@ -176,6 +176,7 @@ public static partial class PlayTargets
     // Tag Team Arena (plan/tag-arena.md; from the dump 2026-10-31).
     private const string TagOpponent = "Client.ViewModel.Contextes.Arena3x3Dialog.Tabs.Battle.Arena3x3BattleOpponentItemContext";
     private const string TagTab = "Client.ViewModel.Contextes.Arena3x3Dialog.Tabs.Battle.Arena3x3BattleTabContext";
+    private const string PitHero = "Client.ViewModel.Contextes.Academy.Tabs.TrainingCamp.Overlays.TrainingCampHeroSelectionItemContext";
     private const string TagReward = "Client.ViewModel.Contextes.BattleFinishArena3x3Dialog.BattleFinishArena3x3RewardDialogContext";
     private const string TagResult = "Client.ViewModel.Contextes.BattleFinishArena3x3Dialog.BattleFinishArena3x3DialogContext";
     private const string QuestItem = "Client.ViewModel.Contextes.Quests.QuestItemContext";
@@ -208,7 +209,7 @@ public static partial class PlayTargets
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-state", "live-phase", "live-slot", "live-confirm",
-        "mode-dt", "dt-stage", "dt-final-boss", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "village-pass", "village-challenges", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
+        "mode-dt", "dt-stage", "dt-final-boss", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "village-pass", "village-challenges", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
     };
@@ -645,6 +646,13 @@ public static partial class PlayTargets
                     // The Tag Team series' result: _summaryDefeat (seen 2026-10-31).
                     var defeat = Try(() => BoolValue(g, g.Ref(c.Address, TagResult, "_summaryDefeat")), null, notes, "BattleFinishArena3x3DialogContext._summaryDefeat");
                     if (defeat is { } d) result = new ArenaResultRead(d ? 2 : 1, null, Try(() => StringValue(g, g.Ref(c.Address, TagResult, "_enemyUserName")), null, notes, "_enemyUserName"));
+                    break;
+                }
+                case PitHero:
+                {
+                    var hero = Try(() => (int?)g.Int(c.Address, PitHero, "_heroId"), null, notes, "TrainingCampHeroSelectionItemContext._heroId");
+                    var state = Try(() => IntValue(g, g.Ref(c.Address, PitHero, "_state")), null, notes, "TrainingCampHeroSelectionItemContext._state");
+                    if (hero is > 0) targets.Add(Make("pit-hero", $"sparring pit: #{hero}", n, n, $"state {state}", id: hero));
                     break;
                 }
                 case TagReward:
@@ -1110,6 +1118,17 @@ public static partial class PlayTargets
                 else if (x.IsOn is not null && x.Name is "0_Heroes" or "1_Artifacts" or "2_Dungeons" or "3_Arena") targets.Add(Make("challenge-tab", $"challenges: {x.Name}", x, x, null));
                 else if (x.Name.Contains("Claim", StringComparison.OrdinalIgnoreCase) || x.Name == "CollectAllRewardsButton") targets.Add(Make("pass-claim", $"claim: {x.Name}", x, x, x.Path));
             }
+
+        // The Guardian Ring: its building's spot, the first Sparring Pit figure (its plus; the slot's buttons below cost gems and are never targets), and Confirm.
+        if (t.View == VillageHudView)
+            targets.Add(new UiTarget("village-academy", "village: Guardian Ring (the building's spot)", null, t.View, new ClientRect(t.ClientWidth * 0.61f, t.ClientHeight * 0.44f, t.ClientWidth * 0.04f, t.ClientHeight * 0.06f),
+                true, true, true, false, "VillageHUD/(Guardian Ring)", "a fixed spot on the default village view", ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
+        if (t.View == "AcademyDialog")
+            targets.Add(new UiTarget("pit-slot", "sparring pit: the first slot", null, t.View, new ClientRect(t.ClientWidth * 0.27f, t.ClientHeight * 0.36f, t.ClientWidth * 0.03f, t.ClientHeight * 0.06f),
+                true, true, true, false, "AcademyDialog/(first slot)", "a fixed spot", ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
+        if (t.View == "TrainingCampHeroSelectionOverlay")
+            foreach (var x in nodes.Where(x => x.Name == "BTN_2" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                targets.Add(Make("pit-confirm", "sparring pit: Confirm", x, x, null));
 
         // The tower's Normal / Hard dropdown (seen 2026-11-02): its button, and its items while it is open.
         if (t.View == "DoomTowerHUD")

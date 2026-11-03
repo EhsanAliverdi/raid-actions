@@ -100,6 +100,14 @@ public static class AutoplayCommand
         }
         using (live)
         {
+            // The bot plays the account the app shows (raid-extractor plan/multi-account.md): another account in the game is not played.
+            if (RaidExtractor.OutputLayout.ActiveId(dir) is { } want && live.UserId() is { } inGame && inGame != want)
+            {
+                var other = $"The game shows account {inGame}, but the app is on account {want}: switch the app's account (or the game's) first.";
+                Print(other);
+                host.WriteStatus(new AutoplayStatus(DateTime.UtcNow, Environment.ProcessId, dry, "error", other, null, [], [], []));
+                return Cli.Failed;
+            }
             UnityUi ui;
             try { ui = live.Ui(UiCommands.NativeLayoutPath); }
             catch (UiReadException e)

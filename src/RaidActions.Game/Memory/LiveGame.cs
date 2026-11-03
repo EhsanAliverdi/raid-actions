@@ -158,6 +158,16 @@ public sealed class LiveGame : IDisposable
     private static bool Same(UiState a, UiState b) =>
         a.Views.SequenceEqual(b.Views) && a.BlockingEvents == b.BlockingEvents && Equals(a.ChampionScreen, b.ChampionScreen);
 
+    /// <summary>The player's id of the account in the game (raid-extractor plan/multi-account.md); null when it cannot be read.</summary>
+    public long? UserId()
+    {
+        lock (_lock)
+        {
+            try { return new Account(_session, _offsets).UserId is > 0 and var id ? id : null; }
+            catch (Exception e) when (e is KeyNotFoundException or ReadCheckException or InvalidOperationException) { return null; }
+        }
+    }
+
     /// <summary>A fresh account read through Core's exporter, written to output/live (never to raid-extractor).</summary>
     public IAccountSource Account => new LiveAccount(this);
 
@@ -170,7 +180,7 @@ public sealed class LiveGame : IDisposable
             {
                 var dir = Path.Combine(game._paths.Output, "live");
                 var names = Path.Combine(game._paths.RaidExtractorRoot, "config", "display-names.json");
-                var r = Exporter.Export(new Account(game._session, game._offsets), dir, names, historyMinInterval: TimeSpan.FromHours(1));
+                var r = Exporter.Export(new Account(game._session, game._offsets), dir, names, historyMinInterval: TimeSpan.FromHours(1), accountFolders: false);
                 if (!r.Ok || r.Data is null) throw new InvalidOperationException("Live account read failed: " + r.Message);
                 return r.Data;
             }

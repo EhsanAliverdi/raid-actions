@@ -186,7 +186,7 @@ public sealed partial class LivePlayGame : IEnergyGame
                 await Click("mode-dungeon", null, (s2, scan) => Has(s2, DungeonsView) || scan().Targets.Any(t => t.Kind == "dungeon-region"), "the dungeons open", ct, within: TimeSpan.FromSeconds(15));
                 continue;
             }
-            if (!Input.NavigatingDriver.AtVillage(s)) { await _nav.GoHome(Action("to the village"), ct); continue; }
+            if (!Input.NavigatingDriver.AtVillage(s)) { await HomeAsync(Action("to the village"), ct); continue; }
             await Click("village-battle", null, (s2, _) => Has(s2, PlayTargets.BattleMenuView), "the battle menu opens", ct);
         }
         throw new PlayStopException($"Could not open {region}'s stages in 12 steps. Screen dump: {DumpScreen("dungeon not reached")}");

@@ -14,7 +14,7 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
     {
         _nav.FitWindow();
         var s = await Settled(ct);
-        if (!Input.NavigatingDriver.AtVillage(s)) await _nav.GoHome(Action("to the village"), ct);
+        if (!Input.NavigatingDriver.AtVillage(s)) await HomeAsync(Action("to the village"), ct);
         var (_, targets, _) = await Read(ct);
         if (!targets.Any(t => t.Kind == "village-gifts" && t.NotClickable is null))
             throw new PlayStopException($"The village's playtime gifts button is not recognised. Screen dump: {DumpScreen("village gifts")}");
@@ -41,7 +41,7 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
             var after = await Settled(ct);
             if (Top(after) is { } t3 && t3 != top) await Back(t3, ct);
         }
-        await _nav.GoHome(Action("from the playtime gifts"), ct);
+        await HomeAsync(Action("from the playtime gifts"), ct);
         return got;
     }
 
@@ -50,7 +50,7 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
         var read = new Dictionary<(string, int, string), QuestRead>();
         _nav.FitWindow();
         var s = await Settled(ct);
-        if (!Input.NavigatingDriver.AtVillage(s)) await _nav.GoHome(Action("to the village"), ct);
+        if (!Input.NavigatingDriver.AtVillage(s)) await HomeAsync(Action("to the village"), ct);
         var (_, targets, _) = await Read(ct);
         if (!targets.Any(t => t.Kind == "village-quests" && t.NotClickable is null))
             throw new PlayStopException($"The village's Quests button is not recognised. Screen dump: {DumpScreen("village quests")}");
@@ -104,7 +104,7 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
                 await Back(t4, ct);
             }
         }
-        await _nav.GoHome(Action("from the quests"), ct);
+        await HomeAsync(Action("from the quests"), ct);
         // The village's Missions: read, and each completed one collected (a click on it) when claiming.
         try
         {
@@ -134,7 +134,7 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
                     var s4 = await Settled(ct);
                     if (Top(s4) is { } t4 && t4 != topM) await Back(t4, ct);
                 }
-                await _nav.GoHome(Action("from the missions"), ct);
+                await HomeAsync(Action("from the missions"), ct);
             }
         }
         catch (PlayStopException e) { log($"autoplay: missions not read: {e.Message}"); }

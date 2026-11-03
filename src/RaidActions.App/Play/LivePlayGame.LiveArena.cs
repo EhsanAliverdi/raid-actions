@@ -43,7 +43,7 @@ public sealed partial class LivePlayGame : ILiveArenaGame
                 await Task.Delay(1000, ct);
                 continue;
             }
-            if (!Input.NavigatingDriver.AtVillage(s)) { await _nav.GoHome(Action("to the village"), ct); await ToVillage(ct); continue; }
+            if (!Input.NavigatingDriver.AtVillage(s)) { await HomeAsync(Action("to the village"), ct); await ToVillage(ct); continue; }
             await Click("village-battle", null, (s2, _) => Has(s2, PlayTargets.BattleMenuView), "the battle menu opens", ct);
         }
         throw new PlayStopException($"Live Arena was not reached. Screen dump: {DumpScreen("live arena not reached")}");
@@ -65,7 +65,7 @@ public sealed partial class LivePlayGame : ILiveArenaGame
         var (after, _, _) = await Read(ct);
         if (Top(after) is PlayTargets.RefillView or UiState.MessageBoxView)
         {
-            await _nav.GoHome(Action("from the token offer"), ct);
+            await HomeAsync(Action("from the token offer"), ct);
             return new BattleOutcome(BattleResult.NotStarted, "out of Live Arena tokens (the game offered to buy some; closed, nothing bought)");
         }
         log("autoplay: looking for a Live Arena opponent");

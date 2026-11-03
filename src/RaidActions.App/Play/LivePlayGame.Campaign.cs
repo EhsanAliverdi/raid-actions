@@ -95,7 +95,7 @@ public sealed partial class LivePlayGame
                 await Task.Delay(1000, ct);
                 continue;
             }
-            if (!Input.NavigatingDriver.AtVillage(s)) { await _nav.GoHome(Action("to the village"), ct); continue; }
+            if (!Input.NavigatingDriver.AtVillage(s)) { await HomeAsync(Action("to the village"), ct); continue; }
             await Click("village-battle", null, (s2, _) => Has(s2, PlayTargets.BattleMenuView), "the battle menu opens", ct);
         }
         throw new PlayStopException($"Could not open {region}'s stages in 12 steps. Screen dump: {DumpScreen("campaign not reached")}");
@@ -203,7 +203,7 @@ public sealed partial class LivePlayGame
             log($"autoplay: ranked up {up} champion(s) of grade {grade}");
             await Task.Delay(1500, ct);
         }
-        await _nav.GoHome(Action("from the Tavern"), ct);
+        await HomeAsync(Action("from the Tavern"), ct);
         return done;
     }
 
@@ -271,7 +271,7 @@ public sealed partial class LivePlayGame
                 throw new PlayStopException($"The champion screen is open but its Tavern button is not recognised ("
                     + string.Join(" | ", (await Read(ct)).Play.Notes.Where(n => n.StartsWith("champion screen", StringComparison.Ordinal)))
                     + $"). Screen dump: {DumpScreen("champion tavern")}");
-            if (!Input.NavigatingDriver.AtVillage(s)) { await _nav.GoHome(Action("to the village"), ct); continue; }
+            if (!Input.NavigatingDriver.AtVillage(s)) { await HomeAsync(Action("to the village"), ct); continue; }
             if (targets.Any(t => t.Kind == "village-tavern" && t.NotClickable is null))
                 await Click("village-tavern", null, (s2, _) => Has(s2, PlayTargets.TavernView), "the Tavern opens", ct, within: TimeSpan.FromSeconds(10));
             else
@@ -334,12 +334,12 @@ public sealed partial class LivePlayGame
             }
         }
         // Home again; the last champion's card may still be sliding in: one more try after a pause.
-        try { await _nav.GoHome(Action("from the Portal"), ct); }
+        try { await HomeAsync(Action("from the Portal"), ct); }
         catch (Exception e) when (e is not OperationCanceledException)
         {
             log($"autoplay: going home from the Portal failed once ({e.Message}); trying again");
             await Task.Delay(2500, ct);
-            await _nav.GoHome(Action("from the Portal"), ct);
+            await HomeAsync(Action("from the Portal"), ct);
         }
         return opened;
     }
@@ -378,7 +378,7 @@ public sealed partial class LivePlayGame
             var s = await Settled(ct);
             var (_, targets, _) = await Read(ct);
             if (targets.Any(t => t.Kind == "portal-shard")) return;
-            if (!Input.NavigatingDriver.AtVillage(s)) { await _nav.GoHome(Action("to the village"), ct); continue; }
+            if (!Input.NavigatingDriver.AtVillage(s)) { await HomeAsync(Action("to the village"), ct); continue; }
             if (await TapBuilding("portal", ct)) await Task.Delay(1500, ct);
             else try
             {

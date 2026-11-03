@@ -43,7 +43,7 @@ public sealed partial class LivePlayGame : ITagArenaGame
                 await Click("mode-arena", null, (s2, _) => Has(s2, PlayTargets.ArenaMapView), "the arena map opens", ct);
                 continue;
             }
-            if (Top(s) is { } other && other != PlayTargets.VillageHudView && !Input.NavigatingDriver.AtVillage(s)) { await _nav.GoHome(Action("to the village"), ct); continue; }
+            if (Top(s) is { } other && other != PlayTargets.VillageHudView && !Input.NavigatingDriver.AtVillage(s)) { await HomeAsync(Action("to the village"), ct); continue; }
             await Click("village-battle", null, (s2, _) => Has(s2, PlayTargets.BattleMenuView) || Has(s2, PlayTargets.ArenaMapView), "the battle menu opens", ct);
         }
         throw new PlayStopException($"Could not reach the Tag Team Arena in 10 steps. Screen dump: {DumpScreen("tag arena not reached")}");

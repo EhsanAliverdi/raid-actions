@@ -55,7 +55,7 @@ public sealed partial class LivePlayGame : IChoresGame
             log($"autoplay: bought {o.Name} for {o.Silver:N0} silver");
             await Task.Delay(800, ct);
         }
-        await _nav.GoHome(Action("from the Market"), ct);
+        await HomeAsync(Action("from the Market"), ct);
         return bought;
     }
 
@@ -65,7 +65,7 @@ public sealed partial class LivePlayGame : IChoresGame
     /// <summary>The village with no screen on it (GoHome stops on the champion screen).</summary>
     private async Task ToVillage(CancellationToken ct)
     {
-        await _nav.GoHome(Action("to the village"), ct);
+        await HomeAsync(Action("to the village"), ct);
         for (var i = 0; i < 3; i++)
         {
             var s = await Settled(ct);
@@ -114,7 +114,7 @@ public sealed partial class LivePlayGame : IChoresGame
         if (dryRun)
         {
             if (go.Rect is { } r) Shot($"autoplay: WOULD CLICK Upgrade, {Who(pair.Main)} with {Who(pair.Food)} (dry run: NOT pressed)", r, always: true);
-            await _nav.GoHome(Action("from the Tavern"), ct);
+            await HomeAsync(Action("from the Tavern"), ct);
             return true;
         }
         try { await Click("tavern-levelup", null, (s2, _) => Top(s2) == UiState.MessageBoxView, "the level-up", ct, within: TimeSpan.FromSeconds(4), shot: true); }
@@ -132,7 +132,7 @@ public sealed partial class LivePlayGame : IChoresGame
         if (now.First(c => c.Id == pair.Main).Level <= levels[pair.Main] && now.Any(c => c.Id == pair.Food))
             throw new PlayStopException($"Upgrade was pressed but {Who(pair.Main)} did not level. Screen dump: {DumpScreen("tavern not levelled")}");
         log($"autoplay: {Who(pair.Main)} is level {now.First(c => c.Id == pair.Main).Level}");
-        await _nav.GoHome(Action("from the Tavern"), ct);
+        await HomeAsync(Action("from the Tavern"), ct);
         return true;
     }
 
@@ -180,7 +180,7 @@ public sealed partial class LivePlayGame : IChoresGame
                 await Click("champion-tavern", null, (s2, _) => Has(s2, PlayTargets.TavernView), "the Tavern opens", ct, within: TimeSpan.FromSeconds(10));
                 continue;
             }
-            if (!NavigatingDriver.AtVillage(s)) { await _nav.GoHome(Action("to the village"), ct); continue; }
+            if (!NavigatingDriver.AtVillage(s)) { await HomeAsync(Action("to the village"), ct); continue; }
             await Click("village-heroes", null, (s2, _) => Has(s2, "HeroesInfoOverlay"), "the champion screen opens", ct, within: TimeSpan.FromSeconds(10));
         }
         throw new PlayStopException($"The Tavern was not reached. Screen dump: {DumpScreen("tavern not reached")}");
@@ -229,7 +229,7 @@ public sealed partial class LivePlayGame : IChoresGame
         if (read.Count != 66 || !matched || request.Ids.Any(id => read.All(t => t.Id != id)))
         {
             var dump = DumpScreen("masteries did not match the account");
-            await _nav.GoHome(Action("from the masteries"), ct);
+            await HomeAsync(Action("from the masteries"), ct);
             return $"nothing learned: the screen did not match the account. Screen dump: {dump}";
         }
         if (request.DryRun)
@@ -250,7 +250,7 @@ public sealed partial class LivePlayGame : IChoresGame
                     Shot("autoplay: the buy screen, not pressed", new ClientRect(0, 0, 1, 1), always: true);
                 }
             }
-            await _nav.GoHome(Action("from the masteries"), ct);
+            await HomeAsync(Action("from the masteries"), ct);
             return $"dry run: the screen matches the account; {request.Ids.Count} mastery(ies) would be learned{price}";
         }
         // The scroll set, only when this request allows it and the champion cannot pay: the price is checked, then the account proves it.
@@ -268,7 +268,7 @@ public sealed partial class LivePlayGame : IChoresGame
             log($"autoplay: the scroll set costs {price} gems, {gemsBefore:0} held, {request.MaxGems} allowed");
             if (button is null || price <= 0 || price > request.MaxGems || price > gemsBefore)
             {
-                await _nav.GoHome(Action("from the masteries"), ct);
+                await HomeAsync(Action("from the masteries"), ct);
                 return $"nothing bought: the scroll set costs {price} gems and {request.MaxGems} were allowed";
             }
             await Click("mastery-buy", null, (s2, _) => Top(s2) != "BuyMasteriesOverlay", "the scroll set is bought", ct, within: TimeSpan.FromSeconds(10));
@@ -280,7 +280,7 @@ public sealed partial class LivePlayGame : IChoresGame
             if (gemsBefore - gemsAfter > price || (scrolls?.Values.Sum() ?? 0) == 0)
             {
                 var dump = DumpScreen("masteries after the purchase");
-                await _nav.GoHome(Action("from the masteries"), ct);
+                await HomeAsync(Action("from the masteries"), ct);
                 return $"stopped after the purchase: the account does not show what was expected. Screen dump: {dump}";
             }
             var (s5, _, _) = await Read(ct);
@@ -310,7 +310,7 @@ public sealed partial class LivePlayGame : IChoresGame
             if (!now.Contains(id)) { log($"autoplay: mastery {id} is not in the account after Learn: stopping"); break; }
             learned++;
         }
-        await _nav.GoHome(Action("from the masteries"), ct);
+        await HomeAsync(Action("from the masteries"), ct);
         return $"{Who(request.ChampionId)}: {learned} of {request.Ids.Count} mastery(ies) learned";
     }
 
@@ -498,7 +498,7 @@ public sealed partial class LivePlayGame : IChoresGame
         NavigatingDriver.UpgradeResult r;
         try { r = await _upgrader.UpgradePiece(pick.Id, pick.Slot, pick.Target, real: !dryRun, PriceOf, 1, 1, ct); }
         catch (NavigatingDriver.StopException e) { throw new PlayStopException(e.Message); }
-        await _nav.GoHome(Action("from the upgrade"), ct);
+        await HomeAsync(Action("from the upgrade"), ct);
         return new ArtifactOutcome($"#{pick.Id} {piece.Slot} +{r.From} to +{r.To} (target +{pick.Target}): {r.Outcome}, {r.Attempts} attempt(s), {r.SilverSpent:N0} silver", r.Attempts, r.To);
     }
 }

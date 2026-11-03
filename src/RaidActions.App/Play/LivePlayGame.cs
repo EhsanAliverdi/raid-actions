@@ -68,7 +68,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             var outcome = await FinishLiveMatchAsync(AutoplaySettings.Load(ExtractorOutput).LiveArena, DateTime.UtcNow, ct);
             log($"autoplay: the Live Arena match under way ended: {outcome.Result}");
         }
-        await _nav.GoHome(Action("go home"), ct);
+        await HomeAsync(Action("go home"), ct);
     }
 
     public async Task<ArenaBoard> OpenClassicArenaAsync(CancellationToken ct)
@@ -96,7 +96,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 await Click("mode-arena", null, (s2, _) => Has(s2, PlayTargets.ArenaMapView), "the arena map opens", ct);
                 continue;
             }
-            if (!NavigatingDriver.AtVillage(s)) { await _nav.GoHome(Action("to the village"), ct); continue; }
+            if (!NavigatingDriver.AtVillage(s)) { await HomeAsync(Action("to the village"), ct); continue; }
             await Click("village-battle", null, (s2, _) => Has(s2, PlayTargets.BattleMenuView) || Has(s2, PlayTargets.ArenaMapView), "the battle menu opens", ct);
         }
         throw new PlayStopException("Could not reach the Classic Arena in 8 steps.");
@@ -722,6 +722,18 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
 
     private string? Shot(string caption, ClientRect r, bool always = false) =>
         always ? Screen.Overlay(folder, $"{++_shot:000}-autoplay.png", caption, r, WindowPolicy.CaptureProblem) : null;
+
+    /// <summary>
+    /// The way home for every area: the account's level-up screen and a battle's result screen closed first (2026-11-03: the gear driver waits for a result
+    /// screen to go by itself, and a Campaign result stays).
+    /// </summary>
+    private async Task<List<string>> HomeAsync(UiAction a, CancellationToken ct)
+    {
+        await DismissLevelUp(ct);
+        var s = await ReadState(ct);
+        if (Top(s) is { } top && top.StartsWith("BattleFinish", StringComparison.Ordinal) && !InLiveMatch(s)) await LeaveResult(ct, top);
+        return await _nav.GoHome(a, ct);
+    }
 
     private static UiAction Action(string text) => new(ActionKind.OpenChampion, 0, "autoplay: " + text);
 }

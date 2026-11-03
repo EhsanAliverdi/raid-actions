@@ -56,3 +56,9 @@ public sealed record BattleOutcome(BattleResult Result, string Text);
 
 /// <summary>The game is not where it should be, or a check failed: nothing more is clicked in this turn.</summary>
 public sealed class PlayStopException(string message) : Exception(message);
+
+/// <summary>
+/// The area is not open on this account yet (a new account, plan/starter-account.md): not an error; the engine holds the area for
+/// <see cref="AutoplayEngine.LockedHold"/> and tries it again then (Ehsan 2026-11-04: "as they open we try them").
+/// </summary>
+public sealed class AreaLockedException(string message) : Exception(message);

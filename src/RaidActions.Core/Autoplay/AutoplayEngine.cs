@@ -58,6 +58,16 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
 
     /// <param name="once">Stop when no activity wants to act now (instead of waiting): a dry run, a test, a single session.</param>
     /// <returns>Why the engine stopped.</returns>
+    /// <summary>A locked area is tried again after this.</summary>
+    public static readonly TimeSpan LockedHold = TimeSpan.FromHours(6);
+
+    /// <summary>An area that failed this many turns in a row waits <see cref="AreaErrorHold"/>; the others go on.</summary>
+    public const int AreaErrorsToHold = 2;
+
+    public static readonly TimeSpan AreaErrorHold = TimeSpan.FromHours(1);
+
+    private readonly Dictionary<string, int> _areaErrors = [];
+
     public async Task<string> RunAsync(bool once, CancellationToken ct)
     {
         var settings = host.LoadSettings();
@@ -157,12 +167,30 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                     var done = await act.RunTurnAsync(ctx, ct);
                     Turns++;
                     errors = 0;
+                    _areaErrors.Remove(act.Id);
                     if (done.Length > 0) Remember(new AutoplayEvent(host.UtcNow, act.Id, "turn", done));
+                }
+                catch (AreaLockedException e)
+                {
+                    // Not open on this account yet: tried again later, never counted as an error.
+                    ctx.Hold(act.Id, host.UtcNow + LockedHold, "not open yet: " + e.Message);
+                    try { await game.GoHomeAsync(ct); }
+                    catch (Exception home) when (home is not OperationCanceledException || !ct.IsCancellationRequested)
+                    {
+                        Remember(new AutoplayEvent(host.UtcNow, "engine", "error", "going home failed: " + home.Message));
+                    }
                 }
                 catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
                 {
                     errors++;
                     Remember(new AutoplayEvent(host.UtcNow, act.Id, "error", e.Message));
+                    // The same area failing again: it alone waits an hour, so one area that cannot be played never stops the others (2026-11-04).
+                    _areaErrors[act.Id] = _areaErrors.GetValueOrDefault(act.Id) + 1;
+                    if (_areaErrors[act.Id] >= AreaErrorsToHold && enabled.Count > 1)
+                    {
+                        ctx.Hold(act.Id, host.UtcNow + AreaErrorHold, $"paused after {_areaErrors[act.Id]} errors in a row: {e.Message}");
+                        _areaErrors.Remove(act.Id);
+                    }
                     if (errors >= Math.Max(1, p.MaxErrorsInARow)) return Stop($"{errors} errors in a row; last: {e.Message}", error: true);
                     try { await game.GoHomeAsync(ct); }
                     catch (Exception home) when (home is not OperationCanceledException || !ct.IsCancellationRequested)

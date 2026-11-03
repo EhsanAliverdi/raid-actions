@@ -180,4 +180,40 @@ public class AutoplayEngineTests
         Assert.Empty(game.Calls);
         Assert.Equal("stopped", host.Last!.Engine);
     }
+
+    /// <summary>An area whose turns throw what it is told; it wants to play every turn.</summary>
+    private sealed class Throwing(string id, Func<Exception?> next) : IActivity
+    {
+        public int Turns { get; private set; }
+        public string Id => id;
+        public string Name => id;
+        public bool IsEnabled(AutoplaySettings settings) => true;
+        public Decision Decide(PlayContext ctx) => Decision.Now("due");
+        public Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
+        {
+            Turns++;
+            return next() is { } e ? Task.FromException<string>(e) : Task.FromResult("done");
+        }
+        public AreaStatus Status(PlayContext ctx, Decision decision) => new(id, id, true, AreaState.Playing, decision.Why, null, [], []);
+    }
+
+    [Fact]
+    public async Task A_locked_area_waits_quietly_and_one_failing_area_never_stops_the_others()
+    {
+        var host = new FakeHost(Start) { Settings = ArenaOn() };
+        var game = new FakeArenaGame(() => host.UtcNow) { Delay = host.DelayAsync };
+        host.OnDelay = h => { if (h.UtcNow - Start >= TimeSpan.FromMinutes(50)) h.Stop = true; };
+        var locked = new Throwing("doom-tower", () => new AreaLockedException("Doom Tower is locked"));
+        var broken = new Throwing("hydra", () => new PlayStopException("the screen did not change"));
+        var fine = new Throwing("chores", () => null);
+        var why = await new AutoplayEngine([locked, broken, fine], game, host, false).RunAsync(once: false, Limit());
+
+        Assert.Equal(1, locked.Turns); // held 6 hours after its first try, no error
+        Assert.DoesNotContain(host.Events, e => e.Kind == "error" && e.Area == "doom-tower");
+        Assert.Contains(host.Events, e => e.Kind == "hold" && e.Text.StartsWith("doom-tower|", StringComparison.Ordinal) && e.Text.Contains("not open yet"));
+        Assert.Equal(2, broken.Turns); // two errors, then an hour's hold
+        Assert.Contains(host.Events, e => e.Kind == "hold" && e.Text.StartsWith("hydra|", StringComparison.Ordinal));
+        Assert.True(fine.Turns > 5);
+        Assert.DoesNotContain("errors in a row", why);
+    }
 }

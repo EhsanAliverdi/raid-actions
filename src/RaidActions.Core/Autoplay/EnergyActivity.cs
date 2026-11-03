@@ -186,7 +186,8 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         {
             Targets = ctx.Settings.Rules.AllEnergyToFood
                 ? [.. s.Targets.Where(t => !_dryShown.Contains(t.Id) && (t.Region.StartsWith("Region", StringComparison.Ordinal) || t.Region.Contains("IronTwins", StringComparison.Ordinal)))]
-                : [.. QuestRows(ctx).Where(t => !_dryShown.Contains(t.Id)).Select(t => Smart(ctx, t, w)), .. s.Targets.Where(t => !_dryShown.Contains(t.Id)).Select(t => Smart(ctx, t, w))],
+                : [.. QuestRows(ctx).Where(t => !_dryShown.Contains(t.Id)).Select(t => Smart(ctx, t, w)),
+                    .. s.Targets.Where(t => !_dryShown.Contains(t.Id) && ctx.Held(PushKey(t)) is null).Select(t => Smart(ctx, t, w))],
             Food = s.Food with
             {
                 RankUp = s.Food.RankUp && ctx.Utc >= _rankUpBlockedUntil,
@@ -194,6 +195,9 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             },
         };
     }
+
+    /// <summary>A climbing row's rest after a defeat (2026-11-03: 12-1 lost with a 35 Kael; the energy goes to the farm row meanwhile).</summary>
+    private static string PushKey(EnergyTarget t) => $"{AreaId}:push:{t.Id}";
 
     /// <summary>What each quest row counts, for Super Raid (drops or clears); a row not here is the list's own.</summary>
     private readonly Dictionary<string, SuperRaidRules.Need> _rowNeed = [];
@@ -344,6 +348,8 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 _runsToday[run.Target.Id] = _runsToday.GetValueOrDefault(run.Target.Id) + 1;
                 if (outcome.Result == BattleResult.Victory) _wins++; else _losses++;
                 ctx.Event(AreaId, "battle", $"{outcome.Result} {where} [row {run.Target.Id}]. {outcome.Text}");
+                if (outcome.Result == BattleResult.Defeat && run.Target.Progress)
+                    ctx.Hold(PushKey(run.Target), ctx.Utc + TimeSpan.FromMinutes(45), $"{where} was lost: the rows below play, tried again in 45 minutes");
                 if (outcome.Result != BattleResult.Victory && run.Target.Id.StartsWith("quest-", StringComparison.Ordinal))
                     _questRowLosses[run.Target.Id] = _questRowLosses.GetValueOrDefault(run.Target.Id) + 1;
                 // A win of a mission's row: its missions' progress as read now, against the last win's; the same twice and the row stops.

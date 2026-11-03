@@ -512,7 +512,8 @@ public sealed partial class LivePlayGame : IChoresGame
     private async Task<int> ClaimOn(string view, string tab, bool dryRun, CancellationToken ct)
     {
         var claimed = 0;
-        var tabs = (await Read(ct)).Targets.Where(t => t.Kind == tab).Select(t => t.Path).ToList();
+        // A pass's challenges first (Daily, Weekly, Apprentice: their points), its Rewards (LevelReward) last, which those points unlock (Ehsan 2026-11-04).
+        var tabs = (await Read(ct)).Targets.Where(t => t.Kind == tab).OrderBy(t => t.Name.Contains("LevelReward", StringComparison.Ordinal)).Select(t => t.Path).ToList();
         foreach (var path in tabs.DefaultIfEmpty(""))
         {
             if (path.Length > 0)
@@ -520,7 +521,7 @@ public sealed partial class LivePlayGame : IChoresGame
                 await Click(tab, t => t.Path == path, (_, _) => true, "the tab", ct);
                 await Task.Delay(1000, ct);
             }
-            for (var i = 0; i < 6; i++)
+            for (var i = 0; i < 12; i++)
             {
                 var (_, now, _) = await Read(ct);
                 var claim = now.FirstOrDefault(t => t.Kind == "pass-claim" && t.NotClickable is null);

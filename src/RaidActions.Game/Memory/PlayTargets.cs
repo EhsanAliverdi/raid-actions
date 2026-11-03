@@ -1157,8 +1157,8 @@ public static partial class PlayTargets
         if (t.View is "BattlePassDialog" or "ChallengesDialog")
             foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null))
             {
-                if (x.IsOn is not null && x.Name is "LevelReward" or "DailyQuests" or "WeeklyQuests_h") targets.Add(Make("pass-tab", $"forge pass: {x.Name}", x, x, null));
-                else if (x.IsOn is not null && x.Name is "0_Heroes" or "1_Artifacts" or "2_Dungeons" or "3_Arena") targets.Add(Make("challenge-tab", $"challenges: {x.Name}", x, x, null));
+                if (x.IsOn is not null && x.Name is "LevelReward" or "DailyQuests" or "WeeklyQuests_h" or "PermanentQuests_h") targets.Add(Make("pass-tab", $"forge pass: {x.Name}", x, x, null));
+                else if (x.IsOn is not null && x.Name is "0_Heroes" or "1_Artifacts" or "2_Dungeons" or "3_Arena" or "4_Badges") targets.Add(Make("challenge-tab", $"challenges: {x.Name}", x, x, null));
                 else if (x.Name.Contains("Claim", StringComparison.OrdinalIgnoreCase) || x.Name == "CollectAllRewardsButton") targets.Add(Make("pass-claim", $"claim: {x.Name}", x, x, x.Path));
             }
 

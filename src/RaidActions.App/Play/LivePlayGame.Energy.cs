@@ -72,8 +72,22 @@ public sealed partial class LivePlayGame : IEnergyGame
         var teamView = Top(after) ?? "";
         if (!PlayTargets.IsTeamView(teamView)) await Refuse(after, where, ct);
 
-        if (run.Team is { Count: > 0 } team && !await SetRunTeam(team, teamView, ct))
-            return new BattleOutcome(BattleResult.Retry, $"food not pickable here, left out from now on: {string.Join(", ", _notPickable.Select(Who))}");
+        if (run.Team is { Count: > 0 } planned)
+        {
+            // A row's own team without the champions it cannot have (Ehsan 2026-11-04: helpers moved to the reserve vault, and the bot searched the list
+            // for them a minute at a time): in a vault, gone from the account, or refused by a team screen this run.
+            var champs = (await Account(ct)).Data.Champions.ToDictionary(c => c.Id);
+            var gone = planned.Where(id => !champs.TryGetValue(id, out var c) || c.InVault || c.InBathhouse || _notPickable.Contains(id)).ToList();
+            if (gone.Count > 0) log($"autoplay: left out of the team (in a vault, gone, or refused here): {string.Join(", ", gone.Select(Who))}");
+            var team = planned.Except(gone).ToList();
+            if (team.Count == 0)
+            {
+                await Back(teamView, ct);
+                return new BattleOutcome(BattleResult.NotStarted, "none of the row's team can be picked (in a vault, gone, or refused)");
+            }
+            if (!await SetRunTeam(team, teamView, ct))
+                return new BattleOutcome(BattleResult.Retry, $"not pickable here, left out from now on: {string.Join(", ", _notPickable.Select(Who))}");
+        }
         // A run with its own team (the food farm) keeps it; any other uses the Teams card.
         if (run.Team is not { Count: > 0 } && !await ApplyDefaultTeam("energy", teamView, ct))
             return new BattleOutcome(BattleResult.NotStarted, "the Teams card's team was refused here");

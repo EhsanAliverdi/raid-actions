@@ -59,6 +59,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 LiveAutoplayHost.Relaunch(ExtractorOutput);
             }
         }
+        await DismissLevelUp(ct);
         // The arena result has no back button (a tap closes it), so the gear driver's way home cannot leave it.
         if (Has(await ReadState(ct), PlayTargets.ArenaResultView)) await LeaveResult(ct);
         // A Live Arena match under way (a restart mid-draft, 2026-11-03): played to its end; the draft's X would leave it.
@@ -483,8 +484,26 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     private static bool AtX2(string? note) => note is { } n && System.Text.RegularExpressions.Regex.IsMatch(n, @"^speed \S*2");
 
     /// <summary>A result screen left by its way back (the arena's tap bar; else its back/return element, never Replay or Next).</summary>
+    /// <summary>
+    /// The account's level-up screen (a new account levels every few battles, 2026-11-03) over whatever was open: it has no button and closes on a tap, here in
+    /// its middle, on the level badge, where no button of the screen under it is.
+    /// </summary>
+    private async Task DismissLevelUp(CancellationToken ct)
+    {
+        for (var i = 0; i < 3 && Top(await ReadState(ct)) == "LevelUpOverlay"; i++)
+        {
+            var (w, why) = GameWindow.Find();
+            if (w is null) throw new PlayStopException(why!);
+            if (MouseInput.EnsureForeground(w) is { } behind) throw new PlayStopException(behind);
+            if (MouseInput.Click(w, w.Client.Width / 2f, w.Client.Height * 0.3f, new Random()) is { } notSent) throw new PlayStopException(notSent);
+            log("autoplay: closed the account's level-up screen");
+            await Task.Delay(1500, ct);
+        }
+    }
+
     private async Task LeaveResult(CancellationToken ct, string view = PlayTargets.ArenaResultView)
     {
+        await DismissLevelUp(ct);
         if (!Has(await ReadState(ct), view)) return; // already left (WaitBattle leaves a result screen it did not expect)
         var (_, now, _) = await Read(ct);
         var kind = now.Any(x => x.Kind == "result-close" && x.View == view) ? "result-close" : "back";

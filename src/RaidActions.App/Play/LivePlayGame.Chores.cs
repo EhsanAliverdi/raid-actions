@@ -440,8 +440,10 @@ public sealed partial class LivePlayGame : IChoresGame
         {
             var (s, _, _) = await Read(ct);
             if (Top(s) != PlayTargets.VillageHudView) await ToVillage(ct);
-            await Click("menu-open", null, (_, scan) => scan().Targets.Any(t => t.Kind == "menu-item" && t.Note == item), "the side menu opens", ct, within: TimeSpan.FromSeconds(5));
-            await Task.Delay(700, ct);
+            // The menu slides in: its buttons are tapped once they are on the screen (2026-11-03: a tap at x -214 was refused).
+            await Click("menu-open", null, (_, scan) => scan().Targets.Any(t => t.Kind == "menu-item" && t.Note == item && t.Rect is { X: >= 0 }), "the side menu opens", ct,
+                within: TimeSpan.FromSeconds(6));
+            await Task.Delay(500, ct);
             await Click("menu-item", t => t.Note == item, (s2, _) => Top(s2) != PlayTargets.VillageHudView, $"{item} opens", ct, within: TimeSpan.FromSeconds(8));
             await Task.Delay(1500, ct);
             var view = Top(await ReadState(ct))!;
@@ -515,6 +517,10 @@ public sealed partial class LivePlayGame : IChoresGame
                 if (claim is null) break;
                 if (dryRun) { log($"autoplay: WOULD CLAIM {claim.Name} (dry run)"); break; }
                 await Click("pass-claim", t => t.Path == claim.Path, (_, _) => true, $"{claim.Name}", ct);
+                await Task.Delay(1500, ct);
+                // A challenge's card opens its window: its own Claim takes the reward (closing it, as before, took nothing).
+                if (Top(await ReadState(ct)) == "ChallengeQuestOverlay" && (await Read(ct)).Targets.Any(t => t.Kind == "challenge-confirm" && t.NotClickable is null))
+                    await Click("challenge-confirm", null, (_, _) => true, "the challenge's Claim", ct);
                 log($"autoplay: claimed {claim.Name} on {view}");
                 claimed++;
                 await Task.Delay(2000, ct);

@@ -153,6 +153,18 @@ public static class AutoplayCommand
             var engine = new AutoplayEngine(activities, game, host, dry) { StartNeeds = testNeeds };
             var why = await engine.RunAsync(once, abort.Token);
             Print($"Stopped after {engine.Turns} turn(s): {why}");
+            // The account's turn is over: the game on the next one, and a new bot for it (this one is tied to the old game process).
+            if (why.StartsWith("rotation", StringComparison.Ordinal) && RaidExtractor.OutputLayout.ActiveId(dir) is { } current
+                && RaidExtractor.AccountPool.Load(dir).Next(current) is { } next)
+            {
+                live.Dispose();
+                Print($"rotation: from account {current} to {next}");
+                var switched = await SwitchAccountCommand.RunAsync(["switch-account", next.ToString(System.Globalization.CultureInfo.InvariantCulture)], outDir, output);
+                // A failed switch may have left the game closed: the new bot starts it (and goes on with whichever account it shows: it refuses another one).
+                if (switched != Cli.Ok) { Print($"rotation: the switch to {next} failed; this account plays on"); next = current; }
+                RaidExtractor.OutputLayout.SetActive(dir, next);
+                LiveAutoplayHost.Relaunch(dir, "autoplay" + (switched != Cli.Ok ? " --restart-first" : "") + (args.Contains("--no-yield") ? " --no-yield" : ""));
+            }
             return why.Contains("errors in a row", StringComparison.Ordinal) ? Cli.Failed : Cli.Ok;
         }
     }

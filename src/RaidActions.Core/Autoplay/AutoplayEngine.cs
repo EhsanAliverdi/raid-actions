@@ -23,6 +23,9 @@ public interface IAutoplayHost
 
     /// <summary>Yesterday's and today's events, for what earlier runs learned (holds).</summary>
     IReadOnlyList<AutoplayEvent> RecentEvents() => [];
+
+    /// <summary>Why this account's turn ends now, to play another one (raid-extractor's account pool); null: it goes on. Asked between turns only.</summary>
+    string? RotateDue(DateTime? nextUsefulUtc) => null;
 }
 
 /// <summary>
@@ -134,6 +137,9 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                     _playedAt[act.Id] = ++_turnNumber;
                     _lastArea = act.Id;
                 }
+                // Another account's turn (its slice used, or nothing due here for a while): this run ends, the next account's starts.
+                var nextUseful = act is null ? enabled.Select(a => _decisions[a.Id].UntilUtc).Where(t => t is not null).Min() : null;
+                if (!once && host.RotateDue(nextUseful) is { } rotate) return Stop("rotation: " + rotate);
                 if (act is null)
                 {
                     var wait = enabled.Select(a => _decisions[a.Id].UntilUtc).Where(t => t is not null).Min();

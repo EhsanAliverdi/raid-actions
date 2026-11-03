@@ -115,12 +115,12 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
     /// <summary>
     /// Restarts the game and plays on: the bot is tied to the game's process, so a new bot (autoplay --restart-first) does it and this one ends.
     /// </summary>
-    public static void Relaunch(string dir)
+    public static void Relaunch(string dir, string args = "autoplay --restart-first")
     {
         var exe = Environment.ProcessPath!;
         var log = Environment.GetEnvironmentVariable("AUTOPLAY_LOG") ?? Path.Combine(dir, AutoplaySettings.Folder, "bot.log");
         // Through "start", in its own process tree: a plain child died with this process (2026-11-02: the old bot left and no new one came).
-        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c start \"\" /b cmd /c \"ping -n 8 127.0.0.1 >nul & \"{exe}\" autoplay --restart-first >> \"{log}\" 2>&1\"")
+        System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo("cmd.exe", $"/c start \"\" /b cmd /c \"ping -n 8 127.0.0.1 >nul & \"{exe}\" {args} >> \"{log}\" 2>&1\"")
             { UseShellExecute = true, WindowStyle = System.Diagnostics.ProcessWindowStyle.Hidden });
         Environment.Exit(0);
     }
@@ -161,6 +161,11 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
 
     /// <summary>Today's events (to carry today's counters over a restart).</summary>
     public IReadOnlyList<AutoplayEvent> RecentEvents() => Recent(dir);
+
+    private readonly DateTime _startedUtc = DateTime.UtcNow;
+
+    public string? RotateDue(DateTime? nextUsefulUtc) =>
+        RaidExtractor.OutputLayout.ActiveId(dir) is { } current ? RaidExtractor.AccountPool.Load(dir).RotateDue(current, _startedUtc, DateTime.UtcNow, nextUsefulUtc) : null;
 
     public static List<AutoplayEvent> Today(string dir) => Day(dir, DateTime.Now);
 

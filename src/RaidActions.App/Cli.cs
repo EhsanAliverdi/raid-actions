@@ -126,6 +126,13 @@ public static class Cli
     /// <param name="abortHook">Receives the session's abort, for Ctrl+C and the kill switch.</param>
     public static async Task<int> RunAsync(string[] args, TextWriter output, TextReader input, bool interactive, Action<Action>? abortHook = null)
     {
+        // A bot that found the game black (or not running) restarts it, then plays (LiveAutoplayHost). First of all: autoplay is dispatched just below
+        // (2026-11-04: it was checked after it, so "autoplay --restart-first" never restarted the game).
+        if (args.Contains("--restart-first"))
+        {
+            await RestartGameCommand.RunAsync(["restart-game"], AppPaths.Resolve(null, null).Output, output);
+            args = [.. args.Where(a => a != "--restart-first")];
+        }
         if (args.Length > 0 && (args[0].Equals("autoplay", StringComparison.OrdinalIgnoreCase) || args[0].Equals("autoplay-explore", StringComparison.OrdinalIgnoreCase)))
         {
             var outIndex = Array.IndexOf(args, "--output");
@@ -168,12 +175,6 @@ public static class Cli
             return await UnequipCommand.RunAsync(args, outDir, output, abortHook);
         }
         if (args.Length > 1 && args[0].Equals("poke", StringComparison.OrdinalIgnoreCase)) return PokeCommand.Run(args, AppPaths.Resolve(null, null).Output, output);
-        // A bot that found the game black restarts it, then plays (LiveAutoplayHost).
-        if (args.Contains("--restart-first"))
-        {
-            await RestartGameCommand.RunAsync(["restart-game"], AppPaths.Resolve(null, null).Output, output);
-            args = [.. args.Where(a => a != "--restart-first")];
-        }
         if (args.Length > 0 && args[0].Equals("switch-account", StringComparison.OrdinalIgnoreCase))
             return await SwitchAccountCommand.RunAsync(args, AppPaths.Resolve(null, null).Output, output);
         if (args.Length > 0 && args[0].Equals("restart-game", StringComparison.OrdinalIgnoreCase))

@@ -490,7 +490,7 @@ public sealed partial class LivePlayGame : IChoresGame
             else { await Click("event-claimall", null, (_, _) => true, "the event's Claim All", ct); tapped++; await Task.Delay(2000, ct); }
             var s3 = await Settled(ct);
             if (Top(s3) is { } over && over != "SoloEventInfoWebView") { await Back(over, ct); await Task.Delay(800, ct); }
-            await Click("event-close", null, (s4, _) => Top(s4) == "SoloEventsDialog", "the event closes", ct, within: TimeSpan.FromSeconds(6));
+            await CloseWebPages(ct);
             await Task.Delay(1000, ct);
         }
         await Back("SoloEventsDialog", ct);

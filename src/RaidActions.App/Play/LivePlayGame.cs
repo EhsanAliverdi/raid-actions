@@ -754,9 +754,20 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     /// The way home for every area: the account's level-up screen and a battle's result screen closed first (2026-11-03: the gear driver waits for a result
     /// screen to go by itself, and a Campaign result stays).
     /// </summary>
+    /// <summary>A web page on top (an event's, the tournaments'): its X, a few taps (the page takes a moment to answer).</summary>
+    private async Task CloseWebPages(CancellationToken ct)
+    {
+        for (var i = 0; i < 6 && Top(await ReadState(ct)) is { } top && top.EndsWith("WebView", StringComparison.Ordinal); i++)
+        {
+            await Click("event-close", null, (_, _) => true, $"{top}'s X", ct);
+            await Task.Delay(1500, ct);
+        }
+    }
+
     private async Task<List<string>> HomeAsync(UiAction a, CancellationToken ct)
     {
         await DismissLevelUp(ct);
+        await CloseWebPages(ct);
         var s = await ReadState(ct);
         // A window over the result (a champion's info, 2026-11-03) is closed by its own button, then the result.
         if (s.Active.Select(v => v.Name).FirstOrDefault(n => n.StartsWith("BattleFinish", StringComparison.Ordinal)) is { } result && !InLiveMatch(s))

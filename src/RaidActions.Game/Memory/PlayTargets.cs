@@ -1219,13 +1219,15 @@ public static partial class PlayTargets
             var cards = nodes.Where(x => x.Name == "Background_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).OrderBy(x => x.Screen!.Value.Y).ToList();
             for (var k = 0; k < cards.Count; k++) targets.Add(Make("event-card", $"events: card {k + 1}", cards[k], cards[k], null, id: k));
         }
+        // Any web page's X (events, tournaments): Ehsan's taps closed it at about 95.7% across, 3% down (recorded 2026-11-03).
+        if (t.View.EndsWith("WebView", StringComparison.Ordinal))
+            targets.Add(new UiTarget("event-close", "web page: X (its spot)", null, t.View,
+                new ClientRect(t.ClientWidth * 0.948f, t.ClientHeight * 0.015f, t.ClientWidth * 0.018f, t.ClientHeight * 0.03f), true, true, true, false, t.View, null,
+                ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
         if (t.View == "SoloEventInfoWebView")
         {
             targets.Add(new UiTarget("event-claimall", "event: Claim All (its spot)", null, t.View,
                 new ClientRect(t.ClientWidth * 0.775f, t.ClientHeight * 0.45f, t.ClientWidth * 0.07f, t.ClientHeight * 0.05f), true, true, true, false, t.View, null,
-                ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
-            targets.Add(new UiTarget("event-close", "event: X (its spot)", null, t.View,
-                new ClientRect(t.ClientWidth * 0.955f, t.ClientHeight * 0.01f, t.ClientWidth * 0.03f, t.ClientHeight * 0.04f), true, true, true, false, t.View, null,
                 ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
         }
 

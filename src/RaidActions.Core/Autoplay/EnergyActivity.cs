@@ -67,6 +67,12 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     private int _refillsToday, _wins, _losses;
     private const int MaxQuestRowLosses = 2;
     private readonly Dictionary<string, int> _questRowLosses = [];
+
+    /// <summary>
+    /// A mission row's wins that did not move its mission (2026-11-03: "Clear Stage 1 or higher of the Arcane Keep" stayed 0/1 after nine wins): what the
+    /// mission's text said when each win began, and how many wins left it the same. Two such wins and the row leaves the list for the day.
+    /// </summary>
+    private readonly Dictionary<string, (string Progress, int Stale)> _missionWins = [];
     private DateOnly? _day;
     private DateTime _inboxAt = DateTime.MinValue;
     private EnergyAccount? _account;
@@ -169,7 +175,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             if (rows.All(r => r.Id != id)) rows.Add(new EnergyTarget { Id = id, Area = "Story", Region = n.Region!, Difficulty = QuestPlanner.DifficultyNamed(n.Text), Stage = n.MinStage });
         }
         // A quest row that keeps losing stops taking the energy: the list goes on.
-        return [.. rows.Where(r => _questRowLosses.GetValueOrDefault(r.Id) < MaxQuestRowLosses)];
+        return [.. rows.Where(r => _questRowLosses.GetValueOrDefault(r.Id) < MaxQuestRowLosses && _missionWins.GetValueOrDefault(r.Id).Stale < MaxQuestRowLosses)];
     }
 
     /// <summary>The settings the planner sees: quest rows first, rows shown in a dry run left out, a food step that did nothing switched off for a while.</summary>
@@ -340,6 +346,18 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 ctx.Event(AreaId, "battle", $"{outcome.Result} {where} [row {run.Target.Id}]. {outcome.Text}");
                 if (outcome.Result != BattleResult.Victory && run.Target.Id.StartsWith("quest-", StringComparison.Ordinal))
                     _questRowLosses[run.Target.Id] = _questRowLosses.GetValueOrDefault(run.Target.Id) + 1;
+                // A win of a mission's row: its missions' progress as read now, against the last win's; the same twice and the row stops.
+                if (outcome.Result == BattleResult.Victory && run.Target.Id.StartsWith("quest-", StringComparison.Ordinal))
+                {
+                    var progress = string.Join("|", ctx.QuestNeeds.Where(n => n.Tab == "Mission" && run.Target.Id == $"quest-dungeon-{n.Region ?? "any"}").Select(n => $"{n.Text}:{n.Remaining}"));
+                    if (progress.Length > 0)
+                    {
+                        var last = _missionWins.GetValueOrDefault(run.Target.Id);
+                        _missionWins[run.Target.Id] = (progress, last.Progress == progress ? last.Stale + 1 : 0);
+                        if (_missionWins[run.Target.Id].Stale >= MaxQuestRowLosses)
+                            ctx.Event(AreaId, "skip", $"{where}: the mission did not move after {MaxQuestRowLosses + 1} wins; left for today");
+                    }
+                }
                 // A quest row's win counts against its quest at once (the next quest pass reads the real progress). A mission is not: a win may not be what
                 // it asks ("Win a 5* Amulet"), so only the game says it is done, and it is asked again now.
                 if (outcome.Result == BattleResult.Victory && run.Target.Id.StartsWith("quest-", StringComparison.Ordinal))

@@ -490,13 +490,15 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     /// </summary>
     private async Task DismissLevelUp(CancellationToken ct)
     {
-        for (var i = 0; i < 3 && Top(await ReadState(ct)) == "LevelUpOverlay"; i++)
+        // A new feature's intro (BattlePassIntroOverlay, 2026-11-03: a background that closes it, pages) goes the same way, page after page.
+        static bool Tap(string? top) => top is "LevelUpOverlay" || top?.EndsWith("IntroOverlay", StringComparison.Ordinal) == true;
+        for (var i = 0; i < 8 && Top(await ReadState(ct)) is var top && Tap(top); i++)
         {
             var (w, why) = GameWindow.Find();
             if (w is null) throw new PlayStopException(why!);
             if (MouseInput.EnsureForeground(w) is { } behind) throw new PlayStopException(behind);
             if (MouseInput.Click(w, w.Client.Width / 2f, w.Client.Height * 0.07f, new Random()) is { } notSent) throw new PlayStopException(notSent);
-            log("autoplay: closed the account's level-up screen");
+            log($"autoplay: tapped {top} away");
             await Task.Delay(1500, ct);
         }
     }

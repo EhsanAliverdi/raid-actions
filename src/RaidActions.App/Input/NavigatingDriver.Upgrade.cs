@@ -16,7 +16,7 @@ namespace RaidActions.App.Input;
 public sealed partial class NavigatingDriver
 {
     /// <summary>The clicks only the upgrade command adds: the selected piece's popup Upgrade, the upgrade screen's "upgrade to level" and its Cancel.</summary>
-    public static readonly IReadOnlySet<string> UpgradeOnlyClicks = new HashSet<string> { "popup-upgrade", "powerup-level", "powerup-cancel" };
+    public static readonly IReadOnlySet<string> UpgradeOnlyClicks = new HashSet<string> { "popup-upgrade", "popup-upgrade-worn", "powerup-level", "powerup-cancel" };
 
     /// <summary>The piece being upgraded so far (level, attempts, silver), for the run's summary when it stops partway; null between pieces.</summary>
     public UpgradeResult? Current { get; private set; }
@@ -48,14 +48,29 @@ public sealed partial class NavigatingDriver
 
         await NoBattle(ct);
         FitWindow();
-        // The piece's list (any champion: the picker shows every piece of the slot, worn ones too), the piece found and selected.
-        await OpenPicker(a, PickerSlot(slot), ct);
-        UiTarget item;
-        try { item = await Scrolled(a, "inventory-item", id, "scroll-picker", ct); }
-        catch (StopException e) { return new UpgradeResult(id, from, from, target, 0, 0, "not found in the game's list: " + e.Message); }
-        await Click(a, "inventory-item", id, null, (s, _) => s.ChampionScreen?.InventoryArtifactId == id, $"#{id} is selected", ct);
-        await Click(a, "popup-upgrade", null, null, (s, _) => s.Top?.Name == UiState.PowerUpView, "the upgrade screen opens", ct,
-            before: s => s.ChampionScreen?.InventoryArtifactId == id ? null : $"the selection changed before Upgrade (#{s.ChampionScreen?.InventoryArtifactId})");
+        if (piece.OwnerHeroId is { } owner && account.Champions.FirstOrDefault(c => c.Id == owner) is { } wearer)
+        {
+            // A worn piece: its champion's screen, its slot (the worn piece's popup), that popup's Upgrade.
+            await ShowChampion(a, owner, wearer.Name ?? $"#{owner}", ct);
+            await ClosePiecePanels(a, ct, picker: true);
+            var (s0, _) = await Read(ct);
+            if (s0.ChampionScreen?.DetailsTab != 0)
+                await Click(a, "gear-tab", 1, null, (s1, _) => s1.ChampionScreen?.DetailsTab == 0, "the gear tab is on", ct);
+            await Click(a, "gear-slot", null, slot, (_, t) => t.Any(x => x.Kind == "popup-upgrade-worn" && x.NotClickable is null), $"the worn {UiTargets.DisplayName(slot)}'s popup opens", ct);
+            await Click(a, "popup-upgrade-worn", null, null, (s, _) => s.Top?.Name == UiState.PowerUpView, "the upgrade screen opens", ct,
+                before: s => s.ChampionScreen?.Champion == owner ? null : $"the screen changed to champion #{s.ChampionScreen?.Champion}");
+        }
+        else
+        {
+            // The piece's list (any champion: the picker shows every piece of the slot, worn ones too), the piece found and selected.
+            await OpenPicker(a, PickerSlot(slot), ct);
+            UiTarget item;
+            try { item = await Scrolled(a, "inventory-item", id, "scroll-picker", ct); }
+            catch (StopException e) { return new UpgradeResult(id, from, from, target, 0, 0, "not found in the game's list: " + e.Message); }
+            await Click(a, "inventory-item", id, null, (s, _) => s.ChampionScreen?.InventoryArtifactId == id, $"#{id} is selected", ct);
+            await Click(a, "popup-upgrade", null, null, (s, _) => s.Top?.Name == UiState.PowerUpView, "the upgrade screen opens", ct,
+                before: s => s.ChampionScreen?.InventoryArtifactId == id ? null : $"the selection changed before Upgrade (#{s.ChampionScreen?.InventoryArtifactId})");
+        }
         await Settled(ct);
 
         var attempts = 0;

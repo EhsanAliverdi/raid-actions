@@ -85,7 +85,7 @@ public static partial class UiTargets
         {
             var b = button ?? owner;
             return new(kind, name, id, t.View, b.Screen, owner.ActiveInHierarchy && b.ActiveInHierarchy, button?.Interactable,
-                b.FullyVisible, forbidden || NeverClick.Contains(b.Name) && kind is not "popup-upgrade", b.Path, note, slot, t.ClientWidth, t.ClientHeight);
+                b.FullyVisible, forbidden || NeverClick.Contains(b.Name) && kind is not ("popup-upgrade" or "popup-upgrade-worn"), b.Path, note, slot, t.ClientWidth, t.ClientHeight);
         }
 
         for (var i = 0; i < nodes.Count; i++)
@@ -212,6 +212,8 @@ public static partial class UiTargets
                 // Upgrading (the upgrade command only): the selected piece's popup Upgrade (opens the upgrade screen) and that screen's one-level
                 // Upgrade. The upgrade screen's Sell and its "upgrade to level" button are never clicked.
                 "PowerUpButton" when n.Path.Contains("/SelectedItemWindow/", StringComparison.Ordinal) => ("popup-upgrade", "popup (selected piece): Upgrade"),
+                // The worn piece's popup (its slot clicked on its champion's screen, 2026-11-03: a new account's picker groups by set and lists no worn piece).
+                "PowerUpButton" when n.Path.Contains("/EquipedItemWindow/", StringComparison.Ordinal) => ("popup-upgrade-worn", "popup (worn piece): Upgrade"),
                 // The upgrade screen: "upgrade to level" (the game keeps trying until the level set in its dropdown, 1 by default, is
                 // reached) and its Cancel while it runs. The one-attempt Upgrade, Sell and the level dropdown are never clicked.
                 "UpgradeButton" when t.View == UiState.PowerUpView && n.Path.Contains("/LevelUpGradationDropdown_h/UpgradeButton", StringComparison.Ordinal) => ("powerup-level", "upgrade screen: Upgrade (to level)"),

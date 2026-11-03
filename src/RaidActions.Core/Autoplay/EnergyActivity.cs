@@ -175,7 +175,8 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             if (rows.All(r => r.Id != id)) rows.Add(new EnergyTarget { Id = id, Area = "Story", Region = n.Region!, Difficulty = QuestPlanner.DifficultyNamed(n.Text), Stage = n.MinStage });
         }
         // A quest row that keeps losing stops taking the energy: the list goes on.
-        return [.. rows.Where(r => _questRowLosses.GetValueOrDefault(r.Id) < MaxQuestRowLosses && _missionWins.GetValueOrDefault(r.Id).Stale < MaxQuestRowLosses)];
+        return [.. rows.Where(r => _questRowLosses.GetValueOrDefault(r.Id) < MaxQuestRowLosses && _missionWins.GetValueOrDefault(r.Id).Stale < MaxQuestRowLosses
+            && ctx.Held($"{AreaId}:mission:{r.Id}") is null)];
     }
 
     /// <summary>The settings the planner sees: quest rows first, rows shown in a dry run left out, a food step that did nothing switched off for a while.</summary>
@@ -361,7 +362,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                         var last = _missionWins.GetValueOrDefault(run.Target.Id);
                         _missionWins[run.Target.Id] = (progress, last.Progress == progress ? last.Stale + 1 : 0);
                         if (_missionWins[run.Target.Id].Stale >= MaxQuestRowLosses)
-                            ctx.Event(AreaId, "skip", $"{where}: the mission did not move after {MaxQuestRowLosses + 1} wins; left for today");
+                            ctx.Hold($"{AreaId}:mission:{run.Target.Id}", ClanBossRules.NextReset(ctx.Utc), $"{where}: the mission did not move after {MaxQuestRowLosses + 1} wins; left for today");
                     }
                 }
                 // A quest row's win counts against its quest at once (the next quest pass reads the real progress). A mission is not: a win may not be what

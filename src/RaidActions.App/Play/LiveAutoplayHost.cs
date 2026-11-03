@@ -162,10 +162,23 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
     /// <summary>Today's events (to carry today's counters over a restart).</summary>
     public IReadOnlyList<AutoplayEvent> RecentEvents() => Recent(dir);
 
-    private readonly DateTime _startedUtc = DateTime.UtcNow;
+    private RaidExtractor.AccountTurn? _turn;
 
-    public string? RotateDue(DateTime? nextUsefulUtc) =>
-        RaidExtractor.OutputLayout.ActiveId(dir) is { } current ? RaidExtractor.AccountPool.Load(dir).RotateDue(current, _startedUtc, DateTime.UtcNow, nextUsefulUtc) : null;
+    /// <summary>
+    /// The turn on the account in the game ends now? It starts once per account (turn.json, which the app shows); the app's "+20 min" is read back each
+    /// time.
+    /// </summary>
+    public string? RotateDue(DateTime? nextUsefulUtc)
+    {
+        if (RaidExtractor.OutputLayout.GameId(dir) is not { } current) return null;
+        var pool = RaidExtractor.AccountPool.Load(dir);
+        if (!pool.Rotate) return null;
+        var now = DateTime.UtcNow;
+        _turn = _turn?.Id == current
+            ? (RaidExtractor.AccountTurn.Load(dir) is { } saved && saved.Id == current ? saved : _turn)
+            : RaidExtractor.AccountTurn.Begin(dir, current, pool.SliceOf(current), now);
+        return pool.RotateDue(current, _turn, now, nextUsefulUtc);
+    }
 
     public static List<AutoplayEvent> Today(string dir) => Day(dir, DateTime.Now);
 

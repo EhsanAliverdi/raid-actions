@@ -134,7 +134,7 @@ public static class Cli
         }
         // One bot at a time: while Auto Play plays, the commands that click the game refuse (except when Auto Play itself runs them).
         if (args.Length > 0 && args[0].ToLowerInvariant() is "run" or "dry-run" or "go-home" or "sell" or "upgrade" or "vault-open" or "vault-withdraw"
-            or "remove-gear" or "unequip" or "restart-game" && !InsideAutoplay && Play.BotLock.AutoplayRunning())
+            or "remove-gear" or "unequip" or "restart-game" or "switch-account" && !InsideAutoplay && Play.BotLock.AutoplayRunning())
         {
             output.WriteLine("Auto Play is running: stop it first (the app's Auto Play page, or Ctrl+Alt+Esc). One bot at a time.");
             return Refused;
@@ -174,6 +174,8 @@ public static class Cli
             await RestartGameCommand.RunAsync(["restart-game"], AppPaths.Resolve(null, null).Output, output);
             args = [.. args.Where(a => a != "--restart-first")];
         }
+        if (args.Length > 0 && args[0].Equals("switch-account", StringComparison.OrdinalIgnoreCase))
+            return await SwitchAccountCommand.RunAsync(args, AppPaths.Resolve(null, null).Output, output);
         if (args.Length > 0 && args[0].Equals("restart-game", StringComparison.OrdinalIgnoreCase))
         {
             var outIndex = Array.IndexOf(args, "--output");

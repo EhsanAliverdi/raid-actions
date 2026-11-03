@@ -60,7 +60,7 @@ public static class RestartGameCommand
                 {
                     var (state, _) = g.ReadUi();
                     last = $"top view {state?.Top?.Name ?? "none"}";
-                    if (state is not null && (Input.NavigatingDriver.AtVillage(state) || state.Top?.Name is { } top && top.Contains("Offer", StringComparison.Ordinal)))
+                    if (state is not null && (Input.NavigatingDriver.AtVillage(state) || state.Top?.Name is { } top && (top.Contains("Offer", StringComparison.Ordinal) || top.StartsWith("News", StringComparison.Ordinal))))
                     {
                         output.WriteLine($"Raid is up ({last}).");
                         return true;

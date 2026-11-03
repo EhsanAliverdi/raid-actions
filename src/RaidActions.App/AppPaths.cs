@@ -28,7 +28,8 @@ public static class AppPaths
         var root = Root();
         var ext = extractorOutput ?? Environment.GetEnvironmentVariable("RAID_EXTRACTOR_OUTPUT")
             ?? Path.GetFullPath(Path.Combine(root, "..", "raid-extractor", "output"));
-        return new SessionPaths(Path.GetFullPath(ext), Path.GetFullPath(output ?? Path.Combine(root, "output")));
+        // The active account's folder (raid-extractor plan/multi-account.md).
+        return new SessionPaths(RaidExtractor.OutputLayout.ForAccount(Path.GetFullPath(ext)), Path.GetFullPath(output ?? Path.Combine(root, "output")));
     }
 
     /// <summary>

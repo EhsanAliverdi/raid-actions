@@ -15,7 +15,7 @@ namespace RaidActions.App.Play;
 /// </summary>
 public sealed partial class LivePlayGame : IFactionWarsGame
 {
-    private string ExtractorOutput => Path.Combine(extractorRoot, "output");
+    private string ExtractorOutput => RaidExtractor.OutputLayout.ForAccount(Path.Combine(extractorRoot, "output"));
 
     /// <summary>
     /// Why the game cannot be played now, read only: the account is open on another device (the game's "logged into from another

@@ -18,7 +18,7 @@ public static class AutoplayCommand
 {
     public static async Task<int> RunAsync(string[] args, string outDir, TextWriter output, Action<Action>? abortHook)
     {
-        var dir = Path.Combine(GameCommands.LivePaths(outDir).RaidExtractorRoot, "output");
+        var dir = RaidExtractor.OutputLayout.ForAccount(Path.Combine(GameCommands.LivePaths(outDir).RaidExtractorRoot, "output"));
         var at = Array.IndexOf(args, "--dir");
         if (at >= 0 && at + 1 < args.Length) dir = Path.GetFullPath(args[at + 1]);
         void Print(string line) { lock (output) output.WriteLine(line); }

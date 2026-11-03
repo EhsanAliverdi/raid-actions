@@ -490,6 +490,16 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     /// </summary>
     private async Task DismissLevelUp(CancellationToken ct)
     {
+        // The game's tutorial: Next, else where its arrow points, step after step (a new account, 2026-11-03).
+        for (var i = 0; i < 20 && Top(await ReadState(ct)) == "WizardView"; i++)
+        {
+            var (_, targets, _) = await Read(ct);
+            var step = targets.FirstOrDefault(t => t.Kind == "wizard-next") ?? targets.FirstOrDefault(t => t.Kind == "wizard-arrow");
+            if (step is null) { log($"autoplay: a tutorial step with no Next and no arrow. Screen dump: {DumpScreen("tutorial")}"); break; }
+            Shot($"autoplay: tutorial: {step.Name}", step.Rect!.Value, always: true);
+            await Click(step.Kind, null, (_, _) => true, step.Name, ct);
+            await Task.Delay(1500, ct);
+        }
         // A new feature's intro (BattlePassIntroOverlay, 2026-11-03: a background that closes it, pages) goes the same way, page after page.
         static bool Tap(string? top) => top is "LevelUpOverlay" || top?.EndsWith("IntroOverlay", StringComparison.Ordinal) == true;
         for (var i = 0; i < 8 && Top(await ReadState(ct)) is var top && Tap(top); i++)

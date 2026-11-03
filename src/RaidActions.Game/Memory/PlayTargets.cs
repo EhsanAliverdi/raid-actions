@@ -212,7 +212,7 @@ public static partial class PlayTargets
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-state", "live-phase", "live-slot", "live-confirm",
-        "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "village-pass", "village-challenges", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
+        "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "village-pass", "village-challenges", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
     };
@@ -1184,6 +1184,18 @@ public static partial class PlayTargets
         if (t.View == "MasteryInfoOverlay")
             foreach (var x in nodes.Where(x => x.Name == "GetMaxMasteryButton_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
                 targets.Add(Make("mastery-getmax", "mastery: get the scrolls", x, x, null));
+
+        // The game's tutorial (WizardView, a new account, 2026-11-03): its Next, or where its arrow points (ArrowHolder is the arrow's tip). Its elements read
+        // as clipped and not interactable, the game takes the tap itself: targets made by hand, like the result screens'.
+        if (t.View == "WizardView")
+        {
+            foreach (var x in nodes.Where(x => x.Name == "NextLabel_h" && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                targets.Add(new UiTarget("wizard-next", "tutorial: Next", null, t.View, x.Screen, true, true, true, false, x.Path, null,
+                    ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
+            foreach (var x in nodes.Where(x => x.Name == "ArrowHolder" && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                targets.Add(new UiTarget("wizard-arrow", "tutorial: where its arrow points", null, t.View,
+                    new ClientRect(x.Screen!.Value.X - 6, x.Screen.Value.Y - 6, 12, 12), true, true, true, false, x.Path, null, ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
+        }
 
         // Live Arena's badge above the village's Battle button: only while it is open (Ehsan 2026-11-03: "the bot should use that to see when it is live"). Read, never clicked.
         if (t.View == VillageHudView)

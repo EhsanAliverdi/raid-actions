@@ -424,7 +424,76 @@ public sealed partial class LivePlayGame : IChoresGame
             }
             await Task.Delay(1500, ct);
         }
+        // The rest of the free rewards (a new account, 2026-11-03): the side menu's, the events'. One failing leaves the others.
+        try { claimed += await ClaimMenuRewardsAsync(dryRun, ct); }
+        catch (PlayStopException e) { log($"autoplay: side menu rewards: {e.Message}"); await HomeAsync(Action("from the side menu"), ct); }
+        try { claimed += await ClaimEventsAsync(dryRun, ct); }
+        catch (PlayStopException e) { log($"autoplay: event rewards: {e.Message}"); await HomeAsync(Action("from the events"), ct); }
         return claimed;
+    }
+
+    /// <summary>The side menu's reward screens (Progression Rewards, Plarium Points and its Treasure Tickets): every Claim and Collect.</summary>
+    private async Task<int> ClaimMenuRewardsAsync(bool dryRun, CancellationToken ct)
+    {
+        var claimed = 0;
+        foreach (var item in new[] { "MilestoneReward", "PlariumProgram_h" })
+        {
+            var (s, _, _) = await Read(ct);
+            if (Top(s) != PlayTargets.VillageHudView) await ToVillage(ct);
+            await Click("menu-open", null, (_, scan) => scan().Targets.Any(t => t.Kind == "menu-item" && t.Note == item), "the side menu opens", ct, within: TimeSpan.FromSeconds(5));
+            await Task.Delay(700, ct);
+            await Click("menu-item", t => t.Note == item, (s2, _) => Top(s2) != PlayTargets.VillageHudView, $"{item} opens", ct, within: TimeSpan.FromSeconds(8));
+            await Task.Delay(1500, ct);
+            var view = Top(await ReadState(ct))!;
+            var tabs = (await Read(ct)).Targets.Where(t => t.Kind == "reward-tab").Select(t => t.Path).ToList();
+            foreach (var path in tabs.DefaultIfEmpty(""))
+            {
+                if (path.Length > 0) { await Click("reward-tab", t => t.Path == path, (_, _) => true, "the tab", ct); await Task.Delay(1200, ct); }
+                for (var i = 0; i < 12; i++)
+                {
+                    var (_, now, _) = await Read(ct);
+                    var claim = now.FirstOrDefault(t => t.Kind == "reward-claim" && t.NotClickable is null);
+                    if (claim is null) break;
+                    if (dryRun) { log($"autoplay: WOULD CLAIM {claim.Name} (dry run)"); break; }
+                    await Click("reward-claim", t => t.Path == claim.Path && t.Id == claim.Id && t.Rect == claim.Rect, (_, _) => true, claim.Name, ct);
+                    log($"autoplay: claimed {claim.Name}");
+                    claimed++;
+                    await Task.Delay(1800, ct);
+                    await DismissLevelUp(ct);
+                    var s3 = await Settled(ct);
+                    if (Top(s3) is { } top && top != view) { await Back(top, ct); await Task.Delay(800, ct); }
+                }
+            }
+            await Back(view, ct);
+            await Task.Delay(1200, ct);
+        }
+        return claimed;
+    }
+
+    /// <summary>Each event's milestones: its card, its page's Claim All (a web page: its fixed spot), its X.</summary>
+    private async Task<int> ClaimEventsAsync(bool dryRun, CancellationToken ct)
+    {
+        var (s, _, _) = await Read(ct);
+        if (Top(s) != PlayTargets.VillageHudView) await ToVillage(ct);
+        if (!(await Read(ct)).Targets.Any(t => t.Kind == "event-card" && t.Id == -1)) return 0;
+        await Click("event-card", t => t.Id == -1, (s2, _) => Top(s2) == "SoloEventsDialog", "the events open", ct, within: TimeSpan.FromSeconds(8));
+        await Task.Delay(1500, ct);
+        var cards = (await Read(ct)).Targets.Count(t => t.Kind == "event-card" && t.Id >= 0);
+        var tapped = 0;
+        for (var k = 0; k < cards; k++)
+        {
+            await Click("event-card", t => t.Id == k, (s2, _) => Top(s2) == "SoloEventInfoWebView", $"event {k + 1} opens", ct, within: TimeSpan.FromSeconds(8));
+            await Task.Delay(3500, ct); // the page loads
+            if (dryRun) log("autoplay: WOULD TAP the event's Claim All (dry run)");
+            else { await Click("event-claimall", null, (_, _) => true, "the event's Claim All", ct); tapped++; await Task.Delay(2000, ct); }
+            var s3 = await Settled(ct);
+            if (Top(s3) is { } over && over != "SoloEventInfoWebView") { await Back(over, ct); await Task.Delay(800, ct); }
+            await Click("event-close", null, (s4, _) => Top(s4) == "SoloEventsDialog", "the event closes", ct, within: TimeSpan.FromSeconds(6));
+            await Task.Delay(1000, ct);
+        }
+        await Back("SoloEventsDialog", ct);
+        log($"autoplay: events: Claim All tapped on {tapped} event(s)");
+        return 0;
     }
 
     /// <summary>Every claim of an open pass or challenges screen, tab by tab.</summary>

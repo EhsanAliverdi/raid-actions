@@ -212,7 +212,7 @@ public static partial class PlayTargets
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-state", "live-phase", "live-slot", "live-confirm",
-        "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "village-pass", "village-challenges", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
+        "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "menu-open", "menu-item", "reward-claim", "reward-tab", "event-card", "event-claimall", "event-close", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "village-pass", "village-challenges", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
     };
@@ -1184,6 +1184,46 @@ public static partial class PlayTargets
         if (t.View == "MasteryInfoOverlay")
             foreach (var x in nodes.Where(x => x.Name == "GetMaxMasteryButton_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
                 targets.Add(Make("mastery-getmax", "mastery: get the scrolls", x, x, null));
+
+        // Rewards (a new account, 2026-11-03: "they are everywhere"): the village's side menu (its tab and its reward buttons), Progression Rewards' Claims,
+        // the Plarium Points milestones ready to collect, the events' cards and their web pages (no elements: Claim All and the X at their fixed spots).
+        if (t.View == VillageHudView)
+        {
+            foreach (var x in nodes.Where(x => x.Name == "Button" && x.Path.Contains("/HiddenMenu/", StringComparison.Ordinal) && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                targets.Add(Make("menu-open", "village: the side menu", x, x, null));
+            foreach (var x in nodes.Where(x => x.Name is "MilestoneReward" or "PlariumProgram_h" or "MonthlyGifts_h" or "AdventCalendar_h" or "Loyalty14DayProgram_h"
+                && x.Path.Contains("/HiddenMenu/", StringComparison.Ordinal) && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null))
+                targets.Add(Make("menu-item", $"side menu: {x.Name}", x, x, x.Name));
+            foreach (var x in nodes.Where(x => x.Name == "EventsButton" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                targets.Add(Make("event-card", "village: Events", x, x, "open", id: -1));
+        }
+        if (t.View == "MilestoneRewardOverlay")
+            foreach (var x in nodes.Where(x => x.Name == "BTN_3_M40_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null))
+                targets.Add(Make("reward-claim", "progression rewards: Claim", x, x, x.Path));
+        if (t.View == "PlariumProgramDialog")
+        {
+            // Ready: its own ReadyToCollect_h shows (paths repeat from milestone to milestone: the element's own children are looked at).
+            for (var k = 0; k < nodes.Count; k++)
+                if (nodes[k] is { Name: "MilestoneReward", ActiveInHierarchy: true, Screen: not null } x && x.Interactable is not null
+                    && SelfAndBelow(k).Any(r => r.Name == "ReadyToCollect_h" && r.ActiveInHierarchy))
+                    targets.Add(Make("reward-claim", "plarium points: Collect", x, x, x.Path, id: k));
+            foreach (var x in nodes.Where(x => x.Name is "PlariumPointsButton" or "PlariumPlatformTicketsButton_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null))
+                targets.Add(Make("reward-tab", $"plarium points: {x.Name}", x, x, x.Path));
+        }
+        if (t.View == "SoloEventsDialog")
+        {
+            var cards = nodes.Where(x => x.Name == "Background_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).OrderBy(x => x.Screen!.Value.Y).ToList();
+            for (var k = 0; k < cards.Count; k++) targets.Add(Make("event-card", $"events: card {k + 1}", cards[k], cards[k], null, id: k));
+        }
+        if (t.View == "SoloEventInfoWebView")
+        {
+            targets.Add(new UiTarget("event-claimall", "event: Claim All (its spot)", null, t.View,
+                new ClientRect(t.ClientWidth * 0.775f, t.ClientHeight * 0.45f, t.ClientWidth * 0.07f, t.ClientHeight * 0.05f), true, true, true, false, t.View, null,
+                ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
+            targets.Add(new UiTarget("event-close", "event: X (its spot)", null, t.View,
+                new ClientRect(t.ClientWidth * 0.955f, t.ClientHeight * 0.01f, t.ClientWidth * 0.03f, t.ClientHeight * 0.04f), true, true, true, false, t.View, null,
+                ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
+        }
 
         // The pass hub (a new account, 2026-11-03: Apprentice, Pioneer and a locked one): each pass's card opens its own pass screen.
         if (t.View == "BattlePassAggregatorDialog")

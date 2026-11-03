@@ -404,6 +404,8 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         {
             await Task.Delay(1500, ct);
             var s = await ReadState(ct);
+            // A tutorial step or a level-up in the middle of a battle (a new account's 1-7, 2026-11-03) holds it until it is answered.
+            if (Top(s) == "WizardView" || TapAway(Top(s))) { await DismissLevelUp(ct); continue; }
             if (Has(s, resultView))
             {
                 await Task.Delay(1200, ct); // the result's numbers fill in
@@ -488,27 +490,34 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     /// The account's level-up screen (a new account levels every few battles, 2026-11-03) over whatever was open: it has no button and closes on a tap, here in
     /// its top middle, where the result screen under it has no button (2026-11-03: a tap lower opened a champion of the result).
     /// </summary>
+    private static bool TapAway(string? top) => top is "LevelUpOverlay" || top?.EndsWith("IntroOverlay", StringComparison.Ordinal) == true;
+
+    /// <summary>
+    /// What a new account puts on top, in any order (2026-11-03): the game's tutorial (Next, else where its arrow points), the account's level-up and a new
+    /// feature's intro (no button: tapped at the top middle, where the screen under them has no button; a tap lower opened a champion of a result).
+    /// </summary>
     private async Task DismissLevelUp(CancellationToken ct)
     {
-        // The game's tutorial: Next, else where its arrow points, step after step (a new account, 2026-11-03).
-        for (var i = 0; i < 20 && Top(await ReadState(ct)) == "WizardView"; i++)
+        for (var i = 0; i < 30; i++)
         {
-            var (_, targets, _) = await Read(ct);
-            var step = targets.FirstOrDefault(t => t.Kind == "wizard-next") ?? targets.FirstOrDefault(t => t.Kind == "wizard-arrow");
-            if (step is null) { log($"autoplay: a tutorial step with no Next and no arrow. Screen dump: {DumpScreen("tutorial")}"); break; }
-            Shot($"autoplay: tutorial: {step.Name}", step.Rect!.Value, always: true);
-            await Click(step.Kind, null, (_, _) => true, step.Name, ct);
-            await Task.Delay(1500, ct);
-        }
-        // A new feature's intro (BattlePassIntroOverlay, 2026-11-03: a background that closes it, pages) goes the same way, page after page.
-        static bool Tap(string? top) => top is "LevelUpOverlay" || top?.EndsWith("IntroOverlay", StringComparison.Ordinal) == true;
-        for (var i = 0; i < 8 && Top(await ReadState(ct)) is var top && Tap(top); i++)
-        {
-            var (w, why) = GameWindow.Find();
-            if (w is null) throw new PlayStopException(why!);
-            if (MouseInput.EnsureForeground(w) is { } behind) throw new PlayStopException(behind);
-            if (MouseInput.Click(w, w.Client.Width / 2f, w.Client.Height * 0.07f, new Random()) is { } notSent) throw new PlayStopException(notSent);
-            log($"autoplay: tapped {top} away");
+            var top = Top(await ReadState(ct));
+            if (top == "WizardView")
+            {
+                var (_, targets, _) = await Read(ct);
+                var step = targets.FirstOrDefault(t => t.Kind == "wizard-next") ?? targets.FirstOrDefault(t => t.Kind == "wizard-arrow");
+                if (step is null) { log($"autoplay: a tutorial step with no Next and no arrow. Screen dump: {DumpScreen("tutorial")}"); return; }
+                Shot($"autoplay: tutorial: {step.Name}", step.Rect!.Value, always: true);
+                await Click(step.Kind, null, (_, _) => true, step.Name, ct);
+            }
+            else if (TapAway(top))
+            {
+                var (w, why) = GameWindow.Find();
+                if (w is null) throw new PlayStopException(why!);
+                if (MouseInput.EnsureForeground(w) is { } behind) throw new PlayStopException(behind);
+                if (MouseInput.Click(w, w.Client.Width / 2f, w.Client.Height * 0.07f, new Random()) is { } notSent) throw new PlayStopException(notSent);
+                log($"autoplay: tapped {top} away");
+            }
+            else return;
             await Task.Delay(1500, ct);
         }
     }

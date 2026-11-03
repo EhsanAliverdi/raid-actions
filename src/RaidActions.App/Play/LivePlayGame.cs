@@ -486,7 +486,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     /// <summary>A result screen left by its way back (the arena's tap bar; else its back/return element, never Replay or Next).</summary>
     /// <summary>
     /// The account's level-up screen (a new account levels every few battles, 2026-11-03) over whatever was open: it has no button and closes on a tap, here in
-    /// its middle, on the level badge, where no button of the screen under it is.
+    /// its top middle, where the result screen under it has no button (2026-11-03: a tap lower opened a champion of the result).
     /// </summary>
     private async Task DismissLevelUp(CancellationToken ct)
     {
@@ -495,7 +495,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             var (w, why) = GameWindow.Find();
             if (w is null) throw new PlayStopException(why!);
             if (MouseInput.EnsureForeground(w) is { } behind) throw new PlayStopException(behind);
-            if (MouseInput.Click(w, w.Client.Width / 2f, w.Client.Height * 0.3f, new Random()) is { } notSent) throw new PlayStopException(notSent);
+            if (MouseInput.Click(w, w.Client.Width / 2f, w.Client.Height * 0.07f, new Random()) is { } notSent) throw new PlayStopException(notSent);
             log("autoplay: closed the account's level-up screen");
             await Task.Delay(1500, ct);
         }
@@ -731,7 +731,17 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     {
         await DismissLevelUp(ct);
         var s = await ReadState(ct);
-        if (Top(s) is { } top && top.StartsWith("BattleFinish", StringComparison.Ordinal) && !InLiveMatch(s)) await LeaveResult(ct, top);
+        // A window over the result (a champion's info, 2026-11-03) is closed by its own button, then the result.
+        if (s.Active.Select(v => v.Name).FirstOrDefault(n => n.StartsWith("BattleFinish", StringComparison.Ordinal)) is { } result && !InLiveMatch(s))
+        {
+            for (var i = 0; i < 3 && Top(s) is { } over && over != result; i++)
+            {
+                await Back(over, ct);
+                await Task.Delay(800, ct);
+                s = await ReadState(ct);
+            }
+            if (Top(s) == result) await LeaveResult(ct, result);
+        }
         return await _nav.GoHome(a, ct);
     }
 

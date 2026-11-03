@@ -478,8 +478,18 @@ public sealed partial class LivePlayGame : IChoresGame
         var (s, _, _) = await Read(ct);
         if (Top(s) != PlayTargets.VillageHudView) await ToVillage(ct);
         if (!(await Read(ct)).Targets.Any(t => t.Kind == "event-card" && t.Id == -1)) return 0;
-        await Click("event-card", t => t.Id == -1, (s2, _) => Top(s2) == "SoloEventsDialog", "the events open", ct, within: TimeSpan.FromSeconds(8));
+        await Click("event-card", t => t.Id == -1, (s2, _) => Top(s2) is "SoloEventsDialog" or "SoloEventInfoWebView", "the events open", ct, within: TimeSpan.FromSeconds(8));
         await Task.Delay(1500, ct);
+        // One event left (2026-11-03): the button opens its page straight away.
+        if (Top(await ReadState(ct)) == "SoloEventInfoWebView")
+        {
+            await Task.Delay(2500, ct);
+            if (!dryRun) await Click("event-claimall", null, (_, _) => true, "the event's Claim All", ct);
+            await Task.Delay(2000, ct);
+            await CloseWebPages(ct);
+            log("autoplay: events: Claim All tapped on the one event");
+            return 0;
+        }
         var cards = (await Read(ct)).Targets.Count(t => t.Kind == "event-card" && t.Id >= 0);
         var tapped = 0;
         for (var k = 0; k < cards; k++)

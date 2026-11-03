@@ -9,9 +9,10 @@ public class EnergyActivityTests
 {
     private static readonly DateTime Start = new(2026, 10, 30, 1, 0, 0, DateTimeKind.Utc);
 
-    private static (FakeHost Host, FakeEnergyGame Game, AutoplayEngine Engine) Make(EnergyPlaySettings energy, bool dryRun = false, TimeSpan? stopAfter = null)
+    private static (FakeHost Host, FakeEnergyGame Game, AutoplayEngine Engine) Make(EnergyPlaySettings energy, bool dryRun = false, TimeSpan? stopAfter = null, bool smart = false)
     {
-        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 }, Energy = energy } };
+        // The rows' own Super Raid box unless a test is about the rule.
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 }, Energy = energy, Rules = new BotRules { SmartSuperRaid = smart } } };
         var game = new FakeEnergyGame(() => host.UtcNow);
         if (stopAfter is { } after) host.OnDelay = h => { if (h.UtcNow - Start >= after) h.Stop = true; };
         return (host, game, new AutoplayEngine([new EnergyActivity(game)], new FakeArenaGame(() => host.UtcNow), host, dryRun));
@@ -47,6 +48,17 @@ public class EnergyActivityTests
         var runs = game.Calls.Count(c => c == "run Normal 25");
         Assert.InRange(runs, 2, 3);                                                     // 10 + 40 regenerated in 2 hours: 16 a run
         Assert.Contains(host.Events, e => e.Kind == "battle");
+    }
+
+    [Fact]
+    public async Task Smart_super_raid_farms_gear_double_while_energy_is_plentiful_then_runs_normal()
+    {
+        var (_, game, engine) = Make(On(Row("farm")), stopAfter: TimeSpan.FromMinutes(10), smart: true);
+        game.Energy = 100;
+        await engine.RunAsync(once: false, Limit());
+        var runs = game.Calls.Where(c => c.StartsWith("run", StringComparison.Ordinal)).ToList();
+        Assert.Equal("run Normal 25 super", runs[0]);                                  // 100 of 124: plenty
+        Assert.Contains("run Normal 25", runs);                                        // below half the cap: normal runs
     }
 
     [Fact]

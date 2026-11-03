@@ -158,6 +158,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             var best = ctx.Settings.Quests.HighestStage;
             var stage = n.MinStage is { } min ? best ? hard ?? Math.Max(min, highest ?? min) : min : anyBoss ? 1 : (int?)null;
             rows.Add(new EnergyTarget { Id = id, Area = "Dungeon", Region = n.Region ?? "DragonsLair", Difficulty = best && hard is not null ? "Hard" : "Normal", Stage = stage });
+            _rowNeed[id] = SuperRaidRules.OfQuest(n.Text);
             if (n.Tab == "Mission") missions.Add(id);
         }
         if (ctx.QuestLeft(QuestNeedKind.CampaignBoss) > 0)
@@ -172,20 +173,40 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     }
 
     /// <summary>The settings the planner sees: quest rows first, rows shown in a dry run left out, a food step that did nothing switched off for a while.</summary>
-    private EnergyPlaySettings Effective(PlayContext ctx)
+    private EnergyPlaySettings Effective(PlayContext ctx, EnergyWorld w)
     {
         var s = ctx.Settings.Energy;
         return s with
         {
             Targets = ctx.Settings.Rules.AllEnergyToFood
                 ? [.. s.Targets.Where(t => !_dryShown.Contains(t.Id) && (t.Region.StartsWith("Region", StringComparison.Ordinal) || t.Region.Contains("IronTwins", StringComparison.Ordinal)))]
-                : [.. QuestRows(ctx).Where(t => !_dryShown.Contains(t.Id)), .. s.Targets.Where(t => !_dryShown.Contains(t.Id))],
+                : [.. QuestRows(ctx).Where(t => !_dryShown.Contains(t.Id)).Select(t => Smart(ctx, t, w)), .. s.Targets.Where(t => !_dryShown.Contains(t.Id)).Select(t => Smart(ctx, t, w))],
             Food = s.Food with
             {
                 RankUp = s.Food.RankUp && ctx.Utc >= _rankUpBlockedUntil,
                 SummonMystery = s.Food.SummonMystery && ctx.Utc >= _summonBlockedUntil,
             },
         };
+    }
+
+    /// <summary>What each quest row counts, for Super Raid (drops or clears); a row not here is the list's own.</summary>
+    private readonly Dictionary<string, SuperRaidRules.Need> _rowNeed = [];
+
+    /// <summary>
+    /// A dungeon row's Super Raid by <see cref="SuperRaidRules"/> (Ehsan 2026-11-03): quest rows by what they count, the list's dungeon rows as gear farming. Food rows,
+    /// the Campaign, keys and the rule switched off keep the row's own box.
+    /// </summary>
+    private EnergyTarget Smart(PlayContext ctx, EnergyTarget t, EnergyWorld w)
+    {
+        var r = ctx.Settings.Rules;
+        if (!r.SmartSuperRaid || t.Area != "Dungeon" || t.Food || t.Progress) return t;
+        var need = _rowNeed.TryGetValue(t.Id, out var n) ? n : SuperRaidRules.Need.Farm;
+        if ((t.Stage ?? EnergyPlanner.HighestBeaten(t, w.Progress)) is not { } number) return t;
+        var (resource, cost, known, _) = EnergyPlanner.Cost(t with { SuperRaid = false }, number, w);
+        if (resource != "Energy" || !known) return t;
+        var energy = w.Resources.GetValueOrDefault("Energy");
+        var cap = ctx.LastResources?.EnergyCap ?? 124;
+        return t with { SuperRaid = SuperRaidRules.Use(need, energy, cap, cost, w.SuperRaidMultiplier, r.SuperRaidEnergyShare) };
     }
 
     // Before the cap, not at it: a turn elsewhere can last minutes, and energy above the cap stops regenerating (Ehsan 2026-11-01).
@@ -198,7 +219,8 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         if (!s.Targets.Any(t => t.Enabled)) return Decision.Off("no place in the list is switched on");
         if (_account is null) return Decision.Now("reading the account");
         if (QuestSummon(ctx) > 0) return Decision.Now("a quest asks for a summon: Mystery shards");
-        var plan = EnergyPlanner.Plan(Effective(ctx), World(ctx, _account, expected: true));
+        var expectedWorld = World(ctx, _account, expected: true);
+        var plan = EnergyPlanner.Plan(Effective(ctx, expectedWorld), expectedWorld);
         _plan = plan;
         switch (plan.Step)
         {
@@ -241,7 +263,8 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             _accountAt = ctx.Utc;
             return got > 0 ? $"quest summon: {got}" : "";
         }
-        var plan = EnergyPlanner.Plan(Effective(ctx), World(ctx, _account, expected: false));
+        var world = World(ctx, _account, expected: false);
+        var plan = EnergyPlanner.Plan(Effective(ctx, world), world);
         _plan = plan;
         switch (plan.Step)
         {

@@ -625,6 +625,12 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             var s2 = await ReadState(ct);
             PlayScan? cache = null;
             if (expect(s2, () => cache ??= ReadSync().Play)) return;
+            // A tutorial step, level-up or intro the click brought (a new account, 2026-11-03): answered, then the click's screen is waited for again.
+            if (target.Kind is not ("wizard-next" or "wizard-arrow") && (Top(s2) == "WizardView" || TapAway(Top(s2))))
+            {
+                await DismissLevelUp(ct);
+                until = DateTime.UtcNow + (within ?? TimeSpan.FromSeconds(8));
+            }
         }
         var end = await ReadState(ct);
         throw new PlayStopException($"After clicking {target.Name}, expected {expected}; the screen shows {Top(end)}.");

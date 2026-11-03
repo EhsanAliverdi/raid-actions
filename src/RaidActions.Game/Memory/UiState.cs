@@ -112,8 +112,11 @@ public sealed record UiState(IReadOnlyList<OpenView> Views, int BlockingEvents, 
     /// <summary>A battle is being fought: its views are open and no result screen is up (the battle's views stay under its result).</summary>
     public bool BattleRunning => Active.Any(v => BattleRunningViews.Contains(v.Name)) && !Active.Any(v => IsBattleResultView(v.Name));
 
-    /// <summary>The last visible active view (the one on top, as far as the view master's order tells).</summary>
-    public OpenView? Top => Active.LastOrDefault(v => v.Visible);
+    /// <summary>
+    /// The view on top: a visible message box (modal, always drawn above the rest; 2026-11-04 "Unfinished battle" came before an offer in the view
+    /// master's order, so the bot clicked the offer's X under it), else the last visible active view.
+    /// </summary>
+    public OpenView? Top => Active.LastOrDefault(v => v.Visible && v.Name == MessageBoxView) ?? Active.LastOrDefault(v => v.Visible);
 
     public bool ChampionScreenOpen => Active.Any(v => v.Name == ChampionScreenView);
 }

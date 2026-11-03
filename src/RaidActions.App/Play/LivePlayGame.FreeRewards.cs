@@ -65,7 +65,13 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
             if (tab is null || tab.NotClickable is not null) continue;
             if (tab.Note != "on")
             {
-                await Click("quest-tab", t => t.Id == k, (_, scan) => scan().Targets.Any(t => t.Kind == "quest-tab" && t.Id == k && t.Note == "on"), $"quest tab {k}", ct);
+                // A tab not unlocked yet (a new account's Advanced tab, 2026-11-03) does not open: left out.
+                try { await Click("quest-tab", t => t.Id == k, (_, scan) => scan().Targets.Any(t => t.Kind == "quest-tab" && t.Id == k && t.Note == "on"), $"quest tab {k}", ct); }
+                catch (PlayStopException e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal))
+                {
+                    log($"autoplay: quest tab {k} does not open (locked?): left out");
+                    continue;
+                }
                 await Task.Delay(800, ct);
             }
             var (s2, after, play) = await Read(ct);

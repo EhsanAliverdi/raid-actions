@@ -399,33 +399,60 @@ public sealed partial class LivePlayGame : IChoresGame
         {
             var (s, _, _) = await Read(ct);
             if (Top(s) != PlayTargets.VillageHudView) await ToVillage(ct);
-            await Click(open, null, (s2, _) => Top(s2) == view, $"{view} opens", ct, within: TimeSpan.FromSeconds(10));
+            const string Hub = "BattlePassAggregatorDialog";
+            await Click(open, null, (s2, _) => Top(s2) == view || Top(s2) == Hub, $"{view} opens", ct, within: TimeSpan.FromSeconds(10));
             await Task.Delay(1500, ct);
-            var tabs = (await Read(ct)).Targets.Where(t => t.Kind == tab).Select(t => t.Path).ToList();
-            foreach (var path in tabs.DefaultIfEmpty(""))
+            if (Top(await ReadState(ct)) == Hub)
             {
-                if (path.Length > 0)
+                // Several passes (a new account): each card's pass in turn; a locked card opens nothing and is left.
+                var cards = (await Read(ct)).Targets.Count(t => t.Kind == "pass-card");
+                for (var k = 0; k < cards; k++)
                 {
-                    await Click(tab, t => t.Path == path, (_, _) => true, "the tab", ct);
-                    await Task.Delay(1000, ct);
+                    try { await Click("pass-card", t => t.Id == k, (s2, _) => Top(s2) == view, $"pass {k + 1} opens", ct, within: TimeSpan.FromSeconds(6)); }
+                    catch (PlayStopException e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal)) { continue; }
+                    await Task.Delay(1500, ct);
+                    claimed += await ClaimOn(view, tab, dryRun, ct);
+                    await Back(view, ct);
+                    await Task.Delay(1200, ct);
                 }
-                for (var i = 0; i < 6; i++)
-                {
-                    var (_, now, _) = await Read(ct);
-                    var claim = now.FirstOrDefault(t => t.Kind == "pass-claim" && t.NotClickable is null);
-                    if (claim is null) break;
-                    if (dryRun) { log($"autoplay: WOULD CLAIM {claim.Name} (dry run)"); break; }
-                    await Click("pass-claim", t => t.Path == claim.Path, (_, _) => true, $"{claim.Name}", ct);
-                    log($"autoplay: claimed {claim.Name} on {view}");
-                    claimed++;
-                    await Task.Delay(2000, ct);
-                    var s3 = await Settled(ct);
-                    if (Top(s3) is { } top && top != view) await Back(top, ct);
-                    await Task.Delay(800, ct);
-                }
+                await Back(Hub, ct);
             }
-            await Back(view, ct);
+            else
+            {
+                claimed += await ClaimOn(view, tab, dryRun, ct);
+                await Back(view, ct);
+            }
             await Task.Delay(1500, ct);
+        }
+        return claimed;
+    }
+
+    /// <summary>Every claim of an open pass or challenges screen, tab by tab.</summary>
+    private async Task<int> ClaimOn(string view, string tab, bool dryRun, CancellationToken ct)
+    {
+        var claimed = 0;
+        var tabs = (await Read(ct)).Targets.Where(t => t.Kind == tab).Select(t => t.Path).ToList();
+        foreach (var path in tabs.DefaultIfEmpty(""))
+        {
+            if (path.Length > 0)
+            {
+                await Click(tab, t => t.Path == path, (_, _) => true, "the tab", ct);
+                await Task.Delay(1000, ct);
+            }
+            for (var i = 0; i < 6; i++)
+            {
+                var (_, now, _) = await Read(ct);
+                var claim = now.FirstOrDefault(t => t.Kind == "pass-claim" && t.NotClickable is null);
+                if (claim is null) break;
+                if (dryRun) { log($"autoplay: WOULD CLAIM {claim.Name} (dry run)"); break; }
+                await Click("pass-claim", t => t.Path == claim.Path, (_, _) => true, $"{claim.Name}", ct);
+                log($"autoplay: claimed {claim.Name} on {view}");
+                claimed++;
+                await Task.Delay(2000, ct);
+                var s3 = await Settled(ct);
+                if (Top(s3) is { } top && top != view) await Back(top, ct);
+                await Task.Delay(800, ct);
+            }
         }
         return claimed;
     }

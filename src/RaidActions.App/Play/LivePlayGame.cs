@@ -525,6 +525,20 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     private async Task LeaveResult(CancellationToken ct, string view = PlayTargets.ArenaResultView)
     {
         await DismissLevelUp(ct);
+        // A window over the result (a champion's drop, a feature unlocked, 2026-11-03): its own close, else a tap at the top middle.
+        for (var i = 0; i < 4 && await ReadState(ct) is var st && Has(st, view) && Top(st) is { } over && over != view; i++)
+        {
+            try { await Back(over, ct); }
+            catch (PlayStopException)
+            {
+                var (w, why) = GameWindow.Find();
+                if (w is null) throw new PlayStopException(why!);
+                if (MouseInput.Click(w, w.Client.Width / 2f, w.Client.Height * 0.07f, new Random()) is { } notSent) throw new PlayStopException(notSent);
+                log($"autoplay: tapped {over} away");
+            }
+            await Task.Delay(1200, ct);
+            await DismissLevelUp(ct);
+        }
         if (!Has(await ReadState(ct), view)) return; // already left (WaitBattle leaves a result screen it did not expect)
         var (_, now, _) = await Read(ct);
         var kind = now.Any(x => x.Kind == "result-close" && x.View == view) ? "result-close" : "back";

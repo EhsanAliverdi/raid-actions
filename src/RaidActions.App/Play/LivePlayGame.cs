@@ -647,8 +647,13 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             }
         }
         var end = await ReadState(ct);
+        // The game's "not unlocked yet" (2026-11-04, a new account's Tag Team Arena): the area waits quietly (AreaLockedException); going home closes it.
+        if (Top(end) == FeatureLockedView) throw new AreaLockedException($"{target.Name} is not unlocked on this account yet");
         throw new PlayStopException($"After clicking {target.Name}, expected {expected}; the screen shows {Top(end)}.");
     }
+
+    /// <summary>What the game shows for a feature the account has not unlocked (its BTN_Close closes it).</summary>
+    private const string FeatureLockedView = "FeatureLockedOverlay";
 
     /// <summary>
     /// The visible screens' elements (active ones: name, binding path, bound context, rectangle, clickable) to a text file in the run

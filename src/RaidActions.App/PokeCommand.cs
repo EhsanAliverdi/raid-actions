@@ -37,7 +37,9 @@ public static class PokeCommand
             "tap" => MouseInput.Click(w, F(3), F(4), new Random()),
             "drag" => MouseInput.Drag(w, F(3), F(4), F(5), F(6)),
             "wheel" => MouseInput.Wheel(w, F(3), F(4), int.Parse(args[5], System.Globalization.CultureInfo.InvariantCulture)),
-            _ => "usage: poke <TopView> tap x y | drag x1 y1 x2 y2 | wheel x y notches",
+            // Text into the focused field (a promo code): tap the field first.
+            "type" when args.Length > 3 => KeyboardInput.Type(w, string.Join(" ", args[3..])),
+            _ => "usage: poke <TopView> tap x y | drag x1 y1 x2 y2 | wheel x y notches | type <text>",
         };
         o.WriteLine(sent ?? "sent");
         return sent is null ? 0 : Cli.Failed;

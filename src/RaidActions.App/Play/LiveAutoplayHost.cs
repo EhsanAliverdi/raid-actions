@@ -82,6 +82,10 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
             if (game == LivePlayGame.ConnectionLostText) RetryConnection();
             return game;
         }
+        // After a Retry the game loads again and cannot be read for a while (2026-11-05 05:33: the box closed, the areas found nothing readable and the
+        // bot restarted the game as frozen, a minute into the load): up to 5 minutes for it to load.
+        if (_connectionTries > 0 && DateTime.UtcNow - _lastRetry < TimeSpan.FromMinutes(5) && GameReadable?.Invoke() == false)
+            return "the game is loading again after Retry";
         _connectionTries = 0;
         if (w.Minimized || MouseInput.OffScreen(w) is null) return null;
         var (after, problem) = Game.Window.WindowFit.Apply(w, Game.Window.WindowFit.Plan(w, w.Client.Width, w.Client.Height));
@@ -91,6 +95,9 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
 
     /// <summary>Presses the game's Retry on its connection error box (LivePlayGame.RetryConnection): null when pressed.</summary>
     public Func<string?>? RetryGame { get; set; }
+
+    /// <summary>The game's UI can be read (LivePlayGame.UiReadable).</summary>
+    public Func<bool>? GameReadable { get; set; }
 
     private DateTime _lastRetry = DateTime.MinValue;
     private int _connectionTries;

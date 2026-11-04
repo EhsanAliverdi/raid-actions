@@ -37,6 +37,13 @@ public sealed partial class LivePlayGame : IFactionWarsGame
     public static bool ConnectionLost(string boxText) =>
         Regex.IsMatch(boxText, @"connection error|server connection failed|connection (was |has been )?lost", RegexOptions.IgnoreCase);
 
+    /// <summary>The game's UI can be read now (a game still loading cannot).</summary>
+    public bool UiReadable()
+    {
+        try { return game.ReadUi().Item1 is not null; }
+        catch (Exception e) when (e is not OperationCanceledException) { return false; }
+    }
+
     /// <summary>Presses the connection error box's Retry; null when pressed.</summary>
     public string? RetryConnection()
     {

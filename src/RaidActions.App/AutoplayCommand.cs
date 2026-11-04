@@ -146,6 +146,7 @@ public static class AutoplayCommand
             IActivity[] activities = [giftsActivity, arena, tagActivity, cbActivity, hydraActivity, chimeraActivity, fwActivity, ccActivity, dtActivity, liveActivity, choresActivity, energyActivity];
             host.GameBlocked = game.SessionTaken;
             host.RetryGame = game.RetryConnection;
+            host.GameReadable = game.UiReadable;
             Print($"Auto Play{(dry ? " (DRY RUN: nothing that spends is pressed)" : "")}. Settings and status: {dir}\\autoplay. Overlays: {folder}. Stop: the app, or Ctrl+Alt+Esc.");
             // autoplay --test-quest ArenaAffinities:1 --test-quest CursedCity:2: quests as if read, to try an area's quest when none is open.
             var testNeeds = args.Select((a, i) => (a, i)).Where(x => x.a == "--test-quest" && x.i + 1 < args.Length).Select(x => args[x.i + 1].Split(':'))

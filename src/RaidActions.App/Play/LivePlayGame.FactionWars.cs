@@ -26,8 +26,22 @@ public sealed partial class LivePlayGame : IFactionWarsGame
         var (s, _) = game.ReadUi();
         if (s?.Top?.Name != UiState.MessageBoxView) return null;
         var text = $"{s.MessageBox?.Title} {s.MessageBox?.Message}";
+        if (ConnectionLost(text)) return ConnectionLostText;
         return text.Contains("another device", StringComparison.OrdinalIgnoreCase) || text.Contains("AnotherUserSession", StringComparison.OrdinalIgnoreCase)
             ? "the account is open on another device; waiting (Re-log in is never pressed: it would log you out there)" : null;
+    }
+
+    /// <summary>What <see cref="SessionTaken"/> says while the game cannot reach its server (the host then presses Retry now and then).</summary>
+    public const string ConnectionLostText = "the game cannot reach its server (Connection error); pressing Retry every 2 minutes";
+
+    public static bool ConnectionLost(string boxText) =>
+        Regex.IsMatch(boxText, @"connection error|server connection failed|connection (was |has been )?lost", RegexOptions.IgnoreCase);
+
+    /// <summary>Presses the connection error box's Retry; null when pressed.</summary>
+    public string? RetryConnection()
+    {
+        try { return _nav.RetryConnection(Action("retry the connection"), CancellationToken.None).GetAwaiter().GetResult(); }
+        catch (Exception e) when (e is not OperationCanceledException) { return e.Message; }
     }
 
     public async Task<FactionWarsDay> PlanDayAsync(CancellationToken ct)

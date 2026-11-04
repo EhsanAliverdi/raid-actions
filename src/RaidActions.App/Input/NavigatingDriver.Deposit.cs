@@ -226,6 +226,22 @@ public sealed partial class NavigatingDriver
         await Settled(ct);
     }
 
+    /// <summary>
+    /// The game's "Connection error / Server connection failed" box (2026-11-05: a 403 from Plarium while loading, the bot stopped after 3 errors): its
+    /// Retry button, the only one pressed (Continue skips a step of the login). Null when it was pressed; else why not.
+    /// </summary>
+    public async Task<string?> RetryConnection(UiAction a, CancellationToken ct)
+    {
+        var (s, t) = await Read(ct);
+        if (s.Top?.Name != UiState.MessageBoxView) return "no message box is open";
+        var retry = t.Where(x => x.View == UiState.MessageBoxView && x.Kind == "message-button" && x.NotClickable is null
+            && string.Equals(x.Note?.Trim(), "Retry", StringComparison.OrdinalIgnoreCase)).ToList();
+        if (retry.Count != 1) return $"the box has {retry.Count} Retry buttons";
+        _once = "message-button";
+        await Click(a, "message-button", retry[0].Id, null, (_, _) => true, "Retry is pressed", ct, view: UiState.MessageBoxView, read: (s, t));
+        return null;
+    }
+
     /// <summary>Unticks every one of <paramref name="ids"/> still ticked in the champion list (also ones a stopped run left ticked).</summary>
     private async Task Untick(UiAction a, IEnumerable<int> ids, CancellationToken ct)
     {

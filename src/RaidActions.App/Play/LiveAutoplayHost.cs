@@ -77,11 +77,41 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
         }
         var (w, why) = Game.Window.GameWindow.Find();
         if (w is null) return why;
-        if (GameBlocked?.Invoke() is { } game) return game;
+        if (GameBlocked?.Invoke() is { } game)
+        {
+            if (game == LivePlayGame.ConnectionLostText) RetryConnection();
+            return game;
+        }
+        _connectionTries = 0;
         if (w.Minimized || MouseInput.OffScreen(w) is null) return null;
         var (after, problem) = Game.Window.WindowFit.Apply(w, Game.Window.WindowFit.Plan(w, w.Client.Width, w.Client.Height));
         if (after is null) return "the game window is off the screen and could not be moved: " + problem;
         return MouseInput.OffScreen(after) is { } still ? still + " (moved it as far as it goes)" : null;
+    }
+
+    /// <summary>Presses the game's Retry on its connection error box (LivePlayGame.RetryConnection): null when pressed.</summary>
+    public Func<string?>? RetryGame { get; set; }
+
+    private DateTime _lastRetry = DateTime.MinValue;
+    private int _connectionTries;
+
+    /// <summary>
+    /// The game cannot reach its server: Retry every 2 minutes, and after 6 tries (12 minutes) a restart of the game (2026-11-05: the box came back after
+    /// every Retry; nothing was counted as an area's error, so no area is held for it).
+    /// </summary>
+    private void RetryConnection()
+    {
+        if (DateTime.UtcNow - _lastRetry < TimeSpan.FromMinutes(2)) return;
+        _lastRetry = DateTime.UtcNow;
+        if (++_connectionTries > 6)
+        {
+            Event(new AutoplayEvent(DateTime.UtcNow, "engine", "restart", "the game could not reach its server for 12 minutes: restarting it"));
+            Relaunch(dir, "autoplay --restart-first" + (watchPerson ? "" : " --no-yield"));
+        }
+        var why = RetryGame?.Invoke();
+        Event(new AutoplayEvent(DateTime.UtcNow, "engine", "connection", why is null
+            ? $"the game cannot reach its server: Retry pressed (try {_connectionTries} of 6 before a restart)"
+            : "the game cannot reach its server; Retry was not pressed: " + why));
     }
 
     private DateTime _lastHandoff = DateTime.MinValue;

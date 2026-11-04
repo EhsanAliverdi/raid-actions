@@ -49,7 +49,8 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
     /// </summary>
     public string? InputBlocked()
     {
-        if (!watchPerson) return null;
+        // The session first, with or without --no-yield (2026-11-04: with it this whole check was skipped, so a closed Remote Desktop was never handed to
+        // the console and every click failed): no click can reach a disconnected or locked session, whoever uses the PC.
         if (MouseInput.SessionProblem() is { } session)
         {
             // Ehsan (2026-10-29): "always hand the session to the console; a remote connection should not stop Auto Play". Only for a
@@ -67,6 +68,7 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
             }
             return session;
         }
+        // The game drawing and its window on the screen are checked too: --no-yield only stops the bot waiting for a person (PersonLastInputUtc).
         if (_drawCheckAt is { } check && DateTime.UtcNow >= check)
         {
             // Every 10 minutes: the game can stop drawing later too (2026-11-02: black an hour after the handoff, and the bot played on by memory).

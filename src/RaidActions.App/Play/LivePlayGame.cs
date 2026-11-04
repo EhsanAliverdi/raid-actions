@@ -649,6 +649,8 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         var end = await ReadState(ct);
         // The game's "not unlocked yet" (2026-11-04, a new account's Tag Team Arena): the area waits quietly (AreaLockedException); going home closes it.
         if (Top(end) == FeatureLockedView) throw new AreaLockedException($"{target.Name} is not unlocked on this account yet");
+        // Clan Boss, Hydra and Chimera without a clan (2026-11-04, a new account): the same quiet wait; joining a clan is Ehsan's.
+        if (Top(end)?.EndsWith("AllianceLessDialog", StringComparison.Ordinal) == true) throw new AreaLockedException($"{target.Name}: this account is not in a clan");
         throw new PlayStopException($"After clicking {target.Name}, expected {expected}; the screen shows {Top(end)}.");
     }
 

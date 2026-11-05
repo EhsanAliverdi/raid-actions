@@ -146,8 +146,11 @@ public sealed partial class LivePlayGame
         log($"autoplay: STEP food rank-ups: {string.Join(", ", rankUps.Select(r => $"{Who(r.HeroId)} {r.Rank}* with {string.Join("+", r.FoodIds.Select(Who))}"))}");
         await OpenFastRankUp(ct);
         var done = 0;
-        var levels = (await Account(ct)).Data.Champions.ToDictionary(c => c.Id, c => c.Level);
-        await FoodVaultOff(ct);
+        var champions = (await Account(ct)).Data.Champions;
+        var levels = champions.ToDictionary(c => c.Id, c => c.Level);
+        // The vaults' food only when the row's food may come from them ("Food from the vaults too": its pool holds vault champions; Ehsan 2026-11-06:
+        // "I keep my food in the Master Vault").
+        await FoodVault(champions.Any(c => c.InVault && pool.Contains(c.Id)), ct);
         foreach (var grade in rankUps.Select(r => r.Rank).Distinct().Order())
         {
             await SelectGrade(grade, ct);
@@ -209,10 +212,10 @@ public sealed partial class LivePlayGame
     }
 
     /// <summary>
-    /// Fast Rank Up without the vaults (2026-10-31: a maxed 2★ in the vault took the food a maxed food champion needed): the filter panel
-    /// opened, each ticked vault box unticked, the panel closed.
+    /// Fast Rank Up with the vaults or without (2026-10-31: a maxed 2★ in the vault took the food a maxed food champion needed, so without them unless the
+    /// food may come from them): the filter panel opened, each vault box set, the panel closed.
     /// </summary>
-    private async Task FoodVaultOff(CancellationToken ct)
+    private async Task FoodVault(bool include, CancellationToken ct)
     {
         var (_, targets, _) = await Read(ct);
         if (!targets.Any(t => t.Kind == "team-filter-vault"))
@@ -224,14 +227,15 @@ public sealed partial class LivePlayGame
         for (var i = 0; i < 4; i++)
         {
             var (_, now, _) = await Read(ct);
-            var on = now.FirstOrDefault(t => t.Kind == "team-filter-vault" && t.Note == "on" && t.NotClickable is null);
-            if (on is null) break;
-            await Click("team-filter-vault", t => t.Path == on.Path, (_, scan) => scan().Targets.Any(t => t.Kind == "team-filter-vault" && t.Path == on.Path && t.Note == "off"),
-                $"{on.Name} unticked", ct, within: TimeSpan.FromSeconds(5));
-            log($"autoplay: unticked {on.Name}");
+            var (from, to) = include ? ("off", "on") : ("on", "off");
+            var box = now.FirstOrDefault(t => t.Kind == "team-filter-vault" && t.Note == from && t.NotClickable is null);
+            if (box is null) break;
+            await Click("team-filter-vault", t => t.Path == box.Path, (_, scan) => scan().Targets.Any(t => t.Kind == "team-filter-vault" && t.Path == box.Path && t.Note == to),
+                $"{box.Name} {(include ? "ticked" : "unticked")}", ct, within: TimeSpan.FromSeconds(5));
+            log($"autoplay: {(include ? "ticked" : "unticked")} {box.Name}");
             changed = true;
         }
-        log($"autoplay: Fast Rank Up's food filter: vaults {(changed ? "now left out" : "already left out")}");
+        log($"autoplay: Fast Rank Up's food filter: vaults {(include ? changed ? "now included" : "already included" : changed ? "now left out" : "already left out")}");
         // The panel closed by its Apply (seen 2026-10-31) when it is open; it stays loaded when closed, so "open" is its Apply in view.
         static bool Open(UiTarget t) => t.Kind == "food-filter-apply" && t.NotClickable is null && t.FullyVisible
             && t.Rect is { } r && t.ClientWidth is { } w && r.X >= 0 && r.X + r.Width <= w;

@@ -289,8 +289,12 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         }
     }
 
-    /// <summary>Runs in one turn while each next one starts from the last one's result screen (Ehsan 2026-11-05: "only go to base after several").</summary>
-    public const int MaxChain = 5;
+    /// <summary>
+    /// Runs in one turn while each next one starts from the last one's result screen, until an urgent area wants to act or the account's turn is over
+    /// (<see cref="PlayContext.ChainBreak"/>; Ehsan 2026-11-06: "you had 87 Energy, each run costs 16, you can do several before going back to base").
+    /// Food rank-ups and summons wait for the end of the chain (they need the village). At most this many, as a safety.
+    /// </summary>
+    public const int MaxChain = 40;
 
     public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
     {
@@ -299,8 +303,14 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         while (runs < MaxChain && !ctx.DryRun && (done.StartsWith("Victory", StringComparison.Ordinal) || done.StartsWith("Defeat", StringComparison.Ordinal)) && _account is { } account)
         {
             var world = World(ctx, account, expected: false);
-            var next = EnergyPlanner.Plan(Effective(ctx, world), world);
+            var effective = Effective(ctx, world);
+            var next = EnergyPlanner.Plan(effective with { Food = effective.Food with { RankUp = false, SummonMystery = false } }, world);
             if (next.Step != EnergyStep.Run || !game.CanChain(next.Run!) || QuestSummon(ctx) > 0) break;
+            if (ctx.ChainBreak?.Invoke(Id) is { } why)
+            {
+                ctx.Event(AreaId, "chain", $"back after {runs} run(s): {why}");
+                break;
+            }
             var more = await OneStep(ctx, ct);
             if (more.Length == 0) break;
             done = more;

@@ -90,7 +90,8 @@ public sealed partial class LivePlayGame : IEnergyGame
             // A row's own team without the champions it cannot have (Ehsan 2026-11-04: helpers moved to the reserve vault, and the bot searched the list
             // for them a minute at a time): in a vault, gone from the account, or refused by a team screen this run.
             var champs = (await Account(ct)).Data.Champions.ToDictionary(c => c.Id);
-            var gone = planned.Where(id => !champs.TryGetValue(id, out var c) || c.InVault || c.InBathhouse || _notPickable.Contains(id)).ToList();
+            // Food the planner took from a vault ("Food from the vaults too") stays: the team list shows the vaults for it. The row's own team never comes from one.
+            var gone = planned.Where(id => !champs.TryGetValue(id, out var c) || c.InVault && run.Target.Team.Contains(id) || c.InBathhouse || _notPickable.Contains(id)).ToList();
             if (gone.Count > 0) log($"autoplay: left out of the team (in a vault, gone, or refused here): {string.Join(", ", gone.Select(Who))}");
             var team = planned.Except(gone).ToList();
             if (team.Count == 0)
@@ -98,6 +99,8 @@ public sealed partial class LivePlayGame : IEnergyGame
                 await Back(teamView, ct);
                 return new BattleOutcome(BattleResult.NotStarted, "none of the row's team can be picked (in a vault, gone, or refused)");
             }
+            var fromVault = team.Any(id => champs[id].InVault);
+            if (fromVault || _vaultFilter == true) await VaultFilter(fromVault, ct);
             if (!await SetRunTeam(team, teamView, ct))
                 return new BattleOutcome(BattleResult.Retry, $"not pickable here, left out from now on: {string.Join(", ", _notPickable.Select(Who))}");
         }
@@ -141,7 +144,8 @@ public sealed partial class LivePlayGame : IEnergyGame
     /// <summary>The run whose result screen is still open (the next run may start from it), with its team and Super Raid; null when it was left.</summary>
     private (string Region, string Difficulty, int Number, string Team, bool Super)? _parked;
 
-    private static string TeamKey(EnergyRun run) => string.Join(",", run.Team ?? []);
+    // The same champions in another order are the same team (2026-11-06: the food plan reorders them, and Replay was never used).
+    private static string TeamKey(EnergyRun run) => string.Join(",", (run.Team ?? []).Order());
 
     /// <summary>The result screen of the last run is still open, in the same place: the next run starts from it (no trip to the village).</summary>
     public bool CanChain(EnergyRun run) => _parked is { } p && p.Region == run.Region && p.Difficulty == run.Difficulty;

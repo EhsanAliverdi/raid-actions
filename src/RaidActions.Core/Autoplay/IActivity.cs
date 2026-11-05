@@ -103,6 +103,12 @@ public sealed class PlayContext(AutoplaySettings settings, IPlayGame game, IAuto
         }
     }
 
+    /// <summary>
+    /// Why the area with this id should hand its turn back now (an area that cannot wait wants to act, or the account's turn is over); null: it may go on
+    /// with another run in the same turn (Ehsan 2026-11-06: "the only time you go back to base is when something more critical is due"). Set by the engine.
+    /// </summary>
+    public Func<string, string?>? ChainBreak { get; set; }
+
     /// <summary>A person's pause before an action (the pacing settings' range).</summary>
     public Task ThinkAsync(CancellationToken ct)
     {

@@ -123,6 +123,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                     catch (Exception e) when (e is not OperationCanceledException) { }
                 }
                 var enabled = activities.Where(a => a.IsEnabled(settings)).OrderBy(a => order.IndexOf(a.Id) is >= 0 and var at ? at : int.MaxValue).ToList();
+                ctx.ChainBreak = self => ChainBreak(ctx, enabled, self, once);
                 _decisions = activities.ToDictionary(a => a.Id, a => !a.IsEnabled(settings) ? Decision.Off("switched off")
                     : ctx.Held(a.Id) is { } held ? Decision.Wait(held.Until, held.Why) : a.Decide(ctx));
                 if (enabled.Count == 0)
@@ -251,4 +252,22 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     }
 
     private TimeSpan Jitter(int minutes) => TimeSpan.FromMinutes(Math.Max(0, minutes) * (0.75 + 0.5 * host.Random.NextDouble()));
+
+    /// <summary>
+    /// The areas that end a chain of runs when they want to act (Ehsan 2026-11-06: "for example you know when the refresh of Arena arrives ... then after
+    /// the battle you go back to Arena"): the arenas and the bosses, whose chances come and go with the clock. Any area whose resource is at its cap too.
+    /// </summary>
+    public static readonly IReadOnlySet<string> Urgent = new HashSet<string>(["classic-arena", "tag-arena", "live-arena", "clan-boss", "hydra", "chimera"]);
+
+    private string? ChainBreak(PlayContext ctx, IReadOnlyList<IActivity> enabled, string self, bool once)
+    {
+        if (!once && host.RotateDue(null) is { } rotate) return "rotation: " + rotate;
+        foreach (var a in enabled.Where(a => a.Id != self))
+        {
+            if (ctx.Held(a.Id) is not null) continue;
+            var d = a.Decide(ctx);
+            if (d.Act && (Urgent.Contains(a.Id) || a.Full(ctx))) return $"{a.Name}: {d.Why}";
+        }
+        return null;
+    }
 }

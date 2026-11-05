@@ -193,7 +193,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
         if (check)
         {
             log($"autoplay: STEP reading {where}'s champion list (who can play it) before moving any gear");
-            if (!_vaultFilterChecked) await VaultFilterOff(ct);
+            if (_vaultFilter != false) await VaultFilter(false, ct);
             await EmptySlots(ct);
             var shownLocked = await ScanList(ct);
             _ccScanned.Add(level.Stage.Id);
@@ -381,7 +381,8 @@ public sealed partial class LivePlayGame : ICursedCityGame
         }
     }
 
-    private bool _vaultFilterChecked;
+    /// <summary>The team list's vault boxes as last set (the game keeps them across screens); null: not looked at yet.</summary>
+    private bool? _vaultFilter;
 
     /// <summary>Every slot of the team screen emptied (the game keeps the last team in them): only then does Locked mean "not for this level".</summary>
     private async Task EmptySlots(CancellationToken ct)
@@ -436,25 +437,27 @@ public sealed partial class LivePlayGame : ICursedCityGame
     }
 
     /// <summary>
-    /// The team list without vault champions (Ehsan, 2026-10-30: "make sure those are unchecked", the list is much shorter): the filter
-    /// opened once per run, each ticked vault box unticked, the filter closed. The game keeps the filter, so later screens need nothing.
+    /// The team list without vault champions (Ehsan, 2026-10-30: "make sure those are unchecked", the list is much shorter), or with them when the team takes
+    /// vault food (2026-11-06: "I keep my food in the Master Vault"): the filter opened, each vault box set, the filter closed. The game keeps the filter, so
+    /// later screens need nothing until the other setting is wanted.
     /// </summary>
-    private async Task VaultFilterOff(CancellationToken ct)
+    private async Task VaultFilter(bool include, CancellationToken ct)
     {
-        // The filter panel stays loaded when closed (2026-10-30), so its boxes are read without opening it: opened only when one is ticked.
+        // The filter panel stays loaded when closed (2026-10-30), so its boxes are read without opening it: opened only when one is set the other way.
+        var (from, to) = include ? ("off", "on") : ("on", "off");
         var (_, targets, _) = await Read(ct);
-        _vaultFilterChecked = true;
-        if (!targets.Any(t => t.Kind == "team-filter-vault" && t.Note == "on")) return;
+        _vaultFilter = include;
+        if (!targets.Any(t => t.Kind == "team-filter-vault" && t.Note == from)) return;
         await Click("team-filter", null, (_, _) => true, "the filter opens", ct);
         await Task.Delay(800, ct);
         for (var i = 0; i < 4; i++)
         {
             var (_, now, _) = await Read(ct);
-            var on = now.FirstOrDefault(t => t.Kind == "team-filter-vault" && t.Note == "on" && t.NotClickable is null);
-            if (on is null) break;
-            await Click("team-filter-vault", t => t.Path == on.Path, (_, scan) => scan().Targets.Any(t => t.Kind == "team-filter-vault" && t.Path == on.Path && t.Note == "off"),
-                $"{on.Name} unticked", ct, within: TimeSpan.FromSeconds(5));
-            log($"autoplay: unticked {on.Name}");
+            var box = now.FirstOrDefault(t => t.Kind == "team-filter-vault" && t.Note == from && t.NotClickable is null);
+            if (box is null) break;
+            await Click("team-filter-vault", t => t.Path == box.Path, (_, scan) => scan().Targets.Any(t => t.Kind == "team-filter-vault" && t.Path == box.Path && t.Note == to),
+                $"{box.Name} {(include ? "ticked" : "unticked")}", ct, within: TimeSpan.FromSeconds(5));
+            log($"autoplay: {(include ? "ticked" : "unticked")} {box.Name}");
         }
         await Click("filter-hide", null, (_, _) => true, "the filter closes", ct);
         await Task.Delay(800, ct);
@@ -471,7 +474,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
     /// </summary>
     private async Task SetTeam(IReadOnlyList<int> team, CancellationToken ct, string view = PlayTargets.CcTeamView)
     {
-        if (!_vaultFilterChecked) await VaultFilterOff(ct);
+        if (_vaultFilter != false) await VaultFilter(false, ct);
         var wanted = team.ToHashSet();
         var emptied = 0;
         var down = true;

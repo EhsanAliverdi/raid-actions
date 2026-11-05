@@ -39,20 +39,52 @@ public class EnergyActivityTests
     }
 
     [Fact]
-    public async Task Runs_that_can_start_from_the_result_screen_go_on_in_one_turn_up_to_the_limit()
+    public async Task Runs_that_can_start_from_the_result_screen_go_on_in_one_turn_until_the_energy_is_used()
     {
         var (host, game, engine) = Make(On(Row("farm", "Hard")));
         game.Energy = 300;
         game.Chain = true;
         await engine.RunAsync(once: true, Limit());
         var turns = host.Events.Where(e => e.Area == EnergyActivity.AreaId && e.Kind == "turn").ToList();
-        Assert.Contains(turns, e => e.Text.Contains($"({EnergyActivity.MaxChain} runs from the result screen)", StringComparison.Ordinal));
-        Assert.True(game.Calls.Count(c => c.StartsWith("run", StringComparison.Ordinal)) <= turns.Count * EnergyActivity.MaxChain);  // never more a turn
+        // 300 energy, 24 a run: 12 runs, all from the result screen in one turn (2026-11-06: no more stop at 5).
+        Assert.Contains(turns, e => e.Text.Contains("(12 runs from the result screen)", StringComparison.Ordinal));
 
         var (other, single, once) = Make(On(Row("farm", "Hard")));
         single.Energy = 300;
         await once.RunAsync(once: true, Limit());
         Assert.DoesNotContain(other.Events, e => e.Kind == "turn" && e.Text.Contains("from the result screen", StringComparison.Ordinal)); // the long way: one a turn
+    }
+
+    /// <summary>An arena whose refresh comes at a time: it wants to act from then until it has played once.</summary>
+    private sealed class RefreshAt(DateTime at) : IActivity
+    {
+        public bool Played { get; private set; }
+        public string Id => "classic-arena";
+        public string Name => "Classic Arena";
+        public bool IsEnabled(AutoplaySettings settings) => true;
+        public Decision Decide(PlayContext ctx) => Played ? Decision.Off("played") : ctx.Utc >= at ? Decision.Now("the free refresh is here") : Decision.Wait(at, "refresh later");
+        public Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct) { Played = true; return Task.FromResult("refreshed"); }
+        public AreaStatus Status(PlayContext ctx, Decision decision) => new(Id, Name, true, AreaState.Waiting, "", null, [], []);
+    }
+
+    [Fact]
+    public async Task An_arena_refresh_that_comes_due_ends_the_chain_after_the_battle()
+    {
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0, ThinkMinMs = 60_000, ThinkMaxMs = 60_000 }, Energy = On(Row("farm", "Hard")) } };
+        var game = new FakeEnergyGame(() => host.UtcNow) { Energy = 300, Chain = true };
+        var arena = new RefreshAt(Start + TimeSpan.FromMinutes(5));
+        host.OnDelay = h => { if (arena.Played) h.Stop = true; };
+        var engine = new AutoplayEngine([arena, new EnergyActivity(game)], new FakeArenaGame(() => host.UtcNow) { Energy = 50 }, host, false);
+        await engine.RunAsync(once: false, Limit());
+
+        Assert.True(arena.Played);
+        // The chain ends at the refresh and the arena's turn is next (energy below its cap: no "full" turn first).
+        var chainEnd = Assert.Single(host.Events, e => e.Kind == "chain");
+        Assert.Contains("Classic Arena", chainEnd.Text);
+        var after = host.Events.SkipWhile(e => e != chainEnd).Where(e => e.Kind == "turn").Skip(1).First();
+        Assert.Equal("classic-arena", after.Area);
+        var before = host.Events.TakeWhile(e => e != chainEnd).Count(e => e.Kind == "battle");
+        Assert.InRange(before, 2, 6);   // some runs in a row, not all 12: the refresh came first
     }
 
     [Fact]

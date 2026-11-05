@@ -1402,6 +1402,7 @@ public static partial class PlayTargets
     [System.Text.RegularExpressions.GeneratedRegex(@"^Next", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
     private static partial System.Text.RegularExpressions.Regex ResultNextName();
 
-    [System.Text.RegularExpressions.GeneratedRegex(@"Team|Edit", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    // The Campaign's is RepickButton (2026-11-06: BattleFinishStoryDialog: Lobby, WorldMap, Heroes, QuickSave, Replay, Repick, Next).
+    [System.Text.RegularExpressions.GeneratedRegex(@"Team|Edit|Repick", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
     private static partial System.Text.RegularExpressions.Regex ResultTeamName();
 }

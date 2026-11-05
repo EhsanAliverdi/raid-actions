@@ -36,6 +36,16 @@ public sealed class FakeEnergyGame(Func<DateTime> now) : IEnergyGame
 
     private DateTime _tick = now();
 
+    /// <summary>The Campaign's progress (3-star tests); null: none.</summary>
+    public AreaProgressOut? Story { get; set; }
+    /// <summary>A Campaign run's result: won or not, and the stars it gives (kept when better than the stage's).</summary>
+    public Func<EnergyRun, (bool Victory, int Stars)>? StoryResult { get; set; }
+
+    /// <summary>The saved 3-star sweeps (as the live game's file).</summary>
+    public Dictionary<string, ThreeStarState> ThreeStars { get; } = [];
+    public IReadOnlyDictionary<string, ThreeStarState> LoadThreeStars() => new Dictionary<string, ThreeStarState>(ThreeStars);
+    public void SaveThreeStars(IReadOnlyDictionary<string, ThreeStarState> states) { ThreeStars.Clear(); foreach (var (k, v) in states) ThreeStars[k] = v; }
+
     private void Regen()
     {
         while (now() - _tick >= TimeSpan.FromMinutes(3))
@@ -56,6 +66,7 @@ public sealed class FakeEnergyGame(Func<DateTime> now) : IEnergyGame
                 new("Hard", 10, 5, 15, 5, null, [.. Enumerable.Range(1, 5).Select(n => new StageResultOut(5_206_100 + n, n, true, 3, 5, 0))]),
             ])]),
         };
+        if (Story is not null) progress.Add(Story);
         return Task.FromResult(new EnergyAccount(new Dictionary<string, double> { ["Energy"] = Energy, ["Gem"] = Gems, ["DoubleAscend_FortressKey"] = FortressKeys },
             Costs, progress, SuperRaidMultiplier, Champions?.ToList(), MysteryShards));
     }
@@ -80,6 +91,16 @@ public sealed class FakeEnergyGame(Func<DateTime> now) : IEnergyGame
             for (var i = 0; i < Champions.Count; i++)
                 if (members.Contains(Champions[i].Id))
                     Champions[i] = Champions[i] with { Level = Math.Min(Champions[i].Rank * 10, Champions[i].Level + LevelsPerRun) };
+        if (run.Target.Area == "Story" && StoryResult is { } result && Story is not null)
+        {
+            var (won, stars) = result(run);
+            if (won)
+                Story = Story with { Regions = [.. Story.Regions.Select(r => r.Region != run.Region ? r : r with { Difficulties = [.. r.Difficulties.Select(d => d.Difficulty != run.Difficulty ? d : d with
+                {
+                    Results = [.. d.Results.Select(x => x.Number == run.Number ? x with { Passed = true, Stars = Math.Max(x.Stars, stars) } : x)],
+                })] })] };
+            return Task.FromResult(new BattleOutcome(won ? BattleResult.Victory : BattleResult.Defeat, $"{RunTime.TotalSeconds:0} s"));
+        }
         return Task.FromResult(new BattleOutcome(LoseAll ? BattleResult.Defeat : BattleResult.Victory, $"{RunTime.TotalSeconds:0} s"));
     }
 

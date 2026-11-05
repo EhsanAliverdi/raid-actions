@@ -91,6 +91,37 @@ public static class PlariumPopup
         }
     }
 
+    /// <summary>
+    /// The first "Other Accounts" avatar in Plarium Play's open profile menu, pressed through UI Automation (2026-11-06: a nameless button of the component
+    /// <c>sc-12k8j5c-6</c> under "Other Accounts"; the pixel search missed it while a "Security checkup" box slid in). False when it is not there.
+    /// </summary>
+    public static bool PressOtherAccount(IntPtr window, TextWriter output)
+    {
+        try
+        {
+            var root = AutomationElement.FromHandle(window);
+            var page = Page(root) ?? Page(root);
+            if (page is null) return false;
+            foreach (AutomationElement b in page.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)))
+            {
+                if (!IsOtherAccount(b.Current.ClassName) || !b.Current.IsEnabled || b.Current.BoundingRectangle.IsEmpty) continue;
+                if (!b.TryGetCurrentPattern(InvokePattern.Pattern, out var p)) continue;
+                ((InvokePattern)p).Invoke();
+                return true;
+            }
+            return false;
+        }
+        catch (Exception e) when (e is ElementNotAvailableException or InvalidOperationException or System.Runtime.InteropServices.COMException)
+        {
+            output.WriteLine($"Plarium Play's menu could not be read ({e.Message}).");
+            return false;
+        }
+    }
+
+    /// <summary>The "Other Accounts" avatar's component (a styled component's class, seen 2026-11-06).</summary>
+    public static bool IsOtherAccount(string? className) =>
+        (className ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains("sc-12k8j5c-6");
+
     /// <summary>Plarium Play's close-button component (a styled component's class; seen on the × of every popup so far, 2026-11-05).</summary>
     public static bool IsCloseComponent(string? className) =>
         (className ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains("sc-1az45dy-0");

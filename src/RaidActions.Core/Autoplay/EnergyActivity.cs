@@ -49,6 +49,12 @@ public interface IEnergyGame
 
     /// <summary>The last run's result screen is still open where this run plays: it can start from there (Replay, Next, the team button), not from the village.</summary>
     bool CanChain(EnergyRun run);
+
+    /// <summary>The 3-star rows' sweeps as saved (stages left behind, misses in a row, a stop), by row id; empty when none is saved.</summary>
+    IReadOnlyDictionary<string, ThreeStarState> LoadThreeStars() => new Dictionary<string, ThreeStarState>();
+
+    /// <summary>Saves the 3-star rows' sweeps (kept across a restart and for days: a sweep through a difficulty takes many).</summary>
+    void SaveThreeStars(IReadOnlyDictionary<string, ThreeStarState> states) { }
 }
 
 /// <summary>
@@ -98,6 +104,8 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     /// <summary>A food step that did nothing (or a dry run that showed it): not tried again until then.</summary>
     private DateTime _rankUpBlockedUntil = DateTime.MinValue, _summonBlockedUntil = DateTime.MinValue;
     private int _rankedUp, _summoned, _sold;
+    /// <summary>The 3-star rows' sweeps (<see cref="ThreeStarState"/>), read from the game's store each step.</summary>
+    private Dictionary<string, ThreeStarState> _threeStars = [];
 
     public bool IsEnabled(AutoplaySettings settings) => settings.Energy.Enabled;
 
@@ -146,7 +154,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         else if (expected && resources.TryGetValue("Energy", out var read))
             resources["Energy"] = read + Math.Floor((ctx.Utc - _accountAt) / EnergyPeriod);
         return new EnergyWorld(resources, a.Costs, a.Progress, _runsToday, _learnt, a.SuperRaidMultiplier, _refillsToday,
-            ctx.Utc - _inboxAt < InboxRecheck, a.Champions, a.MysteryShards, _closedToday);
+            ctx.Utc - _inboxAt < InboxRecheck, a.Champions, a.MysteryShards, _closedToday, _threeStars);
     }
 
     /// <summary>Mystery shards a quest's summon needs now (0: none asked, no shard to spare, or summons paused).</summary>
@@ -307,6 +315,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         var s = ctx.Settings.Energy;
         _account = await game.ReadAccountAsync(ct);
         _accountAt = ctx.Utc;
+        _threeStars = new Dictionary<string, ThreeStarState>(game.LoadThreeStars());
         // A quest's summon first (Ehsan 2026-10-31: quests first): Mystery shards only, never another kind.
         if (QuestSummon(ctx) is var want and > 0)
         {
@@ -462,6 +471,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 // What the run really took (the regeneration during it is under one energy for a short battle): learnt when not exported.
                 _account = await game.ReadAccountAsync(ct);
                 _accountAt = ctx.Utc;
+                if (!ctx.DryRun && run.Target is { ThreeStars: true, Progress: true, Area: "Story" } sweepRow) ThreeStarsAfter(ctx, sweepRow, run, outcome.Result == BattleResult.Victory);
                 var spent = before - _account.Resources.GetValueOrDefault(run.Resource);
                 var key = EnergyPlanner.LearntKey(run.Target, run.Number);
                 if (spent > 0 && Math.Abs(spent - run.Cost) >= 1 && (!run.CostKnown || _learnt.ContainsKey(key)))
@@ -496,6 +506,19 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             default:
                 return "";
         }
+    }
+
+    /// <summary>A 3-star row's run: its stars read in the account now, the sweep moved on (<see cref="ThreeStarState.After"/>), saved, and told.</summary>
+    private void ThreeStarsAfter(PlayContext ctx, EnergyTarget row, EnergyRun run, bool victory)
+    {
+        var stars = _account?.Progress.FirstOrDefault(a => a.Area == "Story")?.Regions.FirstOrDefault(r => r.Region == run.Region)?.Difficulties
+            .FirstOrDefault(d => EnergyPlaces.SameDifficulty(run.Difficulty, d.Difficulty))?.Results.FirstOrDefault(r => r.Number == run.Number) is { Passed: true } result ? result.Stars : 0;
+        var before = ThreeStarState.For(row, _threeStars);
+        var (after, text) = ThreeStarState.After(row, before, ThreeStarState.Key(run.Region, run.Difficulty, run.Number), victory, stars, ctx.Utc);
+        _threeStars[row.Id] = after;
+        game.SaveThreeStars(_threeStars);
+        ctx.Event(AreaId, "three-stars", $"row {row.Id}: {text}");
+        if (after.Stopped is not null && before.Stopped is null) ctx.Event(AreaId, "stop", $"row {row.Id}: {after.Stopped}; the rows below get the energy (the app's Start over plays it again)");
     }
 
     public AreaStatus Status(PlayContext ctx, Decision decision)

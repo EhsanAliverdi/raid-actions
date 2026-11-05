@@ -125,7 +125,27 @@ public static class SwitchAccountCommand
                 Thread.Sleep(1800);
                 // The other account's avatar, found on the screen (2026-11-04: on the PC's own monitor at 100% the menu's rows are not where they were at
                 // 150% over Remote Desktop, and the fixed spot missed between the avatar and "+ Add Account").
-                if (FindAvatar(r.L, r.B, scale) is { } avatar)
+                // The avatar's own button, through UI Automation (no pixel read: works under a window on top or a box sliding in).
+                var pressed = PlariumPopup.PressOtherAccount(h, output);
+                for (var wait = 0; wait < 4 && !pressed; wait++)
+                {
+                    Thread.Sleep(1000);
+                    pressed = PlariumPopup.PressOtherAccount(h, output);
+                }
+                if (pressed)
+                {
+                    output.WriteLine("Plarium Play: the other account picked (its avatar button).");
+                    Thread.Sleep(5000);
+                    return null;
+                }
+                // The menu can take a few seconds to draw (2026-11-06: a "Security checkup" box slid in above it and the first look found no avatar).
+                var avatarAt = FindAvatar(r.L, r.B, scale);
+                for (var again = 0; again < 5 && avatarAt is null; again++)
+                {
+                    Thread.Sleep(1000);
+                    avatarAt = FindAvatar(r.L, r.B, scale);
+                }
+                if (avatarAt is { } avatar)
                 {
                     Click(avatar.X, avatar.Y);
                     output.WriteLine($"Plarium Play: the other account picked (its avatar at {avatar.X},{avatar.Y}).");

@@ -53,6 +53,49 @@ public class CampaignActivityTests
         Assert.Equal(0, game.MysteryShards);
     }
 
+    /// <summary>The Campaign's Hard: every stage beaten with 1 star; Normal all 3 stars.</summary>
+    private static AreaProgressOut HardOneStar() => new("Story", "Campaign", [.. Enumerable.Range(1, 12).Select(c => new RegionProgressOut($"Region{c}", null,
+    [
+        new("Normal", 7, 7, 21, 7, null, [.. Enumerable.Range(1, 7).Select(n => new StageResultOut(1_000_000 + c * 100 + n, n, true, 3, 1, 0))]),
+        new("Hard", 7, 7, 7, 7, null, [.. Enumerable.Range(1, 7).Select(n => new StageResultOut(1_100_000 + c * 100 + n, n, true, 1, 1, 0))]),
+    ]))]);
+
+    private static readonly EnergyTarget HardSweep = new()
+    {
+        Id = "hard3", Area = "Story", Region = "Region12", Difficulty = "Hard", Stage = 7, Progress = true, ThreeStars = true, StopAfterMisses = 2, Team = [Kael, 3],
+    };
+
+    [Fact]
+    public async Task A_hard_three_star_sweep_leaves_misses_behind_and_stops_after_two_in_a_row()
+    {
+        var dl = new EnergyTarget { Id = "dl", Area = "Dungeon", Region = "DragonsLair", Difficulty = "Hard", Stage = 5 };
+        var (host, game, engine) = Make(On(HardSweep, dl), TimeSpan.FromHours(2));
+        game.Energy = 130;
+        game.Story = HardOneStar();
+        // 1-1 3 stars, 1-2 two, 1-3 three, 1-4 one, 1-5 two: stops after 1-5 (1-4 and 1-5 in a row).
+        game.StoryResult = r => (true, r.Region == "Region1" ? r.Number switch { 1 => 3, 3 => 3, 2 => 2, 4 => 1, _ => 2 } : 3);
+        await engine.RunAsync(once: false, new CancellationTokenSource(TimeSpan.FromSeconds(20)).Token);
+
+        var story = game.Calls.Where(c => c.StartsWith("run Hard", StringComparison.Ordinal) && c.Contains("team", StringComparison.Ordinal)).ToList();
+        Assert.Equal(["run Hard 1 team 1,3", "run Hard 2 team 1,3", "run Hard 3 team 1,3", "run Hard 4 team 1,3", "run Hard 5 team 1,3"], story);
+        Assert.StartsWith("stopped", game.ThreeStars["hard3"].Stopped);
+        Assert.Equal(["Region1 Hard 2", "Region1 Hard 4", "Region1 Hard 5"], game.ThreeStars["hard3"].Skipped);
+        Assert.Contains(host.Events, e => e.Kind == "stop" && e.Text.Contains("hard3", StringComparison.Ordinal));
+        Assert.Contains(game.Calls, c => c.StartsWith("run Hard 5", StringComparison.Ordinal) && !c.Contains("team", StringComparison.Ordinal)); // Dragon's Lair below plays
+    }
+
+    [Fact]
+    public async Task A_three_star_sweep_stops_on_a_defeat_when_asked()
+    {
+        var (_, game, engine) = Make(On(HardSweep with { StopOnDefeat = true, StopAfterMisses = 0 }), TimeSpan.FromHours(1));
+        game.Energy = 130;
+        game.Story = HardOneStar();
+        game.StoryResult = r => (false, 0);
+        await engine.RunAsync(once: false, new CancellationTokenSource(TimeSpan.FromSeconds(20)).Token);
+        Assert.Single(game.Calls, c => c.StartsWith("run Hard", StringComparison.Ordinal));
+        Assert.StartsWith("stopped", game.ThreeStars["hard3"].Stopped);
+    }
+
     [Fact]
     public async Task A_dry_run_shows_the_rank_up_and_spends_nothing()
     {

@@ -46,7 +46,7 @@ public static class PlariumPopup
             foreach (AutomationElement b in buttons)
             {
                 var (name, id) = (b.Current.Name, b.Current.AutomationId);
-                seen.Add($"'{name}'{(id.Length > 0 ? $" ({id})" : "")}");
+                seen.Add($"'{name}'{(id.Length > 0 ? $" ({id})" : "")}{(name.Trim().Length == 0 ? $" [{b.Current.ClassName}]" : "")}");
                 if (!IsDismiss(name, id) || !b.Current.IsEnabled) continue;
                 if (b.TryGetCurrentPattern(InvokePattern.Pattern, out var p))
                 {
@@ -54,8 +54,18 @@ public static class PlariumPopup
                     return $"'{name}'{(id.Length > 0 ? $" ({id})" : "")}";
                 }
             }
-            // An icon × without a name (2026-11-05: a "RAID Digest" news article, a ReactModal dialog, its × a 40 px button at the dialog's top right):
-            // the small nameless button in a dialog's top-right corner.
+            // An icon × without a name (2026-11-05: the "RAID Digest" news article and the "Enjoying Raid? Rate" box): Plarium Play's close-button
+            // component, the same in both (its class sc-1az45dy-0; the page's groups all measure as the whole page, so no box gives a corner).
+            foreach (AutomationElement b in buttons)
+            {
+                if (b.Current.Name.Trim().Length > 0 || !b.Current.IsEnabled || !IsCloseComponent(b.Current.ClassName)) continue;
+                if (b.TryGetCurrentPattern(InvokePattern.Pattern, out var p))
+                {
+                    ((InvokePattern)p).Invoke();
+                    return $"× ({b.Current.ClassName})";
+                }
+            }
+            // Else a dialog element's own corner × (the Digest is one: a ReactModal dialog, its × a nameless button at its top right).
             foreach (AutomationElement dialog in page.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Window)))
             {
                 var box = dialog.Current.BoundingRectangle;
@@ -67,7 +77,7 @@ public static class PlariumPopup
                     if (b.TryGetCurrentPattern(InvokePattern.Pattern, out var p))
                     {
                         ((InvokePattern)p).Invoke();
-                        return $"× (the nameless button at the top right of its dialog '{dialog.Current.Name}')";
+                        return "× (the nameless button at the top right of its dialog)";
                     }
                 }
             }
@@ -80,6 +90,10 @@ public static class PlariumPopup
             return null;
         }
     }
+
+    /// <summary>Plarium Play's close-button component (a styled component's class; seen on the × of every popup so far, 2026-11-05).</summary>
+    public static bool IsCloseComponent(string? className) =>
+        (className ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains("sc-1az45dy-0");
 
     /// <summary>
     /// The button is a dialog's corner ×: small and square-ish (at most 80 px, under a tenth of the dialog's width), inside the dialog's top-right corner

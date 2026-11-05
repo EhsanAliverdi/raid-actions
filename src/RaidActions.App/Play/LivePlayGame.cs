@@ -412,6 +412,14 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 var (_, _, play) = await Read(ct);
                 return play;
             }
+            // Live Arena's result overlay before its result dialog (2026-11-05: the bot waited 20 minutes on it): tapped on, the dialog comes next.
+            if (Top(s) == "LiveArenaBattleFinishOverlay" && resultView != "LiveArenaBattleFinishOverlay")
+            {
+                await Task.Delay(1500, ct);
+                try { await Click("back", t => t.View == "LiveArenaBattleFinishOverlay", (s2, _) => Top(s2) != "LiveArenaBattleFinishOverlay", "the result overlay closes", ct, within: TimeSpan.FromSeconds(8)); }
+                catch (PlayStopException e) { log($"autoplay: the live arena result overlay did not close ({e.Message}); waiting"); }
+                continue;
+            }
             if (!s.InBattle) return null; // the battle ended somewhere else (the game moved on)
             if (skipAt is { } skip && DateTime.UtcNow >= skip && Has(s, PlayTargets.BattleHudView) && !s.UiBlocked)
             {

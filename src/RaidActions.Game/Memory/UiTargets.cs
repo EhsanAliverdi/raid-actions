@@ -247,8 +247,9 @@ public static partial class UiTargets
         // One element found twice (an inventory item carries its context on two nested elements, both leading to the same button)
         // is one target. Different elements claiming one id stay separate, and Resolve refuses them.
         // The Tag Team Arena's result screens have no button: they close on a tap on its bottom strip (2026-11-01: left open, it stopped the bot).
-        if (t.View.StartsWith("BattleFinishArena3x3", StringComparison.Ordinal))
-            targets.Add(new UiTarget("back", "tag arena result: tap to continue", null, t.View,
+        // Live Arena's own result overlay (2026-11-05: shown before its result dialog, the bot waited 20 minutes on it): the same tap on its bottom strip.
+        if (t.View.StartsWith("BattleFinishArena3x3", StringComparison.Ordinal) || t.View == "LiveArenaBattleFinishOverlay")
+            targets.Add(new UiTarget("back", t.View == "LiveArenaBattleFinishOverlay" ? "live arena result: tap to continue" : "tag arena result: tap to continue", null, t.View,
                 new ClientRect(t.ClientWidth * 0.40f, t.ClientHeight * 0.86f, t.ClientWidth * 0.2f, t.ClientHeight * 0.06f), true, true, true, false, t.View,
                 "a tap on the empty bottom strip", ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
         // The Clan vs Clan tournament's end screen (2026-11-05: it stopped every area on BlackLord65): its full-screen Fade takes a click (OnClickBinding),

@@ -64,6 +64,18 @@ public static class SwitchAccountCommand
             SetForegroundWindow(h);
             Thread.Sleep(1200);
             if (!GetWindowRect(h, out var r)) return "Plarium Play's window could not be measured.";
+            // Its profile button is at the bottom of its sidebar: the window must be on the screen (2026-11-05: a 1162x540 Remote Desktop screen and a
+            // 1080x720 window, the button under the screen's edge, and the switch failed). Moved to the top left and made the screen's size, then measured again.
+            var (screenW, screenH) = (GetSystemMetrics(0), GetSystemMetrics(1));
+            if (r.L < 0 || r.T < 0 || r.R > screenW || r.B > screenH)
+            {
+                MoveWindow(h, 0, 0, Math.Min(r.R - r.L, screenW), Math.Min(r.B - r.T, screenH), true);
+                Thread.Sleep(1200);
+                if (!GetWindowRect(h, out r)) return "Plarium Play's window could not be measured.";
+                if (r.L < 0 || r.T < 0 || r.R > screenW || r.B > screenH)
+                    return $"Plarium Play's window ({r.R - r.L}x{r.B - r.T}) does not fit the screen ({screenW}x{screenH}): the account was not switched.";
+                output.WriteLine($"Plarium Play's window moved onto the screen ({r.R - r.L}x{r.B - r.T}).");
+            }
             var scale = GetDpiForWindow(h) / 96.0;
             var (otherX, otherY) = (r.L + (int)(OtherX * scale), r.B - (int)(OtherFromBottom * scale));
             // Plarium Play still counts the game as running for a while after it closed (2026-11-04: both tries failed): its menu then shows "You cannot
@@ -190,6 +202,8 @@ public static class SwitchAccountCommand
 
     [StructLayout(LayoutKind.Sequential)] private struct Rect { public int L, T, R, B; }
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr h, out Rect r);
+    [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
+    [DllImport("user32.dll")] private static extern bool MoveWindow(IntPtr h, int x, int y, int w, int height, bool repaint);
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr h);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr h);

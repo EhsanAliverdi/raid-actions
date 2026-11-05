@@ -163,7 +163,15 @@ public static class AutoplayCommand
                 Print($"rotation: from account {current} to {next}");
                 var switched = await SwitchAccountCommand.RunAsync(["switch-account", next.ToString(System.Globalization.CultureInfo.InvariantCulture)], outDir, output);
                 // A failed switch may have left the game closed: the new bot starts it (and goes on with whichever account it shows: it refuses another one).
-                if (switched != Cli.Ok) { Print($"rotation: the switch to {next} failed; this account plays on"); next = current; }
+                if (switched != Cli.Ok)
+                {
+                    // Tried again in 5 minutes, not after a whole new turn (Ehsan 2026-11-05: "you keep going to the same account while its 30 minutes finished":
+                    // a failed switch on a small Remote Desktop screen gave this account another 30 minutes).
+                    var slice = RaidExtractor.AccountPool.Load(dir).SliceOf(current);
+                    new RaidExtractor.AccountTurn { Id = current, StartedUtc = DateTime.UtcNow.AddMinutes(5 - Math.Max(5, slice)) }.Save(dir);
+                    Print($"rotation: the switch to {next} failed; this account plays on and the switch is tried again in 5 minutes");
+                    next = current;
+                }
                 RaidExtractor.OutputLayout.SetActive(dir, next);
                 LiveAutoplayHost.Relaunch(dir, "autoplay" + (switched != Cli.Ok ? " --restart-first" : "") + (args.Contains("--no-yield") ? " --no-yield" : ""));
             }

@@ -100,6 +100,12 @@ public static class SwitchAccountCommand
                     keybd_event(0x1B, 0, 2, IntPtr.Zero);
                     Thread.Sleep(1200);
                 }
+                // A popup Esc does not close (2026-11-05: Plarium Play's marketing box): its close button, found by name and pressed (PlariumPopup).
+                for (var tries = 0; tries < 3 && Dimmed(r, scale) && PlariumPopup.Close(h, output) is { } closed; tries++)
+                {
+                    output.WriteLine($"Plarium Play's popup closed with its {closed} button.");
+                    Thread.Sleep(1500);
+                }
                 if (Dimmed(r, scale))
                 {
                     // What was seen, to tell a real dialog from a sidebar that is dark here (2026-11-05: on a phone's Remote Desktop at 200%).
@@ -107,7 +113,7 @@ public static class SwitchAccountCommand
                     var dc = GetDC(IntPtr.Zero);
                     var c = GetPixel(dc, px, py);
                     ReleaseDC(IntPtr.Zero, dc);
-                    return $"Plarium Play has a dialog open that Esc does not close (the sidebar at {px},{py} reads #{c & 0xFF:X2}{(c >> 8) & 0xFF:X2}{(c >> 16) & 0xFF:X2}; window {r.L},{r.T} {r.R - r.L}x{r.B - r.T}, scale {scale}): the account was not switched.";
+                    return $"Plarium Play has a dialog open that neither Esc nor its close button closes (the sidebar at {px},{py} reads #{c & 0xFF:X2}{(c >> 8) & 0xFF:X2}{(c >> 16) & 0xFF:X2}; window {r.L},{r.T} {r.R - r.L}x{r.B - r.T}, scale {scale}): the account was not switched.";
                 }
                 Click(r.L + (int)(ProfileX * scale), r.B - (int)(ProfileFromBottom * scale));
                 Thread.Sleep(1800);

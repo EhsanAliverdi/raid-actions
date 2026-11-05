@@ -271,28 +271,38 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
             _topChest.Clear();
             ctx.Event(AreaId, "reset", "the Clan Boss has reset: a new day of keys");
         }
-        if (ClanBossRules.Next(s, _account.BestDamage, _today, _topChest) is not { } difficulty) return "";
         // The game's own numbers before any key (Ehsan 2026-11-01: a key past the top chest is a key thrown away): its keys spent replace the bot's
-        // count, and a difficulty past its top chest gets no more.
-        if (await game.ReadClanStandingAsync(difficulty, ct) is { } read)
+        // count, and a difficulty past its top chest gets no more. The plan's next row is then looked at in the same visit (Ehsan 2026-11-05: "why did you
+        // go to clan boss and not play it": Brutal was past its top chest, the turn ended there, and a restart forgot it, so Nightmare never came).
+        string? difficulty = null;
+        for (var row = 0; row <= s.Plan.Count; row++)
         {
-            if (read.TopChest is { } topRead) _knownTop[difficulty] = topRead;
-            var standing = _knownTop.TryGetValue(difficulty, out var known) ? read with { TopChest = known } : read;
-            _today[difficulty] = Math.Max(_today.GetValueOrDefault(difficulty), standing.KeysSpent);
-            ctx.Event(AreaId, "standing", $"{difficulty}: {standing.Damage:N0} damage today, top chest {standing.TopChest?.ToString("N0") ?? "not read"}, {standing.KeysSpent} key(s)");
-            if (standing.Full)
+            if (ClanBossRules.Next(s, _account.BestDamage, _today, _topChest) is not { } nextRow) return "";
+            difficulty = nextRow;
+            if (await game.ReadClanStandingAsync(difficulty, ct) is { } read)
             {
-                _topChest.Add(difficulty);
-                return $"{difficulty}: past its top chest, no more keys there today";
+                if (read.TopChest is { } topRead) _knownTop[difficulty] = topRead;
+                var standing = _knownTop.TryGetValue(difficulty, out var known) ? read with { TopChest = known } : read;
+                _today[difficulty] = Math.Max(_today.GetValueOrDefault(difficulty), standing.KeysSpent);
+                ctx.Event(AreaId, "standing", $"{difficulty}: {standing.Damage:N0} damage today, top chest {standing.TopChest?.ToString("N0") ?? "not read"}, {standing.KeysSpent} key(s)");
+                if (standing.Full)
+                {
+                    _topChest.Add(difficulty);
+                    ctx.Event(AreaId, "full", $"{difficulty}: past its top chest, no more keys there today");
+                    continue;
+                }
+                // No cap and no top chest to stop at: a key already spent there is enough (2026-11-01: the read can fail; a key past the top is thrown away).
+                if (standing is { TopChest: null, KeysSpent: > 0 } && s.Plan.FirstOrDefault(r => ClanBossRules.Same(r.Difficulty, difficulty))?.KeysPerDay is null)
+                {
+                    _topChest.Add(difficulty);
+                    ctx.Event(AreaId, "full", $"{difficulty}: top chest not read, no more keys there today");
+                    continue;
+                }
+                if (ClanBossRules.Next(s, _account.BestDamage, _today, _topChest) != difficulty) return "";
             }
-            // No cap and no top chest to stop at: a key already spent there is enough (2026-11-01: the read can fail; a key past the top is thrown away).
-            if (standing is { TopChest: null, KeysSpent: > 0 } && s.Plan.FirstOrDefault(r => ClanBossRules.Same(r.Difficulty, difficulty))?.KeysPerDay is null)
-            {
-                _topChest.Add(difficulty);
-                return $"{difficulty}: top chest not read, no more keys there today";
-            }
-            if (ClanBossRules.Next(s, _account.BestDamage, _today, _topChest) != difficulty) return "";
+            break;
         }
+        if (difficulty is null || _topChest.Contains(difficulty)) return "";
         var quick = ClanBossRules.Quick(s, difficulty, _account.MaxQuick);
         await ctx.ThinkAsync(ct);
         var keys = Math.Floor(_account.Keys);

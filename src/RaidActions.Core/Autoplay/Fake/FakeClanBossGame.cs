@@ -23,14 +23,22 @@ public sealed class FakeClanBossGame(Func<DateTime> now) : IClanBossGame
         while (now() - _tick >= KeyEvery) { _tick += KeyEvery; Keys++; }
     }
 
+    /// <summary>How many times the keys were read (one per Clan Boss turn).</summary>
+    public int Reads { get; private set; }
+
     public Task<ClanBossAccount> ReadClanBossAsync(CancellationToken ct)
     {
+        Reads++;
         Regen();
         return Task.FromResult(new ClanBossAccount(Keys, BestDamage, MaxQuick));
     }
 
+    /// <summary>The keys' reads when the first battle came: 1 when the first turn fought.</summary>
+    public int? ReadsAtFirstFight { get; private set; }
+
     public Task<BattleOutcome> FightClanBossAsync(string difficulty, bool quick, bool dryRun, CancellationToken ct)
     {
+        ReadsAtFirstFight ??= Reads;
         if (FailAfterSpend && !dryRun)
         {
             FailAfterSpend = false;

@@ -38,6 +38,16 @@ public class ClanBossActivityTests
     }
 
     [Fact]
+    public async Task A_full_difficulty_hands_its_visit_to_the_next_row_in_the_same_turn()
+    {
+        var (_, game, engine) = Make(new ClanBossSettings { Enabled = true, Plan = [new("Brutal", 1), new("Nightmare", 2)] }, TimeSpan.FromMinutes(1));
+        game.Standing["Brutal"] = new ClanStanding(25_880_000, 1, 21_700_000);
+        await engine.RunAsync(once: true, Limit());
+        Assert.Equal(1, game.ReadsAtFirstFight);
+        Assert.Equal("fight Nightmare", game.Calls[0]);
+    }
+
+    [Fact]
     public async Task An_uncapped_difficulty_with_a_key_spent_and_its_top_chest_unread_gets_no_more()
     {
         var (_, game, engine) = Make(new ClanBossSettings { Enabled = true, Plan = [new("UltraNightmare", null)] }, TimeSpan.FromHours(2));

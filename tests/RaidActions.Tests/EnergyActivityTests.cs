@@ -39,6 +39,23 @@ public class EnergyActivityTests
     }
 
     [Fact]
+    public async Task Runs_that_can_start_from_the_result_screen_go_on_in_one_turn_up_to_the_limit()
+    {
+        var (host, game, engine) = Make(On(Row("farm", "Hard")));
+        game.Energy = 300;
+        game.Chain = true;
+        await engine.RunAsync(once: true, Limit());
+        var turns = host.Events.Where(e => e.Area == EnergyActivity.AreaId && e.Kind == "turn").ToList();
+        Assert.Contains(turns, e => e.Text.Contains($"({EnergyActivity.MaxChain} runs from the result screen)", StringComparison.Ordinal));
+        Assert.True(game.Calls.Count(c => c.StartsWith("run", StringComparison.Ordinal)) <= turns.Count * EnergyActivity.MaxChain);  // never more a turn
+
+        var (other, single, once) = Make(On(Row("farm", "Hard")));
+        single.Energy = 300;
+        await once.RunAsync(once: true, Limit());
+        Assert.DoesNotContain(other.Events, e => e.Kind == "turn" && e.Text.Contains("from the result screen", StringComparison.Ordinal)); // the long way: one a turn
+    }
+
+    [Fact]
     public async Task A_row_without_its_own_team_or_without_the_setting_gets_no_gear_review()
     {
         var (_, game, engine) = Make(On(Row("a", "Hard") with { GearEveryHours = 2 }, Row("b") with { Team = [1] }), stopAfter: TimeSpan.FromHours(1));

@@ -522,6 +522,25 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         }
     }
 
+    /// <summary>What a result screen has over it (the account's level-up, a drop, a feature unlocked) closed; the result itself stays.</summary>
+    private async Task ClearOverResult(CancellationToken ct, string view)
+    {
+        await DismissLevelUp(ct);
+        for (var i = 0; i < 4 && await ReadState(ct) is var st && Has(st, view) && Top(st) is { } over && over != view; i++)
+        {
+            try { await Back(over, ct); }
+            catch (PlayStopException)
+            {
+                var (w, why) = GameWindow.Find();
+                if (w is null) throw new PlayStopException(why!);
+                if (MouseInput.Click(w, w.Client.Width / 2f, w.Client.Height * 0.07f, new Random()) is { } notSent) throw new PlayStopException(notSent);
+                log($"autoplay: tapped {over} away");
+            }
+            await Task.Delay(1200, ct);
+            await DismissLevelUp(ct);
+        }
+    }
+
     private async Task LeaveResult(CancellationToken ct, string view = PlayTargets.ArenaResultView)
     {
         await DismissLevelUp(ct);

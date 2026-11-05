@@ -45,7 +45,13 @@ public sealed partial class LivePlayGame : IEnergyGame
         var story = run.Target.Area == "Story";
         var resultView = story ? PlayTargets.StoryResultView
             : run.Region.EndsWith("DoubleAscendDungeon", StringComparison.Ordinal) ? PlayTargets.TwinsResultView : PlayTargets.DungeonResultView;
-        if (story) await OpenCampaign(run.Region, run.Difficulty, run.StageId, ct);
+        // From the last run's result screen, left open (Ehsan 2026-11-05: "don't go back to base after each play"): Replay for the same stage with the same
+        // team, Next for the stage after it; anything else, or a button that does not do it, goes the long way.
+        var (chainedView, chainedBattle) = await FromResult(run, resultView, ct);
+        if (chainedBattle) return await Fought(run, where, resultView, null, started, ct);
+        var atTeam = chainedView is { } chained && Top(await ReadState(ct)) == chained;
+        if (atTeam) { }
+        else if (story) await OpenCampaign(run.Region, run.Difficulty, run.StageId, ct);
         else
         {
             try { await OpenDungeon(run.Region, ct); }
@@ -59,9 +65,12 @@ public sealed partial class LivePlayGame : IEnergyGame
             }
         }
 
-        var stage = await FindStage(run.Number, ct, "dungeon-stage", run.StageId);
-        await Click("dungeon-stage", t => t.Id == stage.Id, (s2, _) => s2.Top?.Name is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView),
-            $"the team screen for {where}", ct);
+        if (!atTeam)
+        {
+            var stage = await FindStage(run.Number, ct, "dungeon-stage", run.StageId);
+            await Click("dungeon-stage", t => t.Id == stage.Id, (s2, _) => s2.Top?.Name is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView),
+                $"the team screen for {where}", ct);
+        }
         var after = await Settled(ct);
         if (Top(after) == PlayTargets.RefillView)
         {
@@ -122,20 +131,99 @@ public sealed partial class LivePlayGame : IEnergyGame
             await Back(teamView, ct);
             return new BattleOutcome(BattleResult.NotStarted, "Start did nothing (not enough energy?)");
         }
+        return await Fought(run, where, resultView, teamView, started, ct);
+    }
+
+    /// <summary>The run whose result screen is still open (the next run may start from it), with its team and Super Raid; null when it was left.</summary>
+    private (string Region, string Difficulty, int Number, string Team, bool Super)? _parked;
+
+    private static string TeamKey(EnergyRun run) => string.Join(",", run.Team ?? []);
+
+    /// <summary>The result screen of the last run is still open, in the same place: the next run starts from it (no trip to the village).</summary>
+    public bool CanChain(EnergyRun run) => _parked is { } p && p.Region == run.Region && p.Difficulty == run.Difficulty;
+
+    /// <summary>
+    /// From the result screen left open (Ehsan 2026-11-05: "don't go back to base after each play"): Replay for the same stage with the same team and
+    /// Super Raid (the battle starts at once), Next for the stage after it, and otherwise the result's team button ("the exit team then close will go back
+    /// to list"): its team screen for the same stage with another team, or closed for the stage list. Returns the team screen it reached, or that the
+    /// battle started; (null, false) when none was used (the result is then left the usual way, and the long way is taken).
+    /// </summary>
+    private async Task<(string? TeamView, bool Battle)> FromResult(EnergyRun run, string resultView, CancellationToken ct)
+    {
+        var parked = _parked;
+        _parked = null;
+        if (parked is not { } p) return (null, false);
+        if (Top(await ReadState(ct)) != resultView) return (null, false);
+        if (p.Region != run.Region || p.Difficulty != run.Difficulty) { await LeaveResult(ct, resultView); return (null, false); }
+        var same = p.Number == run.Number;
+        var kinds = same && p.Team == TeamKey(run) && p.Super == run.Target.SuperRaid ? new[] { "result-replay", "result-team" }
+            : run.Number == p.Number + 1 ? ["result-next", "result-team"] : ["result-team"];
+        var (_, targets, _) = await Read(ct);
+        var kind = kinds.FirstOrDefault(k => targets.Any(t => t.Kind == k && t.View == resultView && t.NotClickable is null));
+        if (kind is null)
+        {
+            log($"autoplay: none of {string.Join("/", kinds)} on {resultView}: the long way. Screen dump: {DumpScreen("result buttons")}");
+            await LeaveResult(ct, resultView);
+            return (null, false);
+        }
+        try
+        {
+            await Click(kind, t => t.View == resultView, (s2, _) => Top(s2) is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or MultiRefillView or UiState.MessageBoxView)
+                || s2.Active.Any(v => BattleViews.Contains(v.Name)) && !Has(s2, resultView), $"{kind} leads on", ct, within: TimeSpan.FromSeconds(15));
+        }
+        catch (PlayStopException e)
+        {
+            log($"autoplay: {kind} did not lead on ({e.Message}): the long way. Screen dump: {DumpScreen("result " + kind)}");
+            return (null, false);
+        }
+        var after = await Settled(ct);
+        if (after.Active.Any(v => BattleViews.Contains(v.Name)) && !Has(after, resultView))
+        {
+            // Replay starts the battle with the team it had: only pressed when the team and Super Raid are the same.
+            log($"autoplay: {kind}: the battle started from the result screen");
+            return (null, true);
+        }
+        if (Top(after) is PlayTargets.RefillView or MultiRefillView)
+        {
+            await Back(Top(after)!, ct);
+            return (null, false);
+        }
+        var teamView = Top(after);
+        if (teamView is null || !PlayTargets.IsTeamView(teamView)) return (null, false);
+        // The team screen is for the stage just played: kept for that stage (Next opens the next one's), closed for any other: back on the stage list.
+        if (same || kind == "result-next")
+        {
+            log($"autoplay: {kind}: on {teamView} without going back to the village");
+            return (teamView, false);
+        }
+        await Back(teamView, ct);
+        log($"autoplay: {kind}, then closed: on {Top(await ReadState(ct))} without going back to the village");
+        return (null, false);
+    }
+
+    /// <summary>
+    /// A started battle to its end. Its result screen is left open after a win or a loss (anything over it closed), for the next run to start from
+    /// (<see cref="FromResult"/>); any other end leaves it the usual way.
+    /// </summary>
+    private async Task<BattleOutcome> Fought(EnergyRun run, string where, string resultView, string? teamView, DateTime started, CancellationToken ct)
+    {
         var inBattle = await ReadState(ct);
         // The game's offer to buy what the stage costs, energy or keys (2026-11-02: Iron Twins, its multi-refill screen): closed, never pressed; the row rests.
         if (Top(inBattle) is PlayTargets.RefillView or MultiRefillView)
         {
             await Back(Top(inBattle)!, ct);
-            await Back(teamView, ct);
+            if (teamView is not null) await Back(teamView, ct);
             return new BattleOutcome(BattleResult.NotStarted, "not enough energy or keys (the refill offer was closed)");
         }
         if (!inBattle.Active.Any(v => BattleViews.Contains(v.Name))) await Refuse(inBattle, $"Start {where}", ct);
         log($"autoplay: {where} started");
         var result = await WaitBattle(ct, resultView);
-        await LeaveResult(ct, resultView);
         var pve = result?.Pve;
         var outcome = pve?.ResultType switch { 1 => BattleResult.Victory, 2 => BattleResult.Defeat, 3 => BattleResult.Draw, _ => BattleResult.Unknown };
+        await ClearOverResult(ct, resultView);
+        if (outcome is BattleResult.Victory or BattleResult.Defeat && Top(await ReadState(ct)) == resultView)
+            _parked = (run.Region, run.Difficulty, run.Number, TeamKey(run), run.Target.SuperRaid);
+        else await LeaveResult(ct, resultView);
         return new BattleOutcome(outcome, $"{(DateTime.UtcNow - started).TotalSeconds:0} s");
     }
 

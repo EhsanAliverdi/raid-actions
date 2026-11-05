@@ -46,6 +46,9 @@ public interface IEnergyGame
     /// nothing changes).
     /// </summary>
     Task<string> GearRowTeamAsync(IReadOnlyList<int> team, string fight, bool dryRun, CancellationToken ct);
+
+    /// <summary>The last run's result screen is still open where this run plays: it can start from there (Replay, Next, the team button), not from the village.</summary>
+    bool CanChain(EnergyRun run);
 }
 
 /// <summary>
@@ -278,7 +281,27 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         }
     }
 
+    /// <summary>Runs in one turn while each next one starts from the last one's result screen (Ehsan 2026-11-05: "only go to base after several").</summary>
+    public const int MaxChain = 5;
+
     public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
+    {
+        var done = await OneStep(ctx, ct);
+        var runs = 1;
+        while (runs < MaxChain && !ctx.DryRun && (done.StartsWith("Victory", StringComparison.Ordinal) || done.StartsWith("Defeat", StringComparison.Ordinal)) && _account is { } account)
+        {
+            var world = World(ctx, account, expected: false);
+            var next = EnergyPlanner.Plan(Effective(ctx, world), world);
+            if (next.Step != EnergyStep.Run || !game.CanChain(next.Run!) || QuestSummon(ctx) > 0) break;
+            var more = await OneStep(ctx, ct);
+            if (more.Length == 0) break;
+            done = more;
+            runs++;
+        }
+        return runs > 1 ? $"{done} ({runs} runs from the result screen)" : done;
+    }
+
+    private async Task<string> OneStep(PlayContext ctx, CancellationToken ct)
     {
         NewDay(ctx);
         var s = ctx.Settings.Energy;

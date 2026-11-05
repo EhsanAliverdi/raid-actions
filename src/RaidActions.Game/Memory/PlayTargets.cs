@@ -205,6 +205,7 @@ public static partial class PlayTargets
     /// <summary>The kinds Auto Play may click (each flow narrows it further; the spending ones only in a real run).</summary>
     public static readonly IReadOnlySet<string> Kinds = new HashSet<string>
     {
+        "result-replay", "result-next", "result-team",
         "village-battle", "village-inbox", "mode-arena", "arena-classic", "arena-tab", "arena-opponent", "arena-refresh", "team-start",
         "battle-auto", "battle-speed", "inbox-collect", "result-close", "mode-fw", "fw-crypt", "fw-stage", "mode-cc", "cc-level", "team-pick", "team-slot",
         "cc-difficulty", "cc-difficulty-item", "team-filter", "team-filter-vault", "filter-hide",
@@ -1063,6 +1064,16 @@ public static partial class PlayTargets
                     ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
             }
 
+        // A campaign or dungeon result's ways on (Ehsan 2026-11-05: "don't go back to base after each play"): Replay, Next and its team button, by name;
+        // each only when exactly one element says so (the names are checked live: the bot dumps the screen when one is missing).
+        if (t.View is DungeonResultView or StoryResultView or TwinsResultView)
+            foreach (var (kind, want, label) in new[] { ("result-replay", ResultReplayName(), "Replay"), ("result-next", ResultNextName(), "Next"), ("result-team", ResultTeamName(), "team") })
+            {
+                var hits = nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null
+                    && (want.IsMatch(x.Name) || x.BindingPath is { } bp && want.IsMatch(bp))).ToList();
+                if (hits.Count == 1) targets.Add(Make(kind, $"{t.View}: {label}", hits[0], hits[0], hits[0].Name));
+            }
+
         // The Tag Team Arena's result screens (BattleFinishArena3x3RewardDialog, seen 2026-10-31: prizes and the league bar, no button) close
         // on a tap: the target is the empty strip near the bottom.
         // Live Arena's result (2026-11-03) too: its RETURN TO ARENA bar at the bottom is no element.
@@ -1384,4 +1395,13 @@ public static partial class PlayTargets
     private static int? IntValue(IGameObjects g, ulong p) => p == 0 ? null : g.Int(p, IntProperty, "_value");
     private static bool? BoolValue(IGameObjects g, ulong p) => p == 0 ? null : g.Bool(p, BoolProperty, "_value");
     private static string? StringValue(IGameObjects g, ulong p) => p == 0 ? null : g.String(p, StringProperty, "_value");
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^(Replay|Repeat|Restart|Again)", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex ResultReplayName();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"^Next", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex ResultNextName();
+
+    [System.Text.RegularExpressions.GeneratedRegex(@"Team|Edit", System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex ResultTeamName();
 }

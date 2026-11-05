@@ -119,6 +119,11 @@ public sealed class FakeEnergyGame(Func<DateTime> now) : IEnergyGame
     public int Drops { get; set; }
     public int DropsPerRun { get; set; }
 
+    /// <summary>Runs that start from the last result screen (tests set it).</summary>
+    public bool Chain { get; set; }
+
+    public bool CanChain(EnergyRun run) => Chain;
+
     public Task<string> GearRowTeamAsync(IReadOnlyList<int> team, string fight, bool dryRun, CancellationToken ct)
     {
         Calls.Add($"gear {string.Join(",", team)}{(dryRun ? " (dry run)" : "")}");

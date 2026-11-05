@@ -81,7 +81,9 @@ public static class SwitchAccountCommand
                 if (r.B > screenH) MoveWindow(h, 0, screenH - (r.B - r.T), r.R - r.L, r.B - r.T, true);
                 Thread.Sleep(1200);
                 if (!GetWindowRect(h, out r)) return "Plarium Play's window could not be measured.";
-                if (Off(r) || r.B - (int)(260 * GetDpiForWindow(h) / 96.0) < 0)
+                // Only its bottom left must be on the screen (2026-11-05: after a phone's Remote Desktop at 200% left, the window stayed 2160x1440 on the
+                // PC's 1920x1080 screen, its right side off it, and the switch was refused).
+                if (r.L < -frame || r.B > screenH + frame || r.L + (int)(400 * GetDpiForWindow(h) / 96.0) > screenW || r.B - (int)(260 * GetDpiForWindow(h) / 96.0) < 0)
                     return $"Plarium Play's window ({r.R - r.L}x{r.B - r.T}) does not fit the screen ({screenW}x{screenH}): the account was not switched.";
                 output.WriteLine($"Plarium Play's window moved so its bottom is on the screen ({r.L},{r.T} {r.R - r.L}x{r.B - r.T}).");
             }

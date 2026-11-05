@@ -276,8 +276,18 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 break;
             }
             var count = play.Inbox.Count(match);
-            await Click("inbox-collect", t => t.Id == entry.Collect!.Id, (s2, lazy) => Top(s2) != PlayTargets.InboxView || lazy().Inbox.Count(match) < count,
-                $"\"{entry.Title}\" is collected", ct);
+            // An entry the game keeps after Collect (2026-11-06: KaelStormVex's energy gifts, twice; the turn's error paused its energy farming): logged and
+            // left, not the turn's error.
+            try
+            {
+                await Click("inbox-collect", t => t.Id == entry.Collect!.Id, (s2, lazy) => Top(s2) != PlayTargets.InboxView || lazy().Inbox.Count(match) < count,
+                    $"\"{entry.Title}\" is collected", ct);
+            }
+            catch (PlayStopException e)
+            {
+                log($"autoplay: inbox: Collect on [{entry.Title}|{entry.Message}|{entry.Icon}] did not take it ({e.Message}); left in the inbox. Screen dump: {DumpScreen("inbox collect")}");
+                break;
+            }
             // A rewards popup after collecting: closed with its own close.
             var s3 = await Settled(ct);
             if (Top(s3) is { } top && top != PlayTargets.InboxView && top.EndsWith("Overlay", StringComparison.Ordinal)) await Back(top, ct);

@@ -183,8 +183,9 @@ public sealed partial class LivePlayGame : IDoomTowerGame
                 if (!(await Read(ct)).Targets.Any(t => t.Kind == "mode-dt"))
                     throw new PlayStopException($"The battle menu shows no Doom Tower card. Screen dump: {DumpScreen("doom tower card")}");
                 try { await Click("mode-dt", null, (_, scan) => scan().Targets.Any(t => t.Kind == "dt-stage"), "the Doom Tower opens", ct, within: TimeSpan.FromSeconds(15)); }
-                catch (PlayStopException) when (Top(await ReadState(ct)) == PlayTargets.BattleMenuView)
+                catch (PlayStopException)
                 {
+                    if (Top(await ReadState(ct)) != PlayTargets.BattleMenuView) throw;
                     // The card was pressed and the battle menu stayed (2026-11-05/06: KaelStormVex, a new account, every 4 minutes): the tower is not open
                     // on this account yet; the area rests (the engine's hold for a locked area), not an error each turn.
                     throw new AreaLockedException($"the Doom Tower card did not open the tower (locked on this account). Screen dump: {DumpScreen("doom tower locked")}");

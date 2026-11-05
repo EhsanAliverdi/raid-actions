@@ -56,6 +56,9 @@ public static class SwitchAccountCommand
     {
         var pp = Process.GetProcessesByName("PlariumPlay").FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero);
         if (pp is null) return "Plarium Play's window is not open.";
+        // No click reaches a disconnected or locked session and every pixel reads blank (2026-11-06 05:31: Remote Desktop left mid-switch, and "the game is
+        // still running" was read for two minutes): refused, and the next bot hands the session to the console and tries again.
+        if (Input.MouseInput.SessionProblem() is { } session) return $"The account was not switched: {session}";
         var old = SetThreadDpiAwarenessContext(new IntPtr(-4)); // physical pixels, like the window's rectangle
         try
         {
@@ -93,6 +96,7 @@ public static class SwitchAccountCommand
             // log out ... while games are running" (a plain grey box) where the other account's avatar is. Opened, looked at, closed and tried again.
             for (var look = 0; look < 12; look++)
             {
+                if (Input.MouseInput.SessionProblem() is { } lost) return $"The account was not switched: {lost}";
                 // A Plarium Play dialog over the window (2026-11-04: "Enjoying Raid? Rate", the window dimmed under it) takes every click: Esc closes it,
                 // and the window is looked at again (the empty sidebar between Settings and the profile is light when nothing covers it).
                 for (var esc = 0; esc < 3 && Dimmed(r, scale); esc++)

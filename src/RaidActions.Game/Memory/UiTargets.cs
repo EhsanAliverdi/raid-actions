@@ -251,6 +251,12 @@ public static partial class UiTargets
             targets.Add(new UiTarget("back", "tag arena result: tap to continue", null, t.View,
                 new ClientRect(t.ClientWidth * 0.40f, t.ClientHeight * 0.86f, t.ClientWidth * 0.2f, t.ClientHeight * 0.06f), true, true, true, false, t.View,
                 "a tap on the empty bottom strip", ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
+        // The Clan vs Clan tournament's end screen (2026-11-05: it stopped every area on BlackLord65): its full-screen Fade takes a click (OnClickBinding),
+        // a tap outside its message and its one button; that button (what it does is not read) is never pressed.
+        if (t.View == "CvcOutroOverlay")
+            targets.Add(new UiTarget("back", "clan vs clan end: tap outside", null, t.View,
+                new ClientRect(t.ClientWidth * 0.04f, t.ClientHeight * 0.86f, t.ClientWidth * 0.08f, t.ClientHeight * 0.07f), true, true, true, false, t.View,
+                "a tap on the empty bottom-left corner (its Fade)", ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
         return targets.DistinctBy(t => (t.Kind, t.Id, t.Slot, t.Path, t.Rect)).ToList();
     }
 

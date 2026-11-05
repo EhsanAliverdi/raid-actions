@@ -90,14 +90,14 @@ public static class SwitchAccountCommand
             {
                 // A Plarium Play dialog over the window (2026-11-04: "Enjoying Raid? Rate", the window dimmed under it) takes every click: Esc closes it,
                 // and the window is looked at again (the empty sidebar between Settings and the profile is light when nothing covers it).
-                for (var esc = 0; esc < 3 && Dimmed(r.L + (int)(30 * scale), r.T + (r.B - r.T) * 2 / 3); esc++)
+                for (var esc = 0; esc < 3 && Dimmed(r, scale); esc++)
                 {
                     output.WriteLine("Plarium Play has a dialog open: Esc.");
                     keybd_event(0x1B, 0, 0, IntPtr.Zero);
                     keybd_event(0x1B, 0, 2, IntPtr.Zero);
                     Thread.Sleep(1200);
                 }
-                if (Dimmed(r.L + (int)(30 * scale), r.T + (r.B - r.T) * 2 / 3))
+                if (Dimmed(r, scale))
                 {
                     // What was seen, to tell a real dialog from a sidebar that is dark here (2026-11-05: on a phone's Remote Desktop at 200%).
                     var (px, py) = (r.L + (int)(30 * scale), r.T + (r.B - r.T) * 2 / 3);
@@ -172,6 +172,19 @@ public static class SwitchAccountCommand
     }
 
     /// <summary>The pixel is dark: the light sidebar is under a dialog's dimming.</summary>
+    /// <summary>
+    /// A dialog dims the whole window: the sidebar's column, looked at in six places from a third of the way down to near the bottom, is dark in nearly all of
+    /// them (2026-11-05: one point at two thirds was a sidebar icon at a 720-high window, #515153, and every switch from a phone's Remote Desktop failed).
+    /// </summary>
+    private static bool Dimmed(Rect r, double scale)
+    {
+        var x = r.L + (int)(30 * scale);
+        var dark = 0;
+        for (var i = 0; i < 6; i++)
+            if (Dimmed(x, r.T + (r.B - r.T) * (33 + 10 * i) / 100)) dark++;
+        return dark >= 5;
+    }
+
     private static bool Dimmed(int x, int y)
     {
         var dc = GetDC(IntPtr.Zero);

@@ -69,7 +69,10 @@ public static class SwitchAccountCommand
             // Only its bottom left is used (the profile button and the menu that opens above it): a window taller than the screen (2026-11-05: 2160x1440 on a
             // 2324x1080 phone screen; it does not shrink below that) goes up until its bottom is on the screen, its title bar off the top.
             var (screenW, screenH) = (GetSystemMetrics(0), GetSystemMetrics(1));
-            if (r.L < 0 || r.B > screenH || r.R > screenW)
+            // A maximized window hangs its invisible frame over the screen's edges (2026-11-05: 1936x1056 at -8,-8 on a 1920x1080 console): that much is on it.
+            var frame = (int)(16 * GetDpiForWindow(h) / 96.0);
+            bool Off(Rect w) => w.L < -frame || w.B > screenH + frame || w.R > screenW + frame;
+            if (Off(r))
             {
                 var (w0, h0) = (Math.Min(r.R - r.L, screenW), Math.Min(r.B - r.T, screenH));
                 MoveWindow(h, 0, 0, w0, h0, true);
@@ -78,7 +81,7 @@ public static class SwitchAccountCommand
                 if (r.B > screenH) MoveWindow(h, 0, screenH - (r.B - r.T), r.R - r.L, r.B - r.T, true);
                 Thread.Sleep(1200);
                 if (!GetWindowRect(h, out r)) return "Plarium Play's window could not be measured.";
-                if (r.L < 0 || r.B > screenH || r.B - (int)(260 * GetDpiForWindow(h) / 96.0) < 0)
+                if (Off(r) || r.B - (int)(260 * GetDpiForWindow(h) / 96.0) < 0)
                     return $"Plarium Play's window ({r.R - r.L}x{r.B - r.T}) does not fit the screen ({screenW}x{screenH}): the account was not switched.";
                 output.WriteLine($"Plarium Play's window moved so its bottom is on the screen ({r.L},{r.T} {r.R - r.L}x{r.B - r.T}).");
             }

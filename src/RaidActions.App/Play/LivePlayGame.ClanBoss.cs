@@ -112,6 +112,12 @@ public sealed partial class LivePlayGame : IClanBossGame
                 $"{difficulty} selected", ct);
             await Task.Delay(600, ct);
         }
+        // Start greyed out (2026-11-06 02:56: BlackLord65 right after the boss's reset, "0 damage today", twice): not now; the activity tries again in an hour.
+        if ((await Read(ct)).Targets.FirstOrDefault(t => t.Kind == "clan-battle") is { NotClickable: { } why })
+        {
+            await HomeAsync(Action("to the village"), ct);
+            return new BattleOutcome(BattleResult.NotStarted, $"{label} {difficulty}: Start is greyed out ({why}); the boss may be resetting");
+        }
         await Click("clan-battle", null, (s2, _) => s2.Top?.Name is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView),
             "the team screen", ct, within: TimeSpan.FromSeconds(10));
         var after = await Settled(ct);

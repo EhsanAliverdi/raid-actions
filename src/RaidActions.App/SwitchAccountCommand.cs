@@ -66,15 +66,21 @@ public static class SwitchAccountCommand
             if (!GetWindowRect(h, out var r)) return "Plarium Play's window could not be measured.";
             // Its profile button is at the bottom of its sidebar: the window must be on the screen (2026-11-05: a 1162x540 Remote Desktop screen and a
             // 1080x720 window, the button under the screen's edge, and the switch failed). Moved to the top left and made the screen's size, then measured again.
+            // Only its bottom left is used (the profile button and the menu that opens above it): a window taller than the screen (2026-11-05: 2160x1440 on a
+            // 2324x1080 phone screen; it does not shrink below that) goes up until its bottom is on the screen, its title bar off the top.
             var (screenW, screenH) = (GetSystemMetrics(0), GetSystemMetrics(1));
-            if (r.L < 0 || r.T < 0 || r.R > screenW || r.B > screenH)
+            if (r.L < 0 || r.B > screenH || r.R > screenW)
             {
-                MoveWindow(h, 0, 0, Math.Min(r.R - r.L, screenW), Math.Min(r.B - r.T, screenH), true);
+                var (w0, h0) = (Math.Min(r.R - r.L, screenW), Math.Min(r.B - r.T, screenH));
+                MoveWindow(h, 0, 0, w0, h0, true);
+                Thread.Sleep(800);
+                if (!GetWindowRect(h, out r)) return "Plarium Play's window could not be measured.";
+                if (r.B > screenH) MoveWindow(h, 0, screenH - (r.B - r.T), r.R - r.L, r.B - r.T, true);
                 Thread.Sleep(1200);
                 if (!GetWindowRect(h, out r)) return "Plarium Play's window could not be measured.";
-                if (r.L < 0 || r.T < 0 || r.R > screenW || r.B > screenH)
+                if (r.L < 0 || r.B > screenH || r.B - (int)(260 * GetDpiForWindow(h) / 96.0) < 0)
                     return $"Plarium Play's window ({r.R - r.L}x{r.B - r.T}) does not fit the screen ({screenW}x{screenH}): the account was not switched.";
-                output.WriteLine($"Plarium Play's window moved onto the screen ({r.R - r.L}x{r.B - r.T}).");
+                output.WriteLine($"Plarium Play's window moved so its bottom is on the screen ({r.L},{r.T} {r.R - r.L}x{r.B - r.T}).");
             }
             var scale = GetDpiForWindow(h) / 96.0;
             var (otherX, otherY) = (r.L + (int)(OtherX * scale), r.B - (int)(OtherFromBottom * scale));

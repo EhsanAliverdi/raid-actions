@@ -55,15 +55,10 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
         {
             // Ehsan (2026-10-29): "always hand the session to the console; a remote connection should not stop Auto Play". Only for a
             // session that is already disconnected (never while he is connected): the on-demand task moves it to the PC's monitor.
-            if (session.Contains("disconnected", StringComparison.OrdinalIgnoreCase) && DateTime.UtcNow - _lastHandoff > TimeSpan.FromMinutes(2))
+            // The session guard hands it over (it also watches every 3 s, Ehsan 2026-11-06: "remote connection should not break the bot").
+            if (SessionGuard.TryHandoff())
             {
-                _lastHandoff = DateTime.UtcNow;
-                var ran = RunHandoff();
-                Event(new AutoplayEvent(DateTime.UtcNow, "engine", "handoff", ran is null
-                    ? "Remote Desktop disconnected: handed the session to the console so Auto Play keeps playing"
-                    : "Remote Desktop disconnected; the console handoff did not run: " + ran));
                 Thread.Sleep(5000);
-                _drawCheckAt = DateTime.UtcNow + TimeSpan.FromSeconds(20);
                 if (MouseInput.SessionProblem() is null) return null;
             }
             return session;
@@ -121,7 +116,24 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
             : "the game cannot reach its server; Retry was not pressed: " + why));
     }
 
-    private DateTime _lastHandoff = DateTime.MinValue;
+    /// <summary>
+    /// The session guard for this bot (B-1/B-2, Ehsan 2026-11-06): the console handoff as soon as the Remote Desktop is disconnected (checked every 3 s),
+    /// and inputs that wait for the session instead of failing. Each handoff is an event, and the game's drawing is checked 20 s later (it can go black).
+    /// </summary>
+    public void GuardSession()
+    {
+        SessionGuard.Handoff = () =>
+        {
+            var ran = RunHandoff();
+            Event(new AutoplayEvent(DateTime.UtcNow, "engine", "handoff", ran is null
+                ? "Remote Desktop disconnected: handed the session to the console so Auto Play keeps playing"
+                : "Remote Desktop disconnected; the console handoff did not run: " + ran));
+            if (ran is null) _drawCheckAt = DateTime.UtcNow + TimeSpan.FromSeconds(20);
+            return ran;
+        };
+        SessionGuard.Log = text => print($"{DateTime.Now:HH:mm:ss} session: {text}");
+        SessionGuard.Watch(TimeSpan.FromSeconds(3));
+    }
 
     /// <summary>When to look at the game after a handoff.</summary>
     private DateTime? _drawCheckAt = DateTime.UtcNow + TimeSpan.FromMinutes(2);

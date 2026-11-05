@@ -17,8 +17,14 @@ public static class MouseInput
     /// <summary>Brings the game to the front if it is not; the reason it could not, or null.</summary>
     public static string? EnsureForeground(GameWindowInfo w)
     {
+        if (GetForegroundWindow() == w.Handle && SessionProblem() is null) return null;
+        // A session that is away (a Remote Desktop left or arriving): Auto Play waits for it, up to 3 minutes, instead of failing the action (SessionGuard).
+        var waits = SessionGuard.Waits;
+        if (SessionGuard.WaitActive(TimeSpan.FromMinutes(3)) is { } session) return session;
+        // The screen may have changed size while the session was away: a point worked out on the old window is not sent.
+        if (SessionGuard.Waits != waits && Game.Window.GameWindow.Find().Window is { } now && (now.Handle != w.Handle || now.Client != w.Client))
+            return "The game window changed while the session was away (a Remote Desktop came or went): nothing sent; the next step reads it again.";
         if (GetForegroundWindow() == w.Handle) return null;
-        if (SessionProblem() is { } session) return session;
         // Each way in turn until Windows confirms the game is in front; a second round after a short pause (another window can take the
         // front for a moment, a notification). Still not in front: refuse.
         for (var attempt = 0; attempt < 2; attempt++)
@@ -38,6 +44,15 @@ public static class MouseInput
     /// Why no window can come to the front (nothing can receive input): the session is disconnected (a closed Remote Desktop) or locked.
     /// Null when the session has the input desktop.
     /// </summary>
+    /// <summary>Windows' connect state of this session (0 active, 4 disconnected); -1 when it cannot be read.</summary>
+    public static int SessionState()
+    {
+        if (!WTSQuerySessionInformation(IntPtr.Zero, -1, 8 /* WTSConnectState */, out var buffer, out _)) return -1;
+        var state = Marshal.ReadInt32(buffer);
+        WTSFreeMemory(buffer);
+        return state;
+    }
+
     public static string? SessionProblem()
     {
         if (WTSQuerySessionInformation(IntPtr.Zero, -1 /* this session */, 8 /* WTSConnectState */, out var buffer, out _))

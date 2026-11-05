@@ -213,9 +213,15 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
         var pool = RaidExtractor.AccountPool.Load(dir);
         if (!pool.Rotate) return null;
         var now = DateTime.UtcNow;
+        // A new bot on the account whose turn ran out in the last two hours goes on with that turn, so it rotates at once (2026-11-05: a restart after the
+        // game went black gave BlackLord65 a fresh 30 minutes after it had played an hour; Ehsan: "you keep going to the same account"). An older turn
+        // (the bot was off) starts a new one.
+        var kept = RaidExtractor.AccountTurn.Load(dir);
         _turn = _turn?.Id == current
-            ? (RaidExtractor.AccountTurn.Load(dir) is { } saved && saved.Id == current ? saved : _turn)
-            : RaidExtractor.AccountTurn.Begin(dir, current, pool.SliceOf(current), now);
+            ? (kept is { } saved && saved.Id == current ? saved : _turn)
+            : kept is { } last && last.Id == current && now - last.EndsUtc(pool.SliceOf(current)) is var over && over >= TimeSpan.Zero && over < TimeSpan.FromHours(2)
+                ? last
+                : RaidExtractor.AccountTurn.Begin(dir, current, pool.SliceOf(current), now);
         return pool.RotateDue(current, _turn, now, nextUsefulUtc);
     }
 

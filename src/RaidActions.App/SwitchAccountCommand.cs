@@ -98,7 +98,14 @@ public static class SwitchAccountCommand
                     Thread.Sleep(1200);
                 }
                 if (Dimmed(r.L + (int)(30 * scale), r.T + (r.B - r.T) * 2 / 3))
-                    return "Plarium Play has a dialog open that Esc does not close: the account was not switched.";
+                {
+                    // What was seen, to tell a real dialog from a sidebar that is dark here (2026-11-05: on a phone's Remote Desktop at 200%).
+                    var (px, py) = (r.L + (int)(30 * scale), r.T + (r.B - r.T) * 2 / 3);
+                    var dc = GetDC(IntPtr.Zero);
+                    var c = GetPixel(dc, px, py);
+                    ReleaseDC(IntPtr.Zero, dc);
+                    return $"Plarium Play has a dialog open that Esc does not close (the sidebar at {px},{py} reads #{c & 0xFF:X2}{(c >> 8) & 0xFF:X2}{(c >> 16) & 0xFF:X2}; window {r.L},{r.T} {r.R - r.L}x{r.B - r.T}, scale {scale}): the account was not switched.";
+                }
                 Click(r.L + (int)(ProfileX * scale), r.B - (int)(ProfileFromBottom * scale));
                 Thread.Sleep(1800);
                 // The other account's avatar, found on the screen (2026-11-04: on the PC's own monitor at 100% the menu's rows are not where they were at

@@ -119,6 +119,12 @@ public sealed class FakeEnergyGame(Func<DateTime> now) : IEnergyGame
     public int Drops { get; set; }
     public int DropsPerRun { get; set; }
 
+    public Task<string> GearRowTeamAsync(IReadOnlyList<int> team, string fight, bool dryRun, CancellationToken ct)
+    {
+        Calls.Add($"gear {string.Join(",", team)}{(dryRun ? " (dry run)" : "")}");
+        return Task.FromResult("2 pieces");
+    }
+
     public Task<int> SellCampaignGearAsync(GearSellSettings settings, bool dryRun, CancellationToken ct)
     {
         if (Drops < settings.Every) return Task.FromResult(0);

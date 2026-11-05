@@ -40,6 +40,12 @@ public interface IEnergyGame
     /// pieces wait, through the sell command's checks; how many were sold (a dry run: 0, the sale shown).
     /// </summary>
     Task<int> SellCampaignGearAsync(GearSellSettings settings, bool dryRun, CancellationToken ct);
+
+    /// <summary>
+    /// Better gear for a row's own team from the inventory (unequipped pieces only: nobody else loses one); what was done ("nothing better ..." when
+    /// nothing changes).
+    /// </summary>
+    Task<string> GearRowTeamAsync(IReadOnlyList<int> team, string fight, bool dryRun, CancellationToken ct);
 }
 
 /// <summary>
@@ -64,6 +70,14 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     private readonly HashSet<string> _dryShown = [];
     /// <summary>Dungeons seen closed today (a Keep or Iron Twins fortress not open on this day): "whichever is open" rows skip them.</summary>
     private readonly HashSet<string> _closedToday = [];
+
+    /// <summary>When each row's team last had a gear review (restored from today's "gear" events).</summary>
+    private readonly Dictionary<string, DateTime> _gearedAt = [];
+
+    /// <summary>The row has its own team and a gear review every few hours, and the last one is that long ago (or none since the bot started).</summary>
+    private bool GearDue(EnergyTarget row, DateTime utc) =>
+        row.GearEveryHours is > 0 and var h && row.Team.Count > 0
+        && (!_gearedAt.TryGetValue(row.Id, out var at) || utc - at >= TimeSpan.FromHours(h));
     private int _refillsToday, _wins, _losses;
     private const int MaxQuestRowLosses = 2;
     private readonly Dictionary<string, int> _questRowLosses = [];
@@ -101,6 +115,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 && EnergyPlaces.All.FirstOrDefault(p => e.Text.StartsWith(p.Name + " ", StringComparison.Ordinal)) is { } closedPlace)
                 _closedToday.Add(closedPlace.Region);
             // Today's food rank-ups and summons ("ranked up 3 food champion(s)", "opened 2 Mystery shard(s)").
+            if (e.Kind is "gear" or "gear-error" && System.Text.RegularExpressions.Regex.Match(e.Text, @"^row (\w+):") is { Success: true } g) _gearedAt[g.Groups[1].Value] = e.Utc;
             if (e.Kind == "rankup" && System.Text.RegularExpressions.Regex.Match(e.Text, @"^ranked up (\d+)") is { Success: true } r) _rankedUp += int.Parse(r.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
             if (e.Kind == "summon" && System.Text.RegularExpressions.Regex.Match(e.Text, @"^opened (\d+)") is { Success: true } o) _summoned += int.Parse(o.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
             if (e.Kind == "cost" && System.Text.RegularExpressions.Regex.Match(e.Text, @"^(\S+) costs ([\d.]+)") is { Success: true } c
@@ -210,6 +225,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     private EnergyTarget Smart(PlayContext ctx, EnergyTarget t, EnergyWorld w)
     {
         var r = ctx.Settings.Rules;
+        if (r.SmartSuperRaid && t.Food && _account?.Champions is { } champions) return SmartFood(ctx, t, w, champions);
         if (!r.SmartSuperRaid || t.Area != "Dungeon" || t.Food || t.Progress) return t;
         var need = _rowNeed.TryGetValue(t.Id, out var n) ? n : SuperRaidRules.Need.Farm;
         if ((t.Stage ?? EnergyPlanner.HighestBeaten(t, w.Progress)) is not { } number) return t;
@@ -218,6 +234,19 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         var energy = w.Resources.GetValueOrDefault("Energy");
         var cap = ctx.LastResources?.EnergyCap ?? 124;
         return t with { SuperRaid = SuperRaidRules.Use(need, energy, cap, cost, w.SuperRaidMultiplier, r.SuperRaidEnergyShare) };
+    }
+
+    /// <summary>A food row: Super Raid by the food the planner puts in the team (<see cref="SuperRaidRules.UseForFood"/>); normal when the cost is not known.</summary>
+    private static EnergyTarget SmartFood(PlayContext ctx, EnergyTarget t, EnergyWorld w, IReadOnlyList<ChampionOut> champions)
+    {
+        if ((t.Stage ?? EnergyPlanner.HighestBeaten(t, w.Progress)) is not { } number) return t with { SuperRaid = false };
+        var (resource, cost, known, _) = EnergyPlanner.Cost(t with { SuperRaid = false }, number, w);
+        if (resource != "Energy" || !known) return t with { SuperRaid = false };
+        var picks = FoodPlanner.Plan(t.Team, champions, ctx.Settings.Energy.Food, 4).Food.ToHashSet();
+        var food = champions.Where(c => picks.Contains(c.Id)).ToList();
+        var cap = ctx.LastResources?.EnergyCap ?? 124;
+        var r = ctx.Settings.Rules;
+        return t with { SuperRaid = SuperRaidRules.UseForFood(food, w.Resources.GetValueOrDefault("Energy"), cap, cost, w.SuperRaidMultiplier, r.SuperRaidEnergyShare) };
     }
 
     // Before the cap, not at it: a turn elsewhere can last minutes, and energy above the cap stops regenerating (Ehsan 2026-11-01).
@@ -327,6 +356,25 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             case EnergyStep.Run:
             {
                 var run = plan.Run!;
+                if (GearDue(run.Target, ctx.Utc))
+                {
+                    // The row's team gets a gear review first, every GearEveryHours (a failure waits as long: never the run itself).
+                    _gearedAt[run.Target.Id] = ctx.Utc;
+                    try
+                    {
+                        var done = await game.GearRowTeamAsync(run.Target.Team, "Campaign: " + EnergyPlanner.Describe(run), ctx.DryRun, ct);
+                        ctx.Event(AreaId, "gear", $"row {run.Target.Id}: {done}");
+                        _account = await game.ReadAccountAsync(ct);
+                        _accountAt = ctx.Utc;
+                        return "gear review: " + done;
+                    }
+                    catch (Exception e) when (e is not OperationCanceledException)
+                    {
+                        ctx.Event(AreaId, "gear-error", $"row {run.Target.Id}: gear review not done (again in {run.Target.GearEveryHours} h): {e.Message}");
+                        await game.ReadAccountAsync(ct);
+                        return "";
+                    }
+                }
                 var before = _account.Resources.GetValueOrDefault(run.Resource);
                 await ctx.ThinkAsync(ct);
                 var outcome = await game.RunStageAsync(run, ctx.DryRun, ct);

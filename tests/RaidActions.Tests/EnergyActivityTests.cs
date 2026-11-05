@@ -26,6 +26,28 @@ public class EnergyActivityTests
     private static EnergyPlaySettings On(params EnergyTarget[] rows) => new() { Enabled = true, Targets = [.. rows] };
 
     [Fact]
+    public async Task A_row_s_own_team_gets_a_gear_review_before_its_first_run_and_then_every_few_hours()
+    {
+        var row = Row("kael", "Hard") with { Team = [1, 3], GearEveryHours = 2 };
+        var (host, game, engine) = Make(On(row), stopAfter: TimeSpan.FromHours(5));
+        game.Energy = 300;
+        await engine.RunAsync(once: false, Limit());
+        Assert.Equal("gear 1,3", game.Calls[0]);
+        Assert.InRange(game.Calls.Count(c => c.StartsWith("gear", StringComparison.Ordinal)), 2, 3); // at the start, after 2 h, after 4 h
+        Assert.Contains(host.Events, e => e.Kind == "gear" && e.Text.StartsWith("row kael:", StringComparison.Ordinal));
+        Assert.Contains(game.Calls, c => c.StartsWith("run", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_row_without_its_own_team_or_without_the_setting_gets_no_gear_review()
+    {
+        var (_, game, engine) = Make(On(Row("a", "Hard") with { GearEveryHours = 2 }, Row("b") with { Team = [1] }), stopAfter: TimeSpan.FromHours(1));
+        game.Energy = 100;
+        await engine.RunAsync(once: false, Limit());
+        Assert.DoesNotContain(game.Calls, c => c.StartsWith("gear", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task The_first_row_plays_its_runs_then_the_next_row_takes_the_rest_of_the_energy()
     {
         var (host, game, engine) = Make(On(Row("hard", "Hard", runs: 2), Row("normal")), stopAfter: TimeSpan.FromMinutes(30));

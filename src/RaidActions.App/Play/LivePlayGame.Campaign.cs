@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using RaidActions.Autoplay;
 using RaidActions.Game.Memory;
 using RaidExtractor.Autoplay;
+using RaidExtractor.Battle;
 
 namespace RaidActions.App.Play;
 
@@ -345,6 +346,24 @@ public sealed partial class LivePlayGame
     }
 
     private string GearBaselineFile => Path.Combine(ExtractorOutput, "autoplay", "campaign-gear-baseline.json");
+
+    /// <summary>
+    /// A gear review of a campaign row's own team (Ehsan 2026-11-05: "every now and then review gear"): Prepare from the inventory only (unequipped pieces,
+    /// nobody else loses one), as for Cursed City. A champion in a vault is left as it is (the row's team plays from the list).
+    /// </summary>
+    public async Task<string> GearRowTeamAsync(IReadOnlyList<int> team, string fight, bool dryRun, CancellationToken ct)
+    {
+        var (data, gd, ratings, locks) = await Account(ct);
+        var made = Prepare.Make(data, gd, ratings, team, fight, locks: locks);
+        var picked = made.Members.Where(m => m.Changes && !m.InVault).ToList();
+        if (picked.Count == 0) return "nothing better in the inventory; the team keeps its gear";
+        var (commands, _, problem) = Prepare.BotCommands(data, gd, fight, picked, ExtractorOutput, dryRun);
+        if (commands is null) return problem ?? "nothing to equip";
+        log($"autoplay: STEP gear review for {fight}: {string.Join(", ", picked.Select(m => $"{m.Name} ({m.Moves.Count} piece(s))"))}");
+        foreach (var args in commands) await RunCommand(args, ct);
+        var pieces = picked.Sum(m => m.Moves.Count);
+        return $"{pieces} piece{(pieces == 1 ? "" : "s")} for {string.Join(", ", picked.Select(m => m.Name))}" + (dryRun ? " (dry run)" : "");
+    }
 
     public async Task<int> SellCampaignGearAsync(GearSellSettings settings, bool dryRun, CancellationToken ct)
     {

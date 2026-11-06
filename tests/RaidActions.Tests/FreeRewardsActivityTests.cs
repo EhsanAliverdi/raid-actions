@@ -51,6 +51,20 @@ public class FreeRewardsActivityTests
     private static CancellationToken Limit() => new CancellationTokenSource(TimeSpan.FromSeconds(20)).Token;
 
     [Fact]
+    public async Task A_new_bot_on_the_account_does_not_check_again_before_the_interval()
+    {
+        // 2026-11-06: each rotation restarted the bot, and each one opened the reward pages at once.
+        var (host, game, engine) = Make(TimeSpan.FromMinutes(5));
+        await engine.RunAsync(once: false, new CancellationTokenSource(TimeSpan.FromSeconds(20)).Token);
+        Assert.Equal(1, game.Calls);
+        host.Stop = false;
+        var start = host.UtcNow;
+        host.OnDelay = h => { if (h.UtcNow - start >= TimeSpan.FromMinutes(5)) h.Stop = true; };
+        await new AutoplayEngine([new FreeRewardsActivity(game)], new FakeArenaGame(() => host.UtcNow), host, false).RunAsync(once: false, new CancellationTokenSource(TimeSpan.FromSeconds(20)).Token);
+        Assert.Equal(1, game.Calls);   // the second bot knew the last check (20 minutes apart)
+    }
+
+    [Fact]
     public async Task The_gifts_are_checked_every_twenty_minutes_and_the_ready_ones_collected()
     {
         var (host, game, engine) = Make(TimeSpan.FromMinutes(65));

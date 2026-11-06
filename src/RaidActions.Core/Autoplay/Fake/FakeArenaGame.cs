@@ -186,4 +186,9 @@ public sealed class FakeHost(DateTime start) : IAutoplayHost
     }
 
     public void Event(AutoplayEvent e) => Events.Add(e);
+
+    /// <summary>The areas' saved state, kept between engines on this host (a rotation's restart).</summary>
+    public Dictionary<string, string> States { get; } = [];
+    public IReadOnlyDictionary<string, string> LoadActivityState() => new Dictionary<string, string>(States);
+    public void SaveActivityState(IReadOnlyDictionary<string, string> states) { States.Clear(); foreach (var (k, v) in states) States[k] = v; }
 }

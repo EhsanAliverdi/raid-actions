@@ -219,6 +219,19 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
     /// The turn on the account in the game ends now? It starts once per account (turn.json, which the app shows); the app's "+20 min" is read back each
     /// time.
     /// </summary>
+    private string StatePath => Path.Combine(dir, AutoplaySettings.Folder, "state.json");
+
+    public IReadOnlyDictionary<string, string> LoadActivityState()
+    {
+        try
+        {
+            return File.Exists(StatePath) ? JsonSerializer.Deserialize<Dictionary<string, string>>(File.ReadAllText(StatePath), AutoplayJson.Options) ?? [] : new Dictionary<string, string>();
+        }
+        catch (Exception e) when (e is IOException or JsonException) { return new Dictionary<string, string>(); }
+    }
+
+    public void SaveActivityState(IReadOnlyDictionary<string, string> states) => AutoplayJson.WriteAtomic(StatePath, states);
+
     public string? RotateDue(DateTime? nextUsefulUtc)
     {
         if (RaidExtractor.OutputLayout.GameId(dir) is not { } current) return null;

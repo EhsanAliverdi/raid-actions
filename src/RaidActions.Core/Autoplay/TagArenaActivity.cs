@@ -55,16 +55,32 @@ public sealed class TagArenaActivity(ITagArenaGame game) : IActivity
         }
     }
 
+    public bool Urgent(PlayContext ctx) => ctx.Settings.TagArena.UseFreeRefresh && _board is { FreeRefreshAvailable: true } && Eligible(ctx.Settings.TagArena).Count == 0;
+
     public bool Full(PlayContext ctx) => _tokens >= 10 - ctx.Settings.Rules.TokenMargin;
 
     public Decision Decide(PlayContext ctx)
     {
         if (_dryShown) return Decision.Off("shown in this dry run");
-        if (_board is null || ctx.Utc - _checkedAt >= Recheck) return Decision.Now("looking at the Tag Team Arena");
         var s = ctx.Settings.TagArena;
+        // Out of tokens with the board known: an hour before looking again, not 20 minutes (Ehsan 2026-11-06: "no token: no point going to the arena").
+        var recheck = _board is not null && ArenaRules.SpendableTokens(_tokens ?? 0, s) == 0 && !(Eligible(s).Count == 0 && s.UseFreeRefresh && _board.FreeRefreshAvailable)
+            ? TimeSpan.FromHours(1) : Recheck;
+        if (_board is null || ctx.Utc - _checkedAt >= recheck) return Decision.Now("looking at the Tag Team Arena");
         if (Eligible(s).Count > 0 && ArenaRules.SpendableTokens(_tokens ?? 0, s) > 0) return Decision.Now("an opponent to fight");
         if (Eligible(s).Count == 0 && s.UseFreeRefresh && _board.FreeRefreshAvailable) return Decision.Now("nobody left to fight: free refresh");
-        return Decision.Wait(_checkedAt + Recheck, Eligible(s).Count > 0 ? "waiting for a token" : "nobody left to fight: waiting for the free refresh");
+        return Decision.Wait(_checkedAt + recheck, Eligible(s).Count > 0 ? "waiting for a token" : "nobody left to fight: waiting for the free refresh");
+    }
+
+    private sealed record Saved(ArenaBoard? Board, double? Tokens, DateTime CheckedAt, List<long> Skip);
+
+    public string? SaveState() => _board is null ? null : System.Text.Json.JsonSerializer.Serialize(new Saved(_board, _tokens, _checkedAt, [.. _skip]), AutoplayJson.Options);
+
+    public void LoadState(string json, DateTime utc)
+    {
+        if (System.Text.Json.JsonSerializer.Deserialize<Saved>(json, AutoplayJson.Options) is not { } s || s.Board is null) return;
+        (_board, _tokens, _checkedAt) = (s.Board, s.Tokens, s.CheckedAt);
+        _skip.UnionWith(s.Skip);
     }
 
     public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)

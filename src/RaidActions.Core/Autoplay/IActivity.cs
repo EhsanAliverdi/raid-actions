@@ -24,6 +24,17 @@ public interface IActivity
 
     /// <summary>What this area spends is at its cap, so it has stopped regenerating (Ehsan 2026-11-01: nothing may stay full): the area goes before all others.</summary>
     bool Full(PlayContext ctx) => false;
+    /// <summary>
+    /// A chance that comes and goes with the clock is here now (an arena's free refresh with nobody left to fight): a chain of runs elsewhere ends for it
+    /// (<see cref="PlayContext.ChainBreak"/>). Wanting to act is not enough (2026-11-06: the arena's routine look ended every 3-star chain after one run).
+    /// </summary>
+    bool Urgent(PlayContext ctx) => false;
+
+    /// <summary>What this area knows that a new bot on the account should not have to look up again (JSON); null: nothing.</summary>
+    string? SaveState() => null;
+
+    /// <summary>Takes back <see cref="SaveState"/>'s JSON from the last bot on this account (at <paramref name="utc"/>, the new bot's start).</summary>
+    void LoadState(string json, DateTime utc) { }
     Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct);
     AreaStatus Status(PlayContext ctx, Decision decision);
 }

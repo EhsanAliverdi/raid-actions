@@ -26,6 +26,25 @@ public class AutoplayEngineTests
     private static IEnumerable<long> Fought(FakeArenaGame g) => g.Calls.Where(c => c.StartsWith("fight ", StringComparison.Ordinal)).Select(c => long.Parse(c[6..]));
 
     [Fact]
+    public async Task A_new_bot_keeps_what_the_last_one_knew_and_does_not_open_the_arena_without_a_token()
+    {
+        // The first bot spends the tokens and stops (a rotation's end).
+        var (host, game, engine) = Make(ArenaOn(), stopAfter: TimeSpan.FromMinutes(20));
+        await engine.RunAsync(once: false, Limit());
+        Assert.True(host.States.ContainsKey(ClassicArenaActivity.AreaId));
+        Assert.InRange(game.Tokens, 0, 0.99);
+
+        // The next bot on the account, a few minutes later, with no token: it knows the board and does not go to look.
+        host.Stop = false;
+        var start = host.UtcNow;
+        host.OnDelay = h => { if (h.UtcNow - start >= TimeSpan.FromMinutes(2)) h.Stop = true; };
+        game.Tokens = 0;
+        game.Calls.Clear();
+        await new AutoplayEngine([new ClassicArenaActivity()], game, host, false).RunAsync(once: false, Limit());
+        Assert.DoesNotContain("open-arena", game.Calls);
+    }
+
+    [Fact]
     public async Task Switched_off_it_stops_at_once_and_touches_nothing()
     {
         var (host, game, engine) = Make(new AutoplaySettings());

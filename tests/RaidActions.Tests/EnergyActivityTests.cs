@@ -63,6 +63,7 @@ public class EnergyActivityTests
         public string Name => "Classic Arena";
         public bool IsEnabled(AutoplaySettings settings) => true;
         public Decision Decide(PlayContext ctx) => Played ? Decision.Off("played") : ctx.Utc >= at ? Decision.Now("the free refresh is here") : Decision.Wait(at, "refresh later");
+        public bool Urgent(PlayContext ctx) => !Played && ctx.Utc >= at;
         public Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct) { Played = true; return Task.FromResult("refreshed"); }
         public AreaStatus Status(PlayContext ctx, Decision decision) => new(Id, Name, true, AreaState.Waiting, "", null, [], []);
     }
@@ -85,6 +86,33 @@ public class EnergyActivityTests
         Assert.Equal("classic-arena", after.Area);
         var before = host.Events.TakeWhile(e => e != chainEnd).Count(e => e.Kind == "battle");
         Assert.InRange(before, 2, 6);   // some runs in a row, not all 12: the refresh came first
+    }
+
+    /// <summary>An area that always wants a look (an arena's routine read) but is never urgent.</summary>
+    private sealed class AlwaysLooking : IActivity
+    {
+        public int Turns { get; private set; }
+        public string Id => "classic-arena";
+        public string Name => "Classic Arena";
+        public bool IsEnabled(AutoplaySettings settings) => true;
+        public Decision Decide(PlayContext ctx) => Decision.Now("looking at the arena");
+        public Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct) { Turns++; return Task.FromResult("looked"); }
+        public AreaStatus Status(PlayContext ctx, Decision decision) => new(Id, Name, true, AreaState.Waiting, "", null, [], []);
+    }
+
+    [Fact]
+    public async Task An_area_that_only_wants_a_look_does_not_end_the_chain()
+    {
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 }, Energy = On(Row("farm", "Hard")) } };
+        var game = new FakeEnergyGame(() => host.UtcNow) { Energy = 300, Chain = true };
+        var looking = new AlwaysLooking();
+        host.OnDelay = h => { if (game.Calls.Count(c => c.StartsWith("run", StringComparison.Ordinal)) >= 12) h.Stop = true; };
+        // Energy first in the list here, so its turn comes; the arena's look must not cut the chain.
+        var engine = new AutoplayEngine([new EnergyActivity(game), looking], new FakeArenaGame(() => host.UtcNow) { Energy = 50 }, host, false);
+        await engine.RunAsync(once: false, Limit());
+        Assert.DoesNotContain(host.Events, e => e.Kind == "chain");
+        var first = host.Events.First(e => e.Kind == "turn" && e.Area == EnergyActivity.AreaId);
+        Assert.Matches(@"\((7|[89]|\d\d) runs from the result screen\)", first.Text);   // all the energy in one go (300: five Super Raids at 48, two at 24)
     }
 
     [Fact]

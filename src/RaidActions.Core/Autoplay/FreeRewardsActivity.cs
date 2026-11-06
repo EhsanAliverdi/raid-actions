@@ -41,6 +41,17 @@ public sealed class FreeRewardsActivity(IFreeRewardsGame game) : IActivity
 
     private TimeSpan Every(PlayContext ctx) => TimeSpan.FromMinutes(Math.Max(5, ctx.Settings.FreeRewards.CheckEveryMinutes));
 
+    private sealed record Saved(DateTime CheckedAt, DateTime QuestAt, string? LastQuestText);
+
+    // Kept for the next bot on the account: a rotation's restart does not open the reward pages again.
+    public string? SaveState() => System.Text.Json.JsonSerializer.Serialize(new Saved(_checkedAt, _questAt, _lastQuestText), AutoplayJson.Options);
+
+    public void LoadState(string json, DateTime utc)
+    {
+        if (System.Text.Json.JsonSerializer.Deserialize<Saved>(json, AutoplayJson.Options) is not { } s) return;
+        (_checkedAt, _questAt, _lastQuestText) = (s.CheckedAt, s.QuestAt, s.LastQuestText);
+    }
+
     public Decision Decide(PlayContext ctx)
     {
         if (_dryShown) return Decision.Off("shown in this dry run");

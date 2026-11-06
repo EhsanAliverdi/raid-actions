@@ -80,6 +80,18 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         return null;
     }
 
+    private sealed record Saved(DateTime Market, DateTime Upgrade, DateTime Free, DateTime Inbox, DateTime Pass, DateTime Pit, Dictionary<string, DateTime> Paused);
+
+    // The checks' next times kept for the next bot on the account (2026-11-06: each rotation restarted the bot and every reward page was opened again).
+    public string? SaveState() => System.Text.Json.JsonSerializer.Serialize(new Saved(_marketAt, _upgradeAt, _freeAt, _inboxAt, _passAt, _pitAt, new(_paused)), AutoplayJson.Options);
+
+    public void LoadState(string json, DateTime utc)
+    {
+        if (System.Text.Json.JsonSerializer.Deserialize<Saved>(json, AutoplayJson.Options) is not { } s) return;
+        (_marketAt, _upgradeAt, _freeAt, _inboxAt, _passAt, _pitAt) = (s.Market, s.Upgrade, s.Free, s.Inbox, s.Pass, s.Pit);
+        foreach (var (k, v) in s.Paused) _paused[k] = v;
+    }
+
     public Decision Decide(PlayContext ctx)
     {
         if (Next(ctx) is { } job) return Decision.Now(job);

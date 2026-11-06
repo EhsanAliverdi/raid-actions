@@ -26,6 +26,12 @@ public interface IAutoplayHost
 
     /// <summary>Why this account's turn ends now, to play another one (raid-extractor's account pool); null: it goes on. Asked between turns only.</summary>
     string? RotateDue(DateTime? nextUsefulUtc) => null;
+
+    /// <summary>What each area knew when the last bot on this account stopped (<see cref="IActivity.SaveState"/>), by area id; empty: nothing saved.</summary>
+    IReadOnlyDictionary<string, string> LoadActivityState() => new Dictionary<string, string>();
+
+    /// <summary>Keeps what each area knows for the next bot on this account (rotation restarts the bot every turn).</summary>
+    void SaveActivityState(IReadOnlyDictionary<string, string> states) { }
 }
 
 /// <summary>
@@ -73,6 +79,13 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
         var settings = host.LoadSettings();
         var ctx = _ctx = new PlayContext(settings, game, host, dryRun, Remember) { QuestNeeds = [.. StartNeeds] };
         ctx.RestoreHolds(host.RecentEvents());
+        // What the areas knew when the last bot here stopped (Ehsan 2026-11-06: "track stuff, don't just check them": the arena's board and refresh, the
+        // reward checks' times), so a rotation's new bot does not go and look again.
+        var saved = host.LoadActivityState();
+        foreach (var a in activities)
+            if (saved.TryGetValue(a.Id, out var state))
+                try { a.LoadState(state, host.UtcNow); }
+                catch (Exception e) when (e is System.Text.Json.JsonException or FormatException or InvalidOperationException) { }
         var errors = 0;
         var sessionEnd = host.UtcNow + Jitter(settings.Pacing.SessionMinutes);
         try
@@ -170,6 +183,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                     errors = 0;
                     _areaErrors.Remove(act.Id);
                     if (done.Length > 0) Remember(new AutoplayEvent(host.UtcNow, act.Id, "turn", done));
+                    SaveStates();
                 }
                 catch (AreaLockedException e)
                 {
@@ -228,8 +242,18 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
         }
     }
 
+    private void SaveStates()
+    {
+        var states = new Dictionary<string, string>();
+        foreach (var a in activities)
+            if (a.SaveState() is { } s) states[a.Id] = s;
+        try { host.SaveActivityState(states); }
+        catch (IOException) { }
+    }
+
     private string Stop(string why, bool error = false)
     {
+        SaveStates();
         Remember(new AutoplayEvent(host.UtcNow, "engine", error ? "error" : "stop", "Auto Play stopped: " + why));
         (_engine, _detail, _next) = (error ? "error" : "stopped", why, null);
         WriteStatus();
@@ -254,11 +278,9 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     private TimeSpan Jitter(int minutes) => TimeSpan.FromMinutes(Math.Max(0, minutes) * (0.75 + 0.5 * host.Random.NextDouble()));
 
     /// <summary>
-    /// The areas that end a chain of runs when they want to act (Ehsan 2026-11-06: "for example you know when the refresh of Arena arrives ... then after
-    /// the battle you go back to Arena"): the arenas and the bosses, whose chances come and go with the clock. Any area whose resource is at its cap too.
+    /// What ends a chain of runs (Ehsan 2026-11-06: "the only time you go back to base is when something more critical is due, e.g. the Arena refresh"):
+    /// an area that wants to act and is urgent (<see cref="IActivity.Urgent"/>) or at its cap (<see cref="IActivity.Full"/>), or the account's turn is over.
     /// </summary>
-    public static readonly IReadOnlySet<string> Urgent = new HashSet<string>(["classic-arena", "tag-arena", "live-arena", "clan-boss", "hydra", "chimera"]);
-
     private string? ChainBreak(PlayContext ctx, IReadOnlyList<IActivity> enabled, string self, bool once)
     {
         if (!once && host.RotateDue(null) is { } rotate) return "rotation: " + rotate;
@@ -266,7 +288,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
         {
             if (ctx.Held(a.Id) is not null) continue;
             var d = a.Decide(ctx);
-            if (d.Act && (Urgent.Contains(a.Id) || a.Full(ctx))) return $"{a.Name}: {d.Why}";
+            if (d.Act && (a.Urgent(ctx) || a.Full(ctx))) return $"{a.Name}: {d.Why}";
         }
         return null;
     }

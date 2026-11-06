@@ -42,6 +42,28 @@ public sealed class ClassicArenaActivity : IActivity
 
     public bool Full(PlayContext ctx) => ctx.LastResources is { } r && r.Tokens >= (r.TokenCap ?? 10) - ctx.Settings.Rules.TokenMargin;
 
+    /// <summary>
+    /// The board read is out of date: its list only changes with a refresh (or a fight, which reads it again), so it holds until the free refresh is due when
+    /// that is known (at most two hours), else <see cref="BoardStale"/>.
+    /// </summary>
+    private bool Stale(PlayContext ctx) =>
+        _board is not { } b || ctx.Utc - b.Utc > (_freeRefreshAt is { } fr && fr > b.Utc ? TimeSpan.FromTicks(Math.Min((fr - b.Utc).Ticks, TimeSpan.FromHours(2).Ticks)) : BoardStale);
+
+    private sealed record Saved(ArenaBoard? Board, DateTime? FreeRefreshAt, DateTime InboxCheckAfter, List<long> Skip);
+
+    public string? SaveState() => _board is null ? null : System.Text.Json.JsonSerializer.Serialize(new Saved(_board, _freeRefreshAt, _inboxCheckAfter, [.. _skip]), AutoplayJson.Options);
+
+    public void LoadState(string json, DateTime utc)
+    {
+        if (System.Text.Json.JsonSerializer.Deserialize<Saved>(json, AutoplayJson.Options) is not { } s || s.Board is null) return;
+        (_board, _freeRefreshAt, _inboxCheckAfter) = (s.Board, s.FreeRefreshAt, s.InboxCheckAfter);
+        _skip.UnionWith(s.Skip);
+    }
+
+    public bool Urgent(PlayContext ctx) =>
+        ctx.Settings.ClassicArena.UseFreeRefresh && _board is { } b && Eligible(ctx.Settings.ClassicArena).Count == 0
+        && (b.FreeRefreshAvailable || _freeRefreshAt is { } due && due <= ctx.Utc);
+
     public Decision Decide(PlayContext ctx)
     {
         NewDay(ctx);
@@ -49,7 +71,10 @@ public sealed class ClassicArenaActivity : IActivity
         if (s.MaxBattlesPerDay > 0 && _battles >= s.MaxBattlesPerDay)
             return Decision.Wait(ctx.Utc.Date.AddDays(1), $"{_battles} battles today: the daily limit");
         var tokens = ctx.Expected("Token");
-        if (tokens is null || _board is null || ctx.Utc - _board.Utc > BoardStale) return Decision.Now("looking at the arena");
+        // No token to spend: nothing to look at (Ehsan 2026-11-06: "you know you have no arena token ... there is no point going to the arena"); the
+        // board known is enough for the free-refresh rule below. Else the board is looked at when it is not known or out of date.
+        // Never seen (no board, nothing saved by the last bot): one look, to learn the opponents and the refresh time.
+        if (tokens is null || _board is null || Stale(ctx) && ArenaRules.SpendableTokens(tokens.Value, s) > 0) return Decision.Now("looking at the arena");
         if (ArenaRules.SpendableTokens(tokens.Value, s) == 0)
         {
             if (s.CollectInboxTokens && ctx.Utc >= _inboxCheckAfter) return Decision.Now("out of tokens: checking the inbox");

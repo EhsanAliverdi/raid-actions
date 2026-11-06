@@ -19,7 +19,7 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
         if (!targets.Any(t => t.Kind == "village-gifts" && t.NotClickable is null))
             throw new PlayStopException($"The village's playtime gifts button is not recognised. Screen dump: {DumpScreen("village gifts")}");
         await Click("village-gifts", null, (_, scan) => scan().Targets.Any(t => t.Kind == "gift-prize"), "the playtime gifts open", ct, within: TimeSpan.FromSeconds(8));
-        await Task.Delay(800, ct);
+        await Pause(800, ct);
         var got = 0;
         for (var i = 0; i < 12; i++)
         {
@@ -36,7 +36,7 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
                 $"{ready.Name} collected", ct, within: TimeSpan.FromSeconds(8));
             got++;
             log($"autoplay: collected {ready.Name}");
-            await Task.Delay(1200, ct);
+            await Pause(1200, ct);
             // A reward window over the gifts (the prize shown): closed by its own close.
             var after = await Settled(ct);
             if (Top(after) is { } t3 && t3 != top) await Back(t3, ct);
@@ -55,7 +55,7 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
         if (!targets.Any(t => t.Kind == "village-quests" && t.NotClickable is null))
             throw new PlayStopException($"The village's Quests button is not recognised. Screen dump: {DumpScreen("village quests")}");
         await Click("village-quests", null, (_, scan) => scan().Targets.Any(t => t.Kind == "quest-tab"), "the quests open", ct, within: TimeSpan.FromSeconds(8));
-        await Task.Delay(800, ct);
+        await Pause(800, ct);
         var claimed = 0;
         var tabs = (await Read(ct)).Item2.Where(t => t.Kind == "quest-tab").Select(t => t.Id ?? -1).Where(k => k >= 0).Distinct().Order().ToList();
         foreach (var k in tabs)
@@ -72,7 +72,7 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
                     log($"autoplay: quest tab {k} does not open (locked?): left out");
                     continue;
                 }
-                await Task.Delay(800, ct);
+                await Pause(800, ct);
             }
             var (s2, after, play) = await Read(ct);
             foreach (var q in play.Quests ?? []) read[(q.Tab, q.Id, q.Text)] = q;
@@ -95,7 +95,7 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
             catch (PlayStopException e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal)) { }
             claimed++;
             log($"autoplay: claimed the rewards of quest tab {k}");
-            await Task.Delay(1500, ct);
+            await Pause(1500, ct);
             // The rewards shown over the quests: closed by their own close.
             for (var i = 0; i < 3; i++)
             {
@@ -112,7 +112,7 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
             if (vt.Any(t => t.Kind == "village-missions" && t.NotClickable is null))
             {
                 await Click("village-missions", null, (_, scan) => scan().Targets.Any(t => t.Kind == "mission-item"), "the missions open", ct, within: TimeSpan.FromSeconds(8));
-                await Task.Delay(800, ct);
+                await Pause(800, ct);
                 for (var i = 0; i < 8; i++)
                 {
                     var (sm, mt, mp) = await Read(ct);
@@ -130,7 +130,7 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
                         $"{done.Name} collected", ct, within: TimeSpan.FromSeconds(8));
                     claimed++;
                     log($"autoplay: collected {done.Name}");
-                    await Task.Delay(1500, ct);
+                    await Pause(1500, ct);
                     var s4 = await Settled(ct);
                     if (Top(s4) is { } t4 && t4 != topM) await Back(t4, ct);
                 }

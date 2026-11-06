@@ -63,9 +63,9 @@ public sealed partial class LivePlayGame : IDoomTowerGame
             for (var i = 0; i < 12; i++)
             {
                 if (MouseInput.Drag(w, 760 * scale, 130 * scale, 760 * scale, 640 * scale) is { } notSent) throw new PlayStopException(notSent);
-                await Task.Delay(500, ct);
+                await Pause(500, ct);
             }
-            await Task.Delay(1500, ct);
+            await Pause(1500, ct);
             await Click("dt-final-boss", null, (s2, _) => s2.Top?.Name is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView),
                 $"{name} opens", ct, within: TimeSpan.FromSeconds(10));
         }
@@ -78,7 +78,7 @@ public sealed partial class LivePlayGame : IDoomTowerGame
     private async Task SelectTowerDifficulty(string name, CancellationToken ct)
     {
         await Click("dt-difficulty", null, (_, scan) => scan().Targets.Any(t => t.Kind == "dt-difficulty-item"), "the difficulty list opens", ct, within: TimeSpan.FromSeconds(6));
-        await Task.Delay(500, ct);
+        await Pause(500, ct);
         await Click("dt-difficulty-item", t => t.Name.EndsWith(name, StringComparison.Ordinal), (_, scan) => !scan().Targets.Any(t => t.Kind == "dt-difficulty-item"), $"{name} chosen", ct, within: TimeSpan.FromSeconds(6));
         await Task.Delay(5000, ct); // the map redraws and moves to its current floor
         _towerOnHard = name == "Hard";
@@ -124,7 +124,7 @@ public sealed partial class LivePlayGame : IDoomTowerGame
     /// <summary>From the stage's team screen to the result.</summary>
     private async Task<BattleOutcome> PlayTowerTeam(string name, DateTime started, bool dryRun, CancellationToken ct)
     {
-        await Task.Delay(800, ct);
+        await Pause(800, ct);
         var after = await Settled(ct);
         if (Top(after) == PlayTargets.RefillView)
         {
@@ -190,7 +190,7 @@ public sealed partial class LivePlayGame : IDoomTowerGame
                     // on this account yet; the area rests (the engine's hold for a locked area), not an error each turn.
                     throw new AreaLockedException($"the Doom Tower card did not open the tower (locked on this account). Screen dump: {DumpScreen("doom tower locked")}");
                 }
-                await Task.Delay(1200, ct);
+                await Pause(1200, ct);
                 continue;
             }
             if (!Input.NavigatingDriver.AtVillage(s)) { await HomeAsync(Action("to the village"), ct); continue; }

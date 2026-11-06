@@ -300,7 +300,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
                             within: TimeSpan.FromSeconds(8));
                         log($"autoplay: difficulty list open: {DumpScreen("cc difficulty list")}");
                     }
-                    await Task.Delay(800, ct);
+                    await Pause(800, ct);
                     continue;
                 }
                 var mine = (play.CcLevels ?? []).FirstOrDefault(x => x.StageId == MapId(level.Stage));
@@ -337,7 +337,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
                     Math.Clamp(x2, 40, w.Client.Width - 40), Math.Clamp(y2, 60, w.Client.Height - 60)) is { } notSent)
                     throw new PlayStopException("Map not dragged: " + notSent);
                 log($"autoplay: dragged the Cursed City map towards level {level.Stage.Number}");
-                await Task.Delay(700, ct);
+                await Pause(700, ct);
                 continue;
             }
             if (Top(s) == PlayTargets.BattleMenuView)
@@ -377,7 +377,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
             var (x1, y1) = (w.Client.Width / 2f - dx / 2, w.Client.Height / 2f - dy / 2);
             if (MouseInput.Drag(w, x1, y1, x1 + dx, y1 + dy) is { } notSent) throw new PlayStopException("Not dragged: " + notSent);
             log($"autoplay: dragged the view {dx:0},{dy:0} to bring {t.Name} into view");
-            await Task.Delay(700, ct);
+            await Pause(700, ct);
         }
     }
 
@@ -449,7 +449,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
         _vaultFilter = include;
         if (!targets.Any(t => t.Kind == "team-filter-vault" && t.Note == from)) return;
         await Click("team-filter", null, (_, _) => true, "the filter opens", ct);
-        await Task.Delay(800, ct);
+        await Pause(800, ct);
         for (var i = 0; i < 4; i++)
         {
             var (_, now, _) = await Read(ct);
@@ -460,7 +460,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
             log($"autoplay: {(include ? "ticked" : "unticked")} {box.Name}");
         }
         await Click("filter-hide", null, (_, _) => true, "the filter closes", ct);
-        await Task.Delay(800, ct);
+        await Pause(800, ct);
     }
 
     /// <summary>The team screen left with its own Close (the filter panel's Hide counts as a second "back" while it is loaded).</summary>

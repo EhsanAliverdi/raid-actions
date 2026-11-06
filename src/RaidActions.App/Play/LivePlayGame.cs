@@ -272,7 +272,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         var before = (await game.Account.ReadAsync(ct)).Account.Resources.GetValueOrDefault(resource);
         await GoHomeAsync(ct);
         await Click("village-inbox", null, (s2, _) => Has(s2, PlayTargets.InboxView), "the inbox opens", ct);
-        await Task.Delay(1500, ct);
+        await Pause(1500, ct);
         for (var n = 0; n < 10; n++)
         {
             var (_, _, play) = await Read(ct);
@@ -375,7 +375,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                     r.Status switch { 1 => OpponentStatus.Defeated, 2 => OpponentStatus.Won, _ => OpponentStatus.None }, r.Playable && !r.Quarantined))],
                     b.FreeRefreshAvailable == true, left, await MyArenaPower(ct));
             }
-            await Task.Delay(500, ct);
+            await Pause(500, ct);
         }
         throw new PlayStopException("The Classic Arena board did not load in 10 s (no opponent rows read).");
     }
@@ -424,7 +424,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         var speedTries = 0;
         while (DateTime.UtcNow < until)
         {
-            await Task.Delay(1500, ct);
+            await Task.Delay(500, ct);
             var s = await ReadState(ct);
             // A tutorial step or a level-up in the middle of a battle (a new account's 1-7, 2026-11-03) holds it until it is answered.
             if (Top(s) == "WizardView" || TapAway(Top(s))) { await DismissLevelUp(ct); continue; }
@@ -548,7 +548,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 log($"autoplay: tapped {top} away");
             }
             else return;
-            await Task.Delay(1500, ct);
+            await Pause(1500, ct);
         }
     }
 
@@ -566,7 +566,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 if (MouseInput.Click(w, w.Client.Width / 2f, w.Client.Height * 0.07f, new Random()) is { } notSent) throw new PlayStopException(notSent);
                 log($"autoplay: tapped {over} away");
             }
-            await Task.Delay(1200, ct);
+            await Pause(1200, ct);
             await DismissLevelUp(ct);
         }
     }
@@ -585,7 +585,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 if (MouseInput.Click(w, w.Client.Width / 2f, w.Client.Height * 0.07f, new Random()) is { } notSent) throw new PlayStopException(notSent);
                 log($"autoplay: tapped {over} away");
             }
-            await Task.Delay(1200, ct);
+            await Pause(1200, ct);
             await DismissLevelUp(ct);
         }
         if (!Has(await ReadState(ct), view)) return; // already left (WaitBattle leaves a result screen it did not expect)
@@ -669,7 +669,8 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         var x = r.X + r.Width * (0.3f + 0.4f * (float)_random.NextDouble());
         var y = r.Y + r.Height * (0.3f + 0.4f * (float)_random.NextDouble());
         if (shot) Shot($"autoplay: CLICK {target.Name} at {r}", r, always: true);
-        await Task.Delay(_random.Next(120, 320), ct);
+        await Task.Delay(_random.Next(40, 110), ct);
+        _beforeClick = Signature(s, targets);
         // A small window floating over the point (a screen recorder's; seen 2026-10-31): another point of the same target.
         var sent = MouseInput.Click(w, x, y, _random);
         foreach (var (fx, fy) in new[] { (0.15f, 0.15f), (0.85f, 0.15f), (0.15f, 0.85f), (0.85f, 0.85f) })
@@ -679,12 +680,13 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             sent = MouseInput.Click(w, x, y, _random);
         }
         if (sent is { } notSent) throw new PlayStopException($"Not clicked ({target.Name}): {notSent}");
+        _clickedUtc = MouseInput.LastSentUtc;
         log($"autoplay: clicked {target.Name} at ({x:0},{y:0})");
 
         var until = DateTime.UtcNow + (within ?? TimeSpan.FromSeconds(8));
         while (DateTime.UtcNow < until)
         {
-            await Task.Delay(250, ct);
+            await Task.Delay(100, ct);
             var s2 = await ReadState(ct);
             PlayScan? cache = null;
             if (expect(s2, () => cache ??= ReadSync().Play)) return;
@@ -792,7 +794,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         throw new PlayStopException("The UI state could not be read.");
     }
 
-    /// <summary>Reads until the top view has stayed the same for 1.2 s (popups that queue up have appeared), at most 8 s.</summary>
+    /// <summary>Reads until the top view has stayed the same for 0.8 s (popups that queue up have appeared), at most 8 s.</summary>
     private async Task<UiState> Settled(CancellationToken ct)
     {
         var s = await ReadState(ct);
@@ -800,14 +802,56 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         var until = DateTime.UtcNow + TimeSpan.FromSeconds(8);
         while (DateTime.UtcNow < until)
         {
-            await Task.Delay(400, ct);
+            await Task.Delay(150, ct);
             var s2 = await ReadState(ct);
             if (Top(s2) != Top(s)) since = DateTime.UtcNow;
             s = s2;
-            if (DateTime.UtcNow - since >= TimeSpan.FromSeconds(1.2)) break;
+            if (DateTime.UtcNow - since >= TimeSpan.FromSeconds(0.8)) break;
         }
         return s;
     }
+
+    /// <summary>The screen as the last <see cref="Click"/> saw it just before clicking, and when that click was sent.</summary>
+    private string? _beforeClick;
+    private DateTime _clickedUtc = DateTime.MinValue;
+
+    /// <summary>
+    /// A wait for the game to answer the last click, at most <paramref name="ms"/> (Ehsan 2026-11-06: "you seem to be very slow between the clicks"; the
+    /// fixed waits after every click made most of the time). It ends early once the screen differs from the one the click was made on and has
+    /// then held still for two reads in a row (its views, the targets, where they are and whether they can be clicked). Any input sent since that click
+    /// (a drag, a wheel, a raw tap), no click to compare with, or a screen that never changes: the whole wait, as before.
+    /// </summary>
+    private async Task Pause(int ms, CancellationToken ct)
+    {
+        var until = DateTime.UtcNow + TimeSpan.FromMilliseconds(ms);
+        if (_beforeClick is not { } before || MouseInput.LastSentUtc > _clickedUtc || ms <= 300)
+        {
+            await Task.Delay(ms, ct);
+            return;
+        }
+        await Task.Delay(150, ct);
+        string? last = null;
+        var same = 0;
+        while (DateTime.UtcNow < until)
+        {
+            var (s, targets, _) = ReadSync();
+            var now = s is null ? null : Signature(s, targets);
+            if (now is not null && now != before && now == last)
+            {
+                if (++same >= 2) return;
+            }
+            else same = 0;
+            last = now;
+            var left = until - DateTime.UtcNow;
+            if (left <= TimeSpan.Zero) return;
+            await Task.Delay(left < TimeSpan.FromMilliseconds(120) ? left : TimeSpan.FromMilliseconds(120), ct);
+        }
+    }
+
+    /// <summary>What the screen shows, as one string: its visible views and every target with its rectangle and clickability.</summary>
+    private static string Signature(UiState s, List<UiTarget> targets) =>
+        string.Join("|", s.Active.Where(v => v.Visible).Select(v => v.Name)) + "#"
+        + string.Join("|", targets.Select(t => $"{t.Kind}:{t.Name}:{t.Rect}:{t.NotClickable is null}"));
 
     private static bool Has(UiState s, string view) => s.Active.Any(v => v.Name == view);
 
@@ -830,7 +874,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         for (var i = 0; i < 6 && Top(await ReadState(ct)) is { } top && top.EndsWith("WebView", StringComparison.Ordinal); i++)
         {
             await Click("event-close", null, (_, _) => true, $"{top}'s X", ct);
-            await Task.Delay(1500, ct);
+            await Pause(1500, ct);
         }
     }
 
@@ -845,7 +889,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             for (var i = 0; i < 3 && Top(s) is { } over && over != result; i++)
             {
                 await Back(over, ct);
-                await Task.Delay(800, ct);
+                await Pause(800, ct);
                 s = await ReadState(ct);
             }
             if (Top(s) == result) await LeaveResult(ct, result);

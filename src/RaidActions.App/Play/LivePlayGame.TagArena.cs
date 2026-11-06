@@ -32,7 +32,7 @@ public sealed partial class LivePlayGame : ITagArenaGame
             if (targets.Any(t => t.Kind == "arena-tag"))
             {
                 await Click("arena-tag", null, (_, scan) => scan().Targets.Any(t => t.Kind is "tag-opponent" or "tag-refresh"), "the Tag Team Arena opens", ct, within: TimeSpan.FromSeconds(12));
-                await Task.Delay(1000, ct);
+                await Pause(1000, ct);
                 continue;
             }
             // The Classic Arena (or its HUD) over the map hides the Tag Team Arena's item (seen 2026-10-31): back to the map first.
@@ -73,7 +73,7 @@ public sealed partial class LivePlayGame : ITagArenaGame
             var y1 = w.Client.Height * 0.55f + dy / 2;
             if (Input.MouseInput.Drag(w, x, y1, x, y1 - dy) is { } notSent) throw new PlayStopException("Not dragged: " + notSent);
             log($"autoplay: dragged the Tag Team board {-dy:0} px towards {row.Name}");
-            await Task.Delay(900, ct);
+            await Pause(900, ct);
         }
         await Click("tag-opponent", t => t.Key == userId, (s2, _) => s2.Top?.Name is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView),
             "the team screen", ct, within: TimeSpan.FromSeconds(10));
@@ -111,13 +111,13 @@ public sealed partial class LivePlayGame : ITagArenaGame
                 if (shown == "BattleFinishArena3x3Dialog" && seen.Result is null)
                     log($"autoplay: the Tag Team series result was not read: {string.Join("; ", seen.Notes.Where(x => x.Contains("Arena3x3", StringComparison.Ordinal) || x.Contains("_enemyUserName", StringComparison.Ordinal)).DefaultIfEmpty("no note"))}");
                 await LeaveResult(ct, shown);
-                await Task.Delay(1500, ct);
+                await Pause(1500, ct);
                 continue;
             }
             last = await WaitBattle(ct, "BattleFinishArena3x3Dialog") ?? last;
             var r = await ReadState(ct);
             if (Top(r) is { } fin && fin.StartsWith("BattleFinish", StringComparison.Ordinal)) await LeaveResult(ct, fin);
-            await Task.Delay(1500, ct);
+            await Pause(1500, ct);
         }
         var outcome = last?.Result?.ResultType switch { 1 => BattleResult.Victory, 2 => BattleResult.Defeat, 3 => BattleResult.Draw, _ => (last?.Pve?.ResultType) switch
         {
@@ -139,7 +139,7 @@ public sealed partial class LivePlayGame : ITagArenaGame
         var before = string.Join(",", (play.Tag?.Rows ?? []).Select(x => x.UserId));
         await Click("tag-refresh", null, (_, scan) => string.Join(",", (scan().Tag?.Rows ?? []).Select(x => x.UserId)) != before, "a new board", ct,
             within: TimeSpan.FromSeconds(10), before: p => p.Tag?.FreeRefreshAvailable == true ? null : "the refresh is not free now");
-        await Task.Delay(800, ct);
+        await Pause(800, ct);
         var (_, _, now) = await Read(ct);
         return now.Tag is { } b ? TagBoard(b) : null;
     }

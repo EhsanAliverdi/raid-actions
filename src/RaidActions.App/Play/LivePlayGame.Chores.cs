@@ -41,19 +41,19 @@ public sealed partial class LivePlayGame : IChoresGame
                 var dx = Math.Clamp((row.Rect?.Center.X ?? 0) - w.Client.Width * 0.6f, -w.Client.Width * 0.4f, w.Client.Width * 0.4f);
                 var x = w.Client.Width * 0.6f + dx / 2;
                 if (Input.MouseInput.Drag(w, x, w.Client.Height * 0.55f, x - dx, w.Client.Height * 0.55f) is { } notSent) throw new PlayStopException("Not dragged: " + notSent);
-                await Task.Delay(900, ct);
+                await Pause(900, ct);
             }
             await Click("market-item", Mine, (_, scan) => scan().Targets.Any(t => t.Kind == "market-get"), $"{o.Name} opens", ct, within: TimeSpan.FromSeconds(8));
-            await Task.Delay(800, ct);
+            await Pause(800, ct);
             var (s0, _, _) = await Read(ct);
             var top = Top(s0)!;
             await Click("market-get", null, (_, scan) => !scan().Targets.Any(t => t.Kind == "market-get"), $"{o.Name} bought", ct, within: TimeSpan.FromSeconds(8), shot: true);
-            await Task.Delay(1000, ct);
+            await Pause(1000, ct);
             var (s1, _, _) = await Read(ct);
             if (Top(s1) == top) await Back(top, ct);
             bought.Add(o.Name);
             log($"autoplay: bought {o.Name} for {o.Silver:N0} silver");
-            await Task.Delay(800, ct);
+            await Pause(800, ct);
         }
         await HomeAsync(Action("from the Market"), ct);
         return bought;
@@ -84,10 +84,10 @@ public sealed partial class LivePlayGame : IChoresGame
             if (targets.Any(t => t.Kind == "market-item")) return;
             if (Top(s) != PlayTargets.VillageHudView) { await ToVillage(ct); continue; }
             // The tap can end on the Missions screen seconds after coming back to the village (seen twice): the loop closes it and tries again.
-            if (await TapBuilding("market", ct)) { await Task.Delay(2500, ct); continue; }
+            if (await TapBuilding("market", ct)) { await Pause(2500, ct); continue; }
             try { await Click("village-market", null, (_, scan) => scan().Targets.Any(t => t.Kind == "market-item"), "the Market opens", ct, within: TimeSpan.FromSeconds(12)); }
             catch (PlayStopException e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal)) { log($"autoplay: the Market did not open: {e.Message}"); }
-            await Task.Delay(1000, ct);
+            await Pause(1000, ct);
         }
         throw new PlayStopException($"The Market was not reached. Screen dump: {DumpScreen("market not reached")}");
     }
@@ -103,11 +103,11 @@ public sealed partial class LivePlayGame : IChoresGame
         if (t0.Any(t => t.Kind == "tavern-deselect" && t.NotClickable is null))
         {
             await Click("tavern-deselect", null, (_, _) => true, "the main slot emptied", ct);
-            await Task.Delay(800, ct);
+            await Pause(800, ct);
         }
         await SelectInTavern(pair.Main, ct);
         await SelectInTavern(pair.Food, ct);
-        await Task.Delay(800, ct);
+        await Pause(800, ct);
         var (_, t1, _) = await Read(ct);
         var go = t1.FirstOrDefault(t => t.Kind == "tavern-levelup");
         if (go is null || go.NotClickable is not null) throw new PlayStopException($"The Upgrade button is not ready ({go?.NotClickable}). Screen dump: {DumpScreen("tavern upgrade")}");
@@ -119,7 +119,7 @@ public sealed partial class LivePlayGame : IChoresGame
         }
         try { await Click("tavern-levelup", null, (s2, _) => Top(s2) == UiState.MessageBoxView, "the level-up", ct, within: TimeSpan.FromSeconds(4), shot: true); }
         catch (PlayStopException e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal)) { }
-        await Task.Delay(1500, ct);
+        await Pause(1500, ct);
         var after = await Settled(ct);
         if (Top(after) == UiState.MessageBoxView)
         {
@@ -147,13 +147,13 @@ public sealed partial class LivePlayGame : IChoresGame
             if (row is { NotClickable: null })
             {
                 await Click("tavern-hero", Mine, (_, _) => true, $"{Who(id)} selected", ct);
-                await Task.Delay(700, ct);
+                await Pause(700, ct);
                 return;
             }
             var (w, why) = Game.Window.GameWindow.Find();
             if (w is null) throw new PlayStopException(why!);
             if (Input.MouseInput.Wheel(w, 160, 400, -4) is { } notSent) throw new PlayStopException(notSent);
-            await Task.Delay(500, ct);
+            await Pause(500, ct);
         }
         throw new PlayStopException($"{Who(id)} was not found in the Tavern's list. Screen dump: {DumpScreen("tavern list")}");
     }
@@ -170,7 +170,7 @@ public sealed partial class LivePlayGame : IChoresGame
                 if (targets.FirstOrDefault(t => t.Kind == "tavern-level-tab") is { Note: "off" })
                 {
                     await Click("tavern-level-tab", null, (_, scan) => scan().Targets.Any(t => t.Kind == "tavern-level-tab" && t.Note == "on"), "the Upgrade Level tab", ct);
-                    await Task.Delay(800, ct);
+                    await Pause(800, ct);
                     continue;
                 }
                 return;
@@ -214,11 +214,11 @@ public sealed partial class LivePlayGame : IChoresGame
         if (request is null) return "the mastery request could not be read";
         log($"autoplay: STEP masteries for {Who(request.ChampionId)}: {string.Join(", ", request.Ids)}{(request.DryRun ? " (dry run)" : "")}");
         await _nav.ShowChampion(request.ChampionId, ct);
-        await Task.Delay(800, ct);
+        await Pause(800, ct);
         await Click("mastery-tab", null, (_, scan) => scan().Targets.Any(t => t.Kind == "mastery-tab" && t.Note == "on"), "the masteries tab", ct, within: TimeSpan.FromSeconds(6));
-        await Task.Delay(800, ct);
+        await Pause(800, ct);
         await Click("mastery-open", null, (s2, _) => Top(s2) == "MasteriesOverlay", "the masteries screen", ct, within: TimeSpan.FromSeconds(8));
-        await Task.Delay(1500, ct);
+        await Pause(1500, ct);
         var (_, nodes, _) = await Read(ct);
         var read = nodes.Where(t => t.Kind == "mastery-node" && t.Id is > 0).ToList();
         var (data, _, _, _) = await Account(ct);
@@ -238,12 +238,12 @@ public sealed partial class LivePlayGame : IChoresGame
             if (request.BuyWithGems && request.Ids.Count > 0)
             {
                 await Click("mastery-node", t => t.Id == request.Ids[0], (s2, _) => Top(s2) == "MasteryInfoOverlay", "the first mastery opens", ct, within: TimeSpan.FromSeconds(6));
-                await Task.Delay(800, ct);
+                await Pause(800, ct);
                 log($"autoplay: mastery panel. Screen dump: {DumpScreen("mastery panel")}");
                 if ((await Read(ct)).Targets.Any(t => t.Kind == "mastery-getmax"))
                 {
                     await Click("mastery-getmax", null, (s2, _) => Top(s2) != "MasteryInfoOverlay", "the buy screen opens", ct, within: TimeSpan.FromSeconds(8));
-                    await Task.Delay(1000, ct);
+                    await Pause(1000, ct);
                     var (s4, t4, p4) = await Read(ct);
                     price = $"; buy screen {Top(s4)}, {string.Join("; ", p4.Notes.Where(n => n.Contains("price", StringComparison.Ordinal)))}, buy button: {t4.Any(t => t.Kind == "mastery-buy")}";
                     log($"autoplay: buy screen. Screen dump: {DumpScreen("mastery buy")}");
@@ -259,9 +259,9 @@ public sealed partial class LivePlayGame : IChoresGame
         {
             var gemsBefore = data.Account.Resources.GetValueOrDefault("Gem");
             await Click("mastery-node", t => t.Id == request.Ids[0], (s2, _) => Top(s2) == "MasteryInfoOverlay", "the first mastery opens", ct, within: TimeSpan.FromSeconds(6));
-            await Task.Delay(800, ct);
+            await Pause(800, ct);
             await Click("mastery-getmax", null, (s2, _) => Top(s2) == "BuyMasteriesOverlay", "the scroll set opens", ct, within: TimeSpan.FromSeconds(8));
-            await Task.Delay(1000, ct);
+            await Pause(1000, ct);
             var (_, offer, _) = await Read(ct);
             var button = offer.FirstOrDefault(t => t.Kind == "mastery-buy");
             var price = int.TryParse((button?.Note ?? "").Replace(",", "", StringComparison.Ordinal), out var p) ? p : -1;
@@ -272,7 +272,7 @@ public sealed partial class LivePlayGame : IChoresGame
                 return $"nothing bought: the scroll set costs {price} gems and {request.MaxGems} were allowed";
             }
             await Click("mastery-buy", null, (s2, _) => Top(s2) != "BuyMasteriesOverlay", "the scroll set is bought", ct, within: TimeSpan.FromSeconds(10));
-            await Task.Delay(2500, ct);
+            await Pause(2500, ct);
             var (after, _, _, _) = await Account(ct);
             var gemsAfter = after.Account.Resources.GetValueOrDefault("Gem");
             var scrolls = after.Champions.First(c => c.Id == request.ChampionId).MasteryScrolls;
@@ -284,28 +284,28 @@ public sealed partial class LivePlayGame : IChoresGame
                 return $"stopped after the purchase: the account does not show what was expected. Screen dump: {dump}";
             }
             var (s5, _, _) = await Read(ct);
-            if (Top(s5) == "MasteryInfoOverlay") { await Back("MasteryInfoOverlay", ct); await Task.Delay(800, ct); }
+            if (Top(s5) == "MasteryInfoOverlay") { await Back("MasteryInfoOverlay", ct); await Pause(800, ct); }
         }
         var learned = 0;
         foreach (var id in request.Ids)
         {
             await Click("mastery-node", t => t.Id == id, (s2, _) => Top(s2) == "MasteryInfoOverlay", $"mastery {id} opens", ct, within: TimeSpan.FromSeconds(6));
-            await Task.Delay(700, ct);
+            await Pause(700, ct);
             if (!(await Read(ct)).Targets.Any(t => t.Kind == "mastery-learn"))
             {
                 await Back("MasteryInfoOverlay", ct);
                 break;
             }
             await Click("mastery-learn", null, (_, _) => true, $"mastery {id}", ct);
-            await Task.Delay(1800, ct);
+            await Pause(1800, ct);
             // The build's second tree: a third tree holding nothing is what gets locked (the build was checked before it was sent).
             if (Top(await ReadState(ct)) == "OpenLastAvailableTreeOverlay")
             {
                 await Click("mastery-unlock", null, (s2, _) => Top(s2) != "OpenLastAvailableTreeOverlay", "the second tree", ct, within: TimeSpan.FromSeconds(8));
-                await Task.Delay(1800, ct);
+                await Pause(1800, ct);
             }
             var (s6, _, _) = await Read(ct);
-            if (Top(s6) == "MasteryInfoOverlay") { await Back("MasteryInfoOverlay", ct); await Task.Delay(800, ct); }
+            if (Top(s6) == "MasteryInfoOverlay") { await Back("MasteryInfoOverlay", ct); await Pause(800, ct); }
             var now = (await Account(ct)).Data.Champions.First(c => c.Id == request.ChampionId).Masteries;
             if (!now.Contains(id)) { log($"autoplay: mastery {id} is not in the account after Learn: stopping"); break; }
             learned++;
@@ -324,7 +324,7 @@ public sealed partial class LivePlayGame : IChoresGame
         using var label = OpenCvSharp.Cv2.ImRead(path, OpenCvSharp.ImreadModes.Color);
         // A window on top leaves the capture blank: the game comes to the front first.
         if (MouseInput.EnsureForeground(w) is { } behind) { log($"autoplay: {behind}"); return false; }
-        await Task.Delay(500, ct);
+        await Pause(500, ct);
         var (capture, problem) = WindowCapture.Take(w);
         if (capture is null) { log($"autoplay: the village could not be captured: {problem}"); return false; }
         (float X, float Y)? spot;
@@ -335,7 +335,7 @@ public sealed partial class LivePlayGame : IChoresGame
         // The Market's tent is tapped high: the game's "Progress Mission available" banner covers the part just above its label, and a tap there opens Missions.
         var above = (name == "market" ? 130 : 60) * scale;
         if (MouseInput.Click(w, at.X, at.Y - above, new Random()) is { } notSent) throw new PlayStopException(notSent);
-        await Task.Delay(800, ct);
+        await Pause(800, ct);
         return true;
     }
 
@@ -351,17 +351,17 @@ public sealed partial class LivePlayGame : IChoresGame
             if (Top(await ReadState(ct)) != "AcademyDialog") throw new PlayStopException("A tap on the Guardian Ring's label opened nothing.");
         }
         else await Click("village-academy", null, (s2, _) => Top(s2) == "AcademyDialog", "the Guardian Ring opens", ct, within: TimeSpan.FromSeconds(10));
-        await Task.Delay(1500, ct);
+        await Pause(1500, ct);
         // A filled slot does not open the list (2026-11-03): its champion is training, nothing to do.
         try { await Click("pit-slot", null, (s2, _) => Top(s2) == "TrainingCampHeroSelectionOverlay", "the Sparring Pit's list opens", ct, within: TimeSpan.FromSeconds(10)); }
         catch (PlayStopException e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal))
         {
             log("autoplay: the Sparring Pit's slot is filled: training");
             await Back("AcademyDialog", ct);
-            await Task.Delay(1000, ct);
+            await Pause(1000, ct);
             return null;
         }
-        await Task.Delay(1000, ct);
+        await Pause(1000, ct);
         var (_, items, _) = await Read(ct);
         // HeroSelectionItemState: 0 free, 1 in this slot, 3 at max level, 4 blocked.
         var inSlot = items.FirstOrDefault(t => t.Kind == "pit-hero" && t.Note == "state 1");
@@ -378,16 +378,16 @@ public sealed partial class LivePlayGame : IChoresGame
                 {
                     await DragIntoView("pit-hero", ct, t => t.Id == id);
                     await Click("pit-hero", t => t.Id == id, (_, _) => true, Who(id), ct);
-                    await Task.Delay(600, ct);
+                    await Pause(600, ct);
                     await Click("pit-confirm", null, (s2, _) => Top(s2) != "TrainingCampHeroSelectionOverlay", "the champion goes in", ct, within: TimeSpan.FromSeconds(8));
                     put = Who(id);
                 }
             }
         }
         var (s3, _, _) = await Read(ct);
-        if (Top(s3) == "TrainingCampHeroSelectionOverlay") { await Back("TrainingCampHeroSelectionOverlay", ct); await Task.Delay(800, ct); }
+        if (Top(s3) == "TrainingCampHeroSelectionOverlay") { await Back("TrainingCampHeroSelectionOverlay", ct); await Pause(800, ct); }
         await Back("AcademyDialog", ct);
-        await Task.Delay(1000, ct);
+        await Pause(1000, ct);
         return put;
     }
 
@@ -401,7 +401,7 @@ public sealed partial class LivePlayGame : IChoresGame
             if (Top(s) != PlayTargets.VillageHudView) await ToVillage(ct);
             const string Hub = "BattlePassAggregatorDialog";
             await Click(open, null, (s2, _) => Top(s2) == view || Top(s2) == Hub, $"{view} opens", ct, within: TimeSpan.FromSeconds(10));
-            await Task.Delay(1500, ct);
+            await Pause(1500, ct);
             if (Top(await ReadState(ct)) == Hub)
             {
                 // Several passes (a new account): each card's pass in turn; a locked card opens nothing and is left.
@@ -410,10 +410,10 @@ public sealed partial class LivePlayGame : IChoresGame
                 {
                     try { await Click("pass-card", t => t.Id == k, (s2, _) => Top(s2) == view, $"pass {k + 1} opens", ct, within: TimeSpan.FromSeconds(6)); }
                     catch (PlayStopException e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal)) { continue; }
-                    await Task.Delay(1500, ct);
+                    await Pause(1500, ct);
                     claimed += await ClaimOn(view, tab, dryRun, ct);
                     await Back(view, ct);
-                    await Task.Delay(1200, ct);
+                    await Pause(1200, ct);
                 }
                 await Back(Hub, ct);
             }
@@ -422,7 +422,7 @@ public sealed partial class LivePlayGame : IChoresGame
                 claimed += await ClaimOn(view, tab, dryRun, ct);
                 await Back(view, ct);
             }
-            await Task.Delay(1500, ct);
+            await Pause(1500, ct);
         }
         // The rest of the free rewards (a new account, 2026-11-03): the side menu's, the events'. One failing leaves the others.
         try { claimed += await ClaimMenuRewardsAsync(dryRun, ct); }
@@ -443,14 +443,14 @@ public sealed partial class LivePlayGame : IChoresGame
             // The menu slides in: its buttons are tapped once they are on the screen (2026-11-03: a tap at x -214 was refused).
             await Click("menu-open", null, (_, scan) => scan().Targets.Any(t => t.Kind == "menu-item" && t.Note == item && t.Rect is { X: >= 0 }), "the side menu opens", ct,
                 within: TimeSpan.FromSeconds(6));
-            await Task.Delay(500, ct);
+            await Pause(500, ct);
             await Click("menu-item", t => t.Note == item, (s2, _) => Top(s2) != PlayTargets.VillageHudView, $"{item} opens", ct, within: TimeSpan.FromSeconds(8));
-            await Task.Delay(1500, ct);
+            await Pause(1500, ct);
             var view = Top(await ReadState(ct))!;
             var tabs = (await Read(ct)).Targets.Where(t => t.Kind == "reward-tab").Select(t => t.Path).ToList();
             foreach (var path in tabs.DefaultIfEmpty(""))
             {
-                if (path.Length > 0) { await Click("reward-tab", t => t.Path == path, (_, _) => true, "the tab", ct); await Task.Delay(1200, ct); }
+                if (path.Length > 0) { await Click("reward-tab", t => t.Path == path, (_, _) => true, "the tab", ct); await Pause(1200, ct); }
                 for (var i = 0; i < 12; i++)
                 {
                     var (_, now, _) = await Read(ct);
@@ -460,14 +460,14 @@ public sealed partial class LivePlayGame : IChoresGame
                     await Click("reward-claim", t => t.Path == claim.Path && t.Id == claim.Id && t.Rect == claim.Rect, (_, _) => true, claim.Name, ct);
                     log($"autoplay: claimed {claim.Name}");
                     claimed++;
-                    await Task.Delay(1800, ct);
+                    await Pause(1800, ct);
                     await DismissLevelUp(ct);
                     var s3 = await Settled(ct);
-                    if (Top(s3) is { } top && top != view) { await Back(top, ct); await Task.Delay(800, ct); }
+                    if (Top(s3) is { } top && top != view) { await Back(top, ct); await Pause(800, ct); }
                 }
             }
             await Back(view, ct);
-            await Task.Delay(1200, ct);
+            await Pause(1200, ct);
         }
         return claimed;
     }
@@ -479,13 +479,13 @@ public sealed partial class LivePlayGame : IChoresGame
         if (Top(s) != PlayTargets.VillageHudView) await ToVillage(ct);
         if (!(await Read(ct)).Targets.Any(t => t.Kind == "event-card" && t.Id == -1)) return 0;
         await Click("event-card", t => t.Id == -1, (s2, _) => Top(s2) is "SoloEventsDialog" or "SoloEventInfoWebView", "the events open", ct, within: TimeSpan.FromSeconds(8));
-        await Task.Delay(1500, ct);
+        await Pause(1500, ct);
         // One event left (2026-11-03): the button opens its page straight away.
         if (Top(await ReadState(ct)) == "SoloEventInfoWebView")
         {
-            await Task.Delay(2500, ct);
+            await Pause(2500, ct);
             if (!dryRun) await Click("event-claimall", null, (_, _) => true, "the event's Claim All", ct);
-            await Task.Delay(2000, ct);
+            await Pause(2000, ct);
             await CloseWebPages(ct);
             log("autoplay: events: Claim All tapped on the one event");
             return 0;
@@ -497,11 +497,11 @@ public sealed partial class LivePlayGame : IChoresGame
             await Click("event-card", t => t.Id == k, (s2, _) => Top(s2) == "SoloEventInfoWebView", $"event {k + 1} opens", ct, within: TimeSpan.FromSeconds(8));
             await Task.Delay(3500, ct); // the page loads
             if (dryRun) log("autoplay: WOULD TAP the event's Claim All (dry run)");
-            else { await Click("event-claimall", null, (_, _) => true, "the event's Claim All", ct); tapped++; await Task.Delay(2000, ct); }
+            else { await Click("event-claimall", null, (_, _) => true, "the event's Claim All", ct); tapped++; await Pause(2000, ct); }
             var s3 = await Settled(ct);
-            if (Top(s3) is { } over && over != "SoloEventInfoWebView") { await Back(over, ct); await Task.Delay(800, ct); }
+            if (Top(s3) is { } over && over != "SoloEventInfoWebView") { await Back(over, ct); await Pause(800, ct); }
             await CloseWebPages(ct);
-            await Task.Delay(1000, ct);
+            await Pause(1000, ct);
         }
         await Back("SoloEventsDialog", ct);
         log($"autoplay: events: Claim All tapped on {tapped} event(s)");
@@ -519,7 +519,7 @@ public sealed partial class LivePlayGame : IChoresGame
             if (path.Length > 0)
             {
                 await Click(tab, t => t.Path == path, (_, _) => true, "the tab", ct);
-                await Task.Delay(1000, ct);
+                await Pause(1000, ct);
             }
             for (var i = 0; i < 12; i++)
             {
@@ -528,16 +528,16 @@ public sealed partial class LivePlayGame : IChoresGame
                 if (claim is null) break;
                 if (dryRun) { log($"autoplay: WOULD CLAIM {claim.Name} (dry run)"); break; }
                 await Click("pass-claim", t => t.Path == claim.Path, (_, _) => true, $"{claim.Name}", ct);
-                await Task.Delay(1500, ct);
+                await Pause(1500, ct);
                 // A challenge's card opens its window: its own Claim takes the reward (closing it, as before, took nothing).
                 if (Top(await ReadState(ct)) == "ChallengeQuestOverlay" && (await Read(ct)).Targets.Any(t => t.Kind == "challenge-confirm" && t.NotClickable is null))
                     await Click("challenge-confirm", null, (_, _) => true, "the challenge's Claim", ct);
                 log($"autoplay: claimed {claim.Name} on {view}");
                 claimed++;
-                await Task.Delay(2000, ct);
+                await Pause(2000, ct);
                 var s3 = await Settled(ct);
                 if (Top(s3) is { } top && top != view) await Back(top, ct);
-                await Task.Delay(800, ct);
+                await Pause(800, ct);
             }
         }
         return claimed;
@@ -557,7 +557,7 @@ public sealed partial class LivePlayGame : IChoresGame
         await DragIntoView("mode-clan", ct);
         await Click("mode-clan", null, (s2, _) => Top(s2)?.EndsWith("AllianceLessDialog", StringComparison.Ordinal) == true || Has(s2, PlayTargets.ClanMapView),
             "the clan screen opens", ct, within: TimeSpan.FromSeconds(12));
-        await Task.Delay(1500, ct);
+        await Pause(1500, ct);
         var (s, targets, _) = await Read(ct);
         var dump = DumpScreen("no clan screen");
         log($"autoplay: the clan screen ({Top(s)}). Screen dump: {dump}");
@@ -591,17 +591,17 @@ public sealed partial class LivePlayGame : IChoresGame
         if (!dryRun)
         {
             await Click("village-gems", null, (_, _) => true, "the gem bubble", ct);
-            await Task.Delay(1500, ct);
+            await Pause(1500, ct);
             var (after, _, _) = await Read(ct);
             if (Top(after) != PlayTargets.VillageHudView)
             {
                 await Back(Top(after)!, ct); // no gems waiting: the tap opened the Mine's window
-                await Task.Delay(2000, ct);
+                await Pause(2000, ct);
                 await Settled(ct);
             }
         }
         await Click("village-shop", null, (s2, _) => Top(s2) == PlayTargets.ShopView, "the Shop opens", ct, within: TimeSpan.FromSeconds(10));
-        await Task.Delay(2000, ct);
+        await Pause(2000, ct);
         var claimed = 0;
         for (var i = 0; i < 4; i++)
         {
@@ -612,9 +612,9 @@ public sealed partial class LivePlayGame : IChoresGame
             // The tile opens "Get this for free?" (seen 2026-11-01); its Claim is the same button a paid offer's Buy would be, so it is only
             // ever pressed here, right after a tile the game marks free opened it.
             await Click("shop-free", t => t.Path == offer.Path, (s2, _) => Top(s2) == "StaticOfferInfoOverlay", $"{offer.Name} opens", ct, within: TimeSpan.FromSeconds(8));
-            await Task.Delay(800, ct);
+            await Pause(800, ct);
             await Click("shop-claim", null, (s2, _) => Top(s2) != "StaticOfferInfoOverlay", $"{offer.Name} claimed", ct, within: TimeSpan.FromSeconds(8), shot: true);
-            await Task.Delay(2000, ct);
+            await Pause(2000, ct);
             for (var j = 0; j < 3; j++)
             {
                 var s3 = await Settled(ct);

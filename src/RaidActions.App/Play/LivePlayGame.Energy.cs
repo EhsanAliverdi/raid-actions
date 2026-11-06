@@ -111,7 +111,7 @@ public sealed partial class LivePlayGame : IEnergyGame
         // An empty team screen (no team ever saved there; seen 2026-10-31 on the Hydra): nothing to start with, the row waits.
         if (((await Read(ct)).Play.TeamIds ?? []).Count == 0)
         {
-            await Task.Delay(1000, ct);
+            await Pause(1000, ct);
             if (((await Read(ct)).Play.TeamIds ?? []).Count == 0)
             {
                 await Back(teamView, ct);
@@ -276,7 +276,7 @@ public sealed partial class LivePlayGame : IEnergyGame
                 await DragIntoView("dungeon-region", ct, Mine);
                 await Click("dungeon-region", Mine, (s2, scan) => !Has(s2, DungeonsView) || Top(s2) == PaidLocationView || scan().Targets.Any(t => t.Kind == "dungeon-stage"),
                     $"{region}'s stages open", ct, within: TimeSpan.FromSeconds(15));
-                await Task.Delay(800, ct);
+                await Pause(800, ct);
                 if (Top(await ReadState(ct)) == PaidLocationView)
                 {
                     await Back(PaidLocationView, ct);
@@ -321,7 +321,7 @@ public sealed partial class LivePlayGame : IEnergyGame
                 log($"autoplay: STEP switching the dungeon to {difficulty}");
                 await Click("cc-difficulty-item", t => t == item || t.Name == item.Name, (_, scan) => scan().Targets.Any(t => t.Kind == "dungeon-stage" && t.Id == sid),
                     $"the dungeon shows {difficulty}", ct, within: TimeSpan.FromSeconds(10));
-                await Task.Delay(800, ct);
+                await Pause(800, ct);
                 continue;
             }
             // No difficulty switch and other stages shown: the screen is another dungeon's day (Iron Twins: one fortress a day; seen
@@ -329,7 +329,7 @@ public sealed partial class LivePlayGame : IEnergyGame
             if (!targets.Any(t => t.Kind == "dungeon-dropdown" && t.NotClickable is null) && targets.Any(t => t.Kind == "dungeon-stage"))
                 throw new ClosedTodayException($"stage id {sid}");
             await Click("dungeon-dropdown", null, (_, scan) => scan().Targets.Any(t => t.Kind == "cc-difficulty-item"), "the difficulty list opens", ct, within: TimeSpan.FromSeconds(8));
-            await Task.Delay(500, ct);
+            await Pause(500, ct);
         }
         throw new PlayStopException($"The dungeon does not show {difficulty} (stage id {sid} not in the list). Screen dump: {DumpScreen("dungeon difficulty")}");
 
@@ -342,7 +342,7 @@ public sealed partial class LivePlayGame : IEnergyGame
     private async Task SetSuperRaid(bool wanted, string teamView, CancellationToken ct)
     {
         // The box's state settles after the team screen opens (2026-10-30, Campaign: read "on", then "unavailable"): read after a pause.
-        await Task.Delay(1200, ct);
+        await Pause(1200, ct);
         var (_, targets, _) = await Read(ct);
         var box = targets.FirstOrDefault(t => t.Kind == "super-raid" && t.View == teamView);
         if (box is null)
@@ -373,7 +373,7 @@ public sealed partial class LivePlayGame : IEnergyGame
                 var now = (await Read(ct)).Targets.FirstOrDefault(t => t.Kind == "super-raid" && t.Path == box.Path)?.Note;
                 if (now == (wanted ? "on" : "off")) return;
                 if (attempt >= 2) { log($"autoplay: Super Raid stays {now}: the run goes on"); return; }
-                await Task.Delay(1000, ct);
+                await Pause(1000, ct);
             }
         }
     }

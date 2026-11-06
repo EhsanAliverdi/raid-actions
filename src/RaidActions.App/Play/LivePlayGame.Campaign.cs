@@ -68,20 +68,20 @@ public sealed partial class LivePlayGame
                     if (item is null)
                     {
                         await Click("dungeon-dropdown", null, (_, scan) => scan().Targets.Any(t => t.Kind == "cc-difficulty-item"), "the difficulty list opens", ct, within: TimeSpan.FromSeconds(8));
-                        await Task.Delay(500, ct);
+                        await Pause(500, ct);
                         (_, targets, _) = await Read(ct);
                         item = targets.FirstOrDefault(t => t.Kind == "cc-difficulty-item" && t.Note?.Contains(difficulty, StringComparison.OrdinalIgnoreCase) == true)
                             ?? throw new PlayStopException($"The campaign map's difficulty list has no {difficulty} ({string.Join(", ", targets.Where(t => t.Kind == "cc-difficulty-item").Select(t => t.Note))}).");
                     }
                     await Click("cc-difficulty-item", t => t.Path == item.Path, (_, scan) => !scan().Targets.Any(t => t.Kind == "cc-difficulty-item"), $"the map shows {difficulty}", ct, within: TimeSpan.FromSeconds(8));
-                    await Task.Delay(1500, ct);
+                    await Pause(1500, ct);
                     _campaignDifficulty = difficulty;
                     continue;
                 }
                 await DragIntoView("campaign-region", ct, Mine);
-                await Task.Delay(1200, ct); // the map glides after a drag
+                await Pause(1200, ct); // the map glides after a drag
                 await Click("campaign-region", Mine, (_, scan) => scan().Targets.Any(t => t.Kind == "dungeon-stage"), $"{region}'s stages open", ct, within: TimeSpan.FromSeconds(15), shot: true);
-                await Task.Delay(800, ct);
+                await Pause(800, ct);
                 _openDungeon = key;
                 continue;
             }
@@ -93,7 +93,7 @@ public sealed partial class LivePlayGame
                 await DragIntoView("mode-campaign", ct);
                 await Click("mode-campaign", null, (s2, scan) => Has(s2, CampaignMapView) || scan().Targets.Any(t => t.Kind is "campaign-region" or "dungeon-stage"),
                     "the campaign map opens", ct, within: TimeSpan.FromSeconds(15));
-                await Task.Delay(1000, ct);
+                await Pause(1000, ct);
                 continue;
             }
             if (!Input.NavigatingDriver.AtVillage(s)) { await HomeAsync(Action("to the village"), ct); continue; }
@@ -111,7 +111,7 @@ public sealed partial class LivePlayGame
         var (x1, y1) = (w.Client.Width / 2f - dx / 2, w.Client.Height * 0.55f);
         if (Input.MouseInput.Drag(w, x1, y1, x1 + dx, y1) is { } notSent) throw new PlayStopException("Not dragged: " + notSent);
         log($"autoplay: dragged the map {dx:0} px");
-        await Task.Delay(700, ct);
+        await Pause(700, ct);
     }
 
     /// <summary>
@@ -205,7 +205,7 @@ public sealed partial class LivePlayGame
             if (up == 0) throw new PlayStopException($"Rank Up was pressed but no champion's rank changed in the account. Screen dump: {DumpScreen("rank-up not done")}");
             done += up;
             log($"autoplay: ranked up {up} champion(s) of grade {grade}");
-            await Task.Delay(1500, ct);
+            await Pause(1500, ct);
         }
         await HomeAsync(Action("from the Tavern"), ct);
         return done;
@@ -221,7 +221,7 @@ public sealed partial class LivePlayGame
         if (!targets.Any(t => t.Kind == "team-filter-vault"))
         {
             await Click("fastrankup-filter", null, (_, scan) => scan().Targets.Any(t => t.Kind == "team-filter-vault"), "the food filter opens", ct, within: TimeSpan.FromSeconds(6));
-            await Task.Delay(800, ct);
+            await Pause(800, ct);
         }
         var changed = false;
         for (var i = 0; i < 4; i++)
@@ -243,7 +243,7 @@ public sealed partial class LivePlayGame
         if (after.Any(Open))
         {
             await Click("food-filter-apply", Open, (_, _) => true, "the food filter closes", ct);
-            await Task.Delay(1200, ct);
+            await Pause(1200, ct);
         }
     }
 
@@ -293,7 +293,7 @@ public sealed partial class LivePlayGame
         if (tab.Note?.StartsWith("selected", StringComparison.Ordinal) == true) return;
         await Click("fastrankup-grade", t => t.Id == grade, (_, scan) => scan().Targets.Any(t => t.Kind == "fastrankup-grade" && t.Id == grade
             && t.Note?.StartsWith("selected", StringComparison.Ordinal) == true), $"grade {grade} selected", ct);
-        await Task.Delay(600, ct);
+        await Pause(600, ct);
     }
 
     public async Task<int> SummonMysteryAsync(int count, bool dryRun, CancellationToken ct)
@@ -324,11 +324,11 @@ public sealed partial class LivePlayGame
                 "a champion summoned", ct, within: TimeSpan.FromSeconds(20), shot: true,
                 before: p => p.SelectedShard == Mystery ? null : $"the selected shard is {p.SelectedShard}, not Mystery");
             opened++;
-            await Task.Delay(2500, ct); // the summon's show starts after the click
+            await Pause(2500, ct); // the summon's show starts after the click
             // The new champion's card (PortalHeroInfoDialog, seen 2026-10-31) slides in: its close is tried until it is on screen.
             for (var i = 0; i < 10; i++)
             {
-                await Task.Delay(1500, ct);
+                await Pause(1500, ct);
                 var (s2, t2, _) = await Read(ct);
                 if (Top(s2) == "PortalDialog" && t2.Any(t => t.Kind == "portal-summon1" && t.NotClickable is null)) break;
                 if (Top(s2) is { } top && top != "PortalDialog")
@@ -343,7 +343,7 @@ public sealed partial class LivePlayGame
         catch (Exception e) when (e is not OperationCanceledException)
         {
             log($"autoplay: going home from the Portal failed once ({e.Message}); trying again");
-            await Task.Delay(2500, ct);
+            await Pause(2500, ct);
             await HomeAsync(Action("from the Portal"), ct);
         }
         return opened;
@@ -402,14 +402,14 @@ public sealed partial class LivePlayGame
             var (_, targets, _) = await Read(ct);
             if (targets.Any(t => t.Kind == "portal-shard")) return;
             if (!Input.NavigatingDriver.AtVillage(s)) { await HomeAsync(Action("to the village"), ct); continue; }
-            if (await TapBuilding("portal", ct)) await Task.Delay(1500, ct);
+            if (await TapBuilding("portal", ct)) await Pause(1500, ct);
             else try
             {
                 await Click("village-portal", null, (s2, scan) => !Input.NavigatingDriver.AtVillage(s2) || scan().Targets.Any(t => t.Kind == "portal-shard"), "the Portal opens", ct,
                     within: TimeSpan.FromSeconds(15), shot: true);
             }
             catch (PlayStopException) { }
-            await Task.Delay(1500, ct);
+            await Pause(1500, ct);
             var (s3, t3, _) = await Read(ct);
             if (t3.Any(t => t.Kind == "portal-shard")) return;
             // The spot opened something else (the village was scrolled?): closed, and no more tries.

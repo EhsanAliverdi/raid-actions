@@ -39,7 +39,7 @@ public sealed partial class LivePlayGame : IClanBossGame
         {
             await DragIntoView("clan-difficulty", ct, Mine);
             await Click("clan-difficulty", Mine, (_, scan) => scan().Targets.Any(t => Mine(t) && t.Note?.Contains("; selected", StringComparison.Ordinal) == true), $"{difficulty} selected", ct);
-            await Task.Delay(1000, ct);
+            await Pause(1000, ct);
         }
         var (_, targets, _) = await Read(ct);
         var line = targets.FirstOrDefault(t => t.Kind == "clan-score" && t.Name == me)?.Note?.Split('|');
@@ -53,12 +53,12 @@ public sealed partial class LivePlayGame : IClanBossGame
             if (box is not null)
             {
                 await Click("clan-chests", t => t.Path == box.Path, (_, scan) => scan().Targets.Any(t => t.Kind == "clan-chest"), "the chest list opens", ct, within: TimeSpan.FromSeconds(8));
-                await Task.Delay(800, ct);
+                await Pause(800, ct);
                 var (s2, list, _) = await Read(ct);
                 top = list.Where(t => t.Kind == "clan-chest").Select(t => ClanBossRules.Damage(t.Note)).Where(d => d is not null).Select(d => d!.Value).DefaultIfEmpty(0).Max();
                 if (top > 0) _clanTop[difficulty] = top;
                 await Back(Top(s2)!, ct);
-                await Task.Delay(800, ct);
+                await Pause(800, ct);
             }
         }
         log($"autoplay: {difficulty}: {me} {damage:N0} damage, {keys} key(s) today; top chest {top:N0}");
@@ -110,7 +110,7 @@ public sealed partial class LivePlayGame : IClanBossGame
             await DragIntoView("clan-difficulty", ct, Mine);
             await Click("clan-difficulty", Mine, (_, scan) => scan().Targets.Any(t => Mine(t) && t.Note?.Contains("; selected", StringComparison.Ordinal) == true),
                 $"{difficulty} selected", ct);
-            await Task.Delay(600, ct);
+            await Pause(600, ct);
         }
         // Start greyed out (2026-11-06 02:56: BlackLord65 right after the boss's reset, "0 damage today", twice): not now; the activity tries again in an hour.
         if ((await Read(ct)).Targets.FirstOrDefault(t => t.Kind == "clan-battle") is { NotClickable: { } why })
@@ -133,7 +133,7 @@ public sealed partial class LivePlayGame : IClanBossGame
         // An empty team screen (no team ever saved there; seen 2026-10-31 on the Hydra): nothing to start with, the row waits.
         if (((await Read(ct)).Play.TeamIds ?? []).Count == 0)
         {
-            await Task.Delay(1000, ct);
+            await Pause(1000, ct);
             if (((await Read(ct)).Play.TeamIds ?? []).Count == 0)
             {
                 // No team saved (Ehsan 2026-11-01: "make the best team yourself"): the strongest geared champions, one of each type.
@@ -166,7 +166,7 @@ public sealed partial class LivePlayGame : IClanBossGame
                     return new BattleOutcome(BattleResult.NotStarted, "no team could be set there");
                 }
                 log($"autoplay: {label}: no saved team, the bot built {string.Join(", ", team.Select(Who))}");
-                await Task.Delay(800, ct);
+                await Pause(800, ct);
             }
         }
         if (dryRun)
@@ -183,7 +183,7 @@ public sealed partial class LivePlayGame : IClanBossGame
         // The game asks before a normal battle where Quick Battle is open (seen 2026-11-01): its one action is Continue.
         if (Top(await ReadState(ct)) is "AllianceBossQuickBattleConfirmOverlay" or "ChimeraQuickBattleConfirmOverlay")
         {
-            await Task.Delay(800, ct);
+            await Pause(800, ct);
             log($"autoplay: the Quick Battle question. Screen dump: {DumpScreen("clan confirm")}");
             await Click("clan-continue", null, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView or QuickResult,
                 "the battle starts", ct, within: TimeSpan.FromSeconds(25), shot: true);
@@ -191,7 +191,7 @@ public sealed partial class LivePlayGame : IClanBossGame
         // Quick Battle on (the team screen's switch, set in the game): no fight, the result at once (seen 2026-11-01: 23.03M on Brutal, a key spent).
         if (Top(await ReadState(ct)) is QuickResult or ChimeraQuickResult)
         {
-            await Task.Delay(1000, ct);
+            await Pause(1000, ct);
             await LeaveResult(ct, Top(await ReadState(ct)) ?? QuickResult);
             log($"autoplay: {label} {difficulty}: Quick Battle done");
             return new BattleOutcome(BattleResult.Victory, $"Quick Battle, {(DateTime.UtcNow - started).TotalSeconds:0} s");
@@ -231,7 +231,7 @@ public sealed partial class LivePlayGame : IClanBossGame
             if (targets.Any(t => t.Kind == mapKind))
             {
                 await Click(mapKind, null, (_, scan) => scan().Targets.Any(t => t.Kind == "clan-difficulty"), $"{mapKind} opens", ct, within: TimeSpan.FromSeconds(12));
-                await Task.Delay(800, ct);
+                await Pause(800, ct);
                 continue;
             }
             if (Has(s, PlayTargets.ClanMapView))
@@ -241,7 +241,7 @@ public sealed partial class LivePlayGame : IClanBossGame
                 await DragIntoView("mode-clan", ct);
                 await Click("mode-clan", null, (s2, scan) => Has(s2, PlayTargets.ClanMapView) || scan().Targets.Any(t => t.Kind is "clan-demonlord" or "clan-hydra" or "clan-difficulty"),
                     "the alliance map opens", ct, within: TimeSpan.FromSeconds(12));
-                await Task.Delay(800, ct);
+                await Pause(800, ct);
                 continue;
             }
             if (!Input.NavigatingDriver.AtVillage(s)) { await HomeAsync(Action("to the village"), ct); continue; }

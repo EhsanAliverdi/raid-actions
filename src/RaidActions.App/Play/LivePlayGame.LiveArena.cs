@@ -40,7 +40,7 @@ public sealed partial class LivePlayGame : ILiveArenaGame
                 if (!targets.Any(t => t.Kind == "live-open")) return false;
                 await DragIntoView("live-open", ct);
                 await Click("live-open", null, (_, scan) => scan().Targets.Any(t => t.Kind == "live-find"), "Live Arena opens", ct, within: TimeSpan.FromSeconds(10));
-                await Task.Delay(1000, ct);
+                await Pause(1000, ct);
                 continue;
             }
             if (!Input.NavigatingDriver.AtVillage(s)) { await HomeAsync(Action("to the village"), ct); await ToVillage(ct); continue; }
@@ -83,7 +83,7 @@ public sealed partial class LivePlayGame : ILiveArenaGame
         var until = DateTime.UtcNow + TimeSpan.FromMinutes(6);
         while (DateTime.UtcNow < until)
         {
-            await Task.Delay(700, ct);
+            await Pause(700, ct);
             var state = await ReadState(ct);
             if (state.Active.Any(v => BattleViews.Contains(v.Name)) || Has(state, LiveResultView)) break;
             if (!Has(state, LiveDraftView)) continue; // still searching

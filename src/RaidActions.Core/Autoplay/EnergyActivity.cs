@@ -55,6 +55,11 @@ public interface IEnergyGame
 
     /// <summary>Saves the 3-star rows' sweeps (kept across a restart and for days: a sweep through a difficulty takes many).</summary>
     void SaveThreeStars(IReadOnlyDictionary<string, ThreeStarState> states) { }
+
+    /// <summary>The farm judge's book (<see cref="FarmBook"/>: each farm stage's measured XP and time, the XP per level learnt); empty when none is saved.</summary>
+    FarmBook LoadFarm() => new();
+
+    void SaveFarm(FarmBook book) { }
 }
 
 /// <summary>
@@ -106,6 +111,9 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     private int _rankedUp, _summoned, _sold;
     /// <summary>The 3-star rows' sweeps (<see cref="ThreeStarState"/>), read from the game's store each step.</summary>
     private Dictionary<string, ThreeStarState> _threeStars = [];
+    /// <summary>The best-farm rows' book (<see cref="FarmChooser"/>), read once and saved after each measured run; the last choice told per row.</summary>
+    private FarmBook? _farm;
+    private readonly Dictionary<string, string> _farmTold = [];
 
     public bool IsEnabled(AutoplaySettings settings) => settings.Energy.Enabled;
 
@@ -214,13 +222,51 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             Targets = ctx.Settings.Rules.AllEnergyToFood
                 ? [.. s.Targets.Where(t => !_dryShown.Contains(t.Id) && (t.Region.StartsWith("Region", StringComparison.Ordinal) || t.Region.Contains("IronTwins", StringComparison.Ordinal)))]
                 : [.. QuestRows(ctx).Where(t => !_dryShown.Contains(t.Id)).Select(t => Smart(ctx, t, w)),
-                    .. s.Targets.Where(t => !_dryShown.Contains(t.Id) && ctx.Held(PushKey(t)) is null).Select(t => Smart(ctx, t, w))],
+                    .. s.Targets.Where(t => !_dryShown.Contains(t.Id) && ctx.Held(PushKey(t)) is null).Select(t => Smart(ctx, BestFarm(ctx, t, w), w))],
             Food = s.Food with
             {
                 RankUp = s.Food.RankUp && ctx.Utc >= _rankUpBlockedUntil,
                 SummonMystery = s.Food.SummonMystery && ctx.Utc >= _summonBlockedUntil,
             },
         };
+    }
+
+    /// <summary>A best-farm row (<see cref="EnergyTarget.BestFarm"/>) with the stage the judge picks now; a new pick is told once.</summary>
+    private EnergyTarget BestFarm(PlayContext ctx, EnergyTarget t, EnergyWorld w)
+    {
+        if (!t.BestFarm) return t;
+        _farm ??= game.LoadFarm();
+        // Energy plentiful (at least the share Super Raid uses, of the cap): time limits the farm; else the energy does.
+        var timeBound = w.Resources.GetValueOrDefault("Energy") >= (ctx.LastResources?.EnergyCap ?? 124) * ctx.Settings.Rules.SuperRaidEnergyShare;
+        var (row, why) = FarmChooser.Resolve(t, w.Progress, _farm, timeBound);
+        if (why is not null)
+        {
+            var at = FarmChooser.Name((row.Region, row.Difficulty, row.Stage ?? 0));
+            if (_farmTold.GetValueOrDefault(t.Id) != at) { _farmTold[t.Id] = at; ctx.Event(AreaId, "farm", $"row {t.Id}: farms {at}: {why}"); }
+        }
+        return row;
+    }
+
+    /// <summary>A best-farm row's run measured: its time, energy and the food's XP (a Super Raid as a normal run's), into the book, saved.</summary>
+    private void MeasureFarm(PlayContext ctx, EnergyRun run, BattleResult result, double seconds, double spent, IReadOnlyList<ChampionOut>? before)
+    {
+        if (!run.Target.BestFarm || result is not (BattleResult.Victory or BattleResult.Defeat) || seconds <= 0) return;
+        _farm ??= game.LoadFarm();
+        var multiplier = run.Target.SuperRaid ? Math.Max(1, _account?.SuperRaidMultiplier ?? 2) : 1;
+        var food = (run.Team ?? []).Where(id => !run.Target.Team.Contains(id)).ToList();
+        double? xp = null;
+        if (result == BattleResult.Victory && before is not null && _account?.Champions is { } after && food.Count > 0)
+        {
+            var (got, book) = _farm.Read(food, before, after);
+            _farm = book;
+            xp = got / multiplier;
+        }
+        var key = ThreeStarState.Key(run.Region, run.Difficulty, run.Number);
+        var stat = (_farm.Stages.GetValueOrDefault(key) ?? new FarmStat()).Add(result == BattleResult.Victory, seconds, (spent > 0 ? spent : run.Cost) / multiplier, xp);
+        _farm = _farm with { Stages = new Dictionary<string, FarmStat>(_farm.Stages) { [key] = stat } };
+        game.SaveFarm(_farm);
+        ctx.Event(AreaId, "farm-stat", $"{FarmChooser.Name((run.Region, run.Difficulty, run.Number))}: {result} in {seconds:0} s, {(xp is { } x ? $"{x:0} XP a food champion" : "food XP not read")}; "
+            + $"{stat.Wins}/{stat.Runs} won, {stat.EnergyPerMinute:0.#} energy/min{(stat.XpPerMinute is { } r ? $", {r:0} XP/min" : "")}");
     }
 
     /// <summary>A climbing row's rest after a defeat (2026-11-03: 12-1 lost with a 35 Kael; the energy goes to the farm row meanwhile).</summary>
@@ -418,8 +464,11 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                     }
                 }
                 var before = _account.Resources.GetValueOrDefault(run.Resource);
+                var rosterBefore = _account.Champions;
                 await ctx.ThinkAsync(ct);
+                var started = ctx.Utc;
                 var outcome = await game.RunStageAsync(run, ctx.DryRun, ct);
+                var seconds = (ctx.Utc - started).TotalSeconds;
                 var where = EnergyPlanner.Describe(run);
                 if (outcome.Result is BattleResult.Retry)
                 {
@@ -486,6 +535,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 _accountAt = ctx.Utc;
                 if (!ctx.DryRun && run.Target is { ThreeStars: true, Progress: true, Area: "Story" } sweepRow) ThreeStarsAfter(ctx, sweepRow, run, outcome.Result);
                 var spent = before - _account.Resources.GetValueOrDefault(run.Resource);
+                if (!ctx.DryRun) MeasureFarm(ctx, run, outcome.Result, seconds, spent, rosterBefore);
                 var key = EnergyPlanner.LearntKey(run.Target, run.Number);
                 if (spent > 0 && Math.Abs(spent - run.Cost) >= 1 && (!run.CostKnown || _learnt.ContainsKey(key)))
                 {

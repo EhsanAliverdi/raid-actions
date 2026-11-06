@@ -27,6 +27,10 @@ public sealed partial class LivePlayGame : IEnergyGame
 
     public void SaveThreeStars(IReadOnlyDictionary<string, ThreeStarState> states) => AutoplayJson.WriteAtomic(ThreeStarState.PathIn(ExtractorOutput), states);
 
+    public FarmBook LoadFarm() => FarmBook.Load(ExtractorOutput);
+
+    public void SaveFarm(FarmBook book) => AutoplayJson.WriteAtomic(FarmBook.PathIn(ExtractorOutput), book);
+
     /// <summary>The dungeon whose stage list this bot opened (as Faction Wars' crypt: a list it did not open is never trusted).</summary>
     private string? _openDungeon;
 

@@ -41,4 +41,15 @@ public class PlariumPopupTests
     [InlineData(null, false)]
     public void Plarium_Plays_close_component_is_known_by_its_class(string? className, bool close) =>
         Assert.Equal(close, PlariumPopup.IsCloseComponent(className));
+
+    [Fact]
+    public void Three_accounts_the_avatar_of_the_profile_known_to_play_the_account_else_one_not_known_never_a_known_other()
+    {
+        var profiles = new Dictionary<string, long> { ["Ehsan Ali"] = 165001576, ["Ehsan Aliverdi"] = 163404481 };
+        Assert.Equal(1, PlariumPopup.Choose(["Ehsan Ali", "Ehsan Aliverdi"], 163404481, profiles));
+        Assert.Equal(0, PlariumPopup.Choose(["Ehsan Ali", "Ehsan Aliverdi"], 165001576, profiles));
+        Assert.Null(PlariumPopup.Choose(["Ehsan Ali", "Ehsan Aliverdi"], 165078741, profiles));           // both known as others
+        Assert.Equal(1, PlariumPopup.Choose(["Ehsan Ali", "Ehsan Aliversi"], 165078741, profiles));        // the one not known yet
+        Assert.Equal(0, PlariumPopup.Choose([null, "Ehsan Ali"], 165078741, profiles));                     // a name not read counts as not known
+    }
 }

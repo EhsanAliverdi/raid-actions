@@ -7,7 +7,7 @@ namespace RaidActions.App;
 /// <summary>
 /// switch-account &lt;player id&gt;: the game on another account (raid-extractor plan/multi-account.md). Plarium Play switches only while Raid is closed, and
 /// keeps every account signed in once (its "Add Account"), so no password is typed: Raid closed, Plarium Play's profile menu, the other account's avatar,
-/// Raid started again, the player's id read back. Two accounts: the menu shows one other account, whichever it is. A wrong account after the start is
+/// Raid started again, the player's id read back. The avatars are told apart by their profile names (hovered), learnt per account in plarium-profiles.json. A wrong account after the start is
 /// tried once more, then refused.
 /// </summary>
 public static class SwitchAccountCommand
@@ -19,14 +19,21 @@ public static class SwitchAccountCommand
     public static async Task<int> RunAsync(string[] args, string outDir, TextWriter output)
     {
         if (args.Length < 2 || !long.TryParse(args[1], out var want)) { output.WriteLine("Usage: switch-account <player id>"); return Cli.Usage; }
-        if (InGame(outDir) == want) { output.WriteLine($"The game is on account {want} already."); return Cli.Ok; }
-        for (var attempt = 1; attempt <= 2; attempt++)
+        var first = InGame(outDir);
+        if (first == want) { output.WriteLine($"The game is on account {want} already."); return Cli.Ok; }
+        var profiles = LoadProfiles(outDir);
+        // The profile signed in now is the account in the game: learnt (three accounts need to know which avatar is which; 2026-11-07).
+        if (first is { } id0 && Process.GetProcessesByName("PlariumPlay").FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero) is { } pp0
+            && PlariumPopup.CurrentProfile(pp0.MainWindowHandle) is { } current) Learn(outDir, profiles, current, id0, output);
+        // Three tries: with three accounts a profile not known yet may be the wrong one (it is learnt, and the next try knows it).
+        for (var attempt = 1; attempt <= 3; attempt++)
         {
             CloseRaid(output);
-            if (SwitchInPlariumPlay(output) is { } problem) { output.WriteLine(problem); return Cli.Failed; }
+            if (SwitchInPlariumPlay(output, want, profiles, out var picked) is { } problem) { output.WriteLine(problem); return Cli.Failed; }
             if (!await RestartGameCommand.StartAndWaitAsync(outDir, output, TimeSpan.FromMinutes(5))) return Cli.Failed;
             var now = InGame(outDir);
             output.WriteLine($"The game is on account {now?.ToString() ?? "(not read)"}.");
+            if (picked is not null && now is { } id) Learn(outDir, profiles, picked, id, output);
             if (now == want) return Cli.Ok;
         }
         output.WriteLine($"Account {want} was not reached.");
@@ -41,6 +48,26 @@ public static class SwitchAccountCommand
         using (game) return game.UserId();
     }
 
+    /// <summary>Plarium Play's profile names and the player id each one plays (learnt on switches; output, never committed).</summary>
+    private static string ProfilesPath(string outDir) => Path.Combine(outDir, "plarium-profiles.json");
+
+    private static Dictionary<string, long> LoadProfiles(string outDir)
+    {
+        try { return File.Exists(ProfilesPath(outDir)) ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, long>>(File.ReadAllText(ProfilesPath(outDir))) ?? [] : []; }
+        catch (Exception e) when (e is IOException or System.Text.Json.JsonException) { return []; }
+    }
+
+    private static void Learn(string outDir, Dictionary<string, long> profiles, string name, long id, TextWriter output)
+    {
+        if (profiles.TryGetValue(name, out var known) && known == id) return;
+        // One profile per account: an old entry for this id under another name goes.
+        foreach (var k in profiles.Where(kv => kv.Value == id && kv.Key != name).Select(kv => kv.Key).ToList()) profiles.Remove(k);
+        profiles[name] = id;
+        output.WriteLine($"Plarium Play: profile '{name}' plays account {id} (learnt).");
+        try { File.WriteAllText(ProfilesPath(outDir), System.Text.Json.JsonSerializer.Serialize(profiles, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })); }
+        catch (IOException e) { output.WriteLine($"Plarium Play's profiles not saved: {e.Message}"); }
+    }
+
     private static void CloseRaid(TextWriter output)
     {
         foreach (var p in Process.GetProcessesByName("Raid"))
@@ -52,8 +79,9 @@ public static class SwitchAccountCommand
         Thread.Sleep(8000); // Plarium Play notices the game closed (it was 3 s; see SwitchInPlariumPlay)
     }
 
-    private static string? SwitchInPlariumPlay(TextWriter output)
+    private static string? SwitchInPlariumPlay(TextWriter output, long want, IReadOnlyDictionary<string, long> profiles, out string? picked)
     {
+        picked = null;
         var pp = Process.GetProcessesByName("PlariumPlay").FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero);
         if (pp is null) return "Plarium Play's window is not open.";
         // No click reaches a disconnected or locked session and every pixel reads blank (2026-11-06 05:31: Remote Desktop left mid-switch, and "the game is
@@ -126,18 +154,29 @@ public static class SwitchAccountCommand
                 // The other account's avatar, found on the screen (2026-11-04: on the PC's own monitor at 100% the menu's rows are not where they were at
                 // 150% over Remote Desktop, and the fixed spot missed between the avatar and "+ Add Account").
                 // The avatar's own button, through UI Automation (no pixel read: works under a window on top or a box sliding in).
-                var pressed = PlariumPopup.PressOtherAccount(h, output);
-                for (var wait = 0; wait < 4 && !pressed; wait++)
+                // Each avatar's profile name (hovered: the name shows in place of "Other Accounts"), and the one that plays the account wanted.
+                var others = PlariumPopup.OtherAccounts(h, (x, y) => SetCursorPos(x, y), output);
+                for (var wait = 0; wait < 4 && others.Count == 0; wait++)
                 {
                     Thread.Sleep(1000);
-                    pressed = PlariumPopup.PressOtherAccount(h, output);
+                    others = PlariumPopup.OtherAccounts(h, (x, y) => SetCursorPos(x, y), output);
                 }
-                if (pressed)
+                if (others.Count > 0)
                 {
-                    output.WriteLine("Plarium Play: the other account picked (its avatar button).");
-                    Thread.Sleep(5000);
-                    return null;
+                    var names = others.Select(o => o.Name).ToList();
+                    output.WriteLine($"Plarium Play's other accounts: {string.Join(", ", names.Select(n => n is null ? "(name not read)" : profiles.TryGetValue(n, out var pid) ? $"{n} ({pid})" : $"{n} (not known yet)"))}.");
+                    if (PlariumPopup.Choose(names, want, profiles) is not { } index)
+                        return $"None of Plarium Play's other accounts plays {want}: the account was not switched.";
+                    if (PlariumPopup.Press(others[index].Button))
+                    {
+                        picked = names[index];
+                        output.WriteLine($"Plarium Play: '{picked ?? "(name not read)"}' picked (its avatar button).");
+                        Thread.Sleep(5000);
+                        return null;
+                    }
                 }
+                // The pixel search below presses the first avatar: only when it is the only other account (with more, it may be the wrong one).
+                if (others.Count > 1) return "Plarium Play: the chosen avatar could not be pressed: the account was not switched.";
                 // The menu can take a few seconds to draw (2026-11-06: a "Security checkup" box slid in above it and the first look found no avatar).
                 var avatarAt = FindAvatar(r.L, r.B, scale);
                 for (var again = 0; again < 5 && avatarAt is null; again++)

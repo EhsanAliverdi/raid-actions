@@ -118,6 +118,80 @@ public static class PlariumPopup
         }
     }
 
+    /// <summary>
+    /// The "Other Accounts" avatars of the open profile menu with their profile names (2026-11-07, three accounts: the avatars have no name; hovering one
+    /// shows its profile's name in place of the "Other Accounts" label, so each is hovered and the text that appears is read). A name not read: null.
+    /// </summary>
+    public static List<(AutomationElement Button, string? Name)> OtherAccounts(IntPtr window, Action<int, int> hover, TextWriter output)
+    {
+        var list = new List<(AutomationElement, string?)>();
+        try
+        {
+            var root = AutomationElement.FromHandle(window);
+            var page = Page(root) ?? Page(root);
+            if (page is null) return list;
+            HashSet<string> Texts() => [.. page.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))
+                .Cast<AutomationElement>().Select(t => t.Current.Name).Where(n => !string.IsNullOrWhiteSpace(n))];
+            var avatars = page.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)).Cast<AutomationElement>()
+                .Where(b => IsOtherAccount(b.Current.ClassName) && b.Current.IsEnabled && !b.Current.BoundingRectangle.IsEmpty).ToList();
+            foreach (var b in avatars)
+            {
+                var before = Texts();
+                var r = b.Current.BoundingRectangle;
+                hover((int)(r.X + r.Width / 2), (int)(r.Y + r.Height / 2));
+                string? name = null;
+                for (var look = 0; look < 6 && name is null; look++)
+                {
+                    Thread.Sleep(400);
+                    name = Texts().Except(before).FirstOrDefault();
+                }
+                list.Add((b, name));
+            }
+        }
+        catch (Exception e) when (e is ElementNotAvailableException or InvalidOperationException or System.Runtime.InteropServices.COMException)
+        {
+            output.WriteLine($"Plarium Play's menu could not be read ({e.Message}).");
+        }
+        return list;
+    }
+
+    /// <summary>The profile signed in now: the name on Plarium Play's profile button (its component sc-137w4kd-0); null when not read.</summary>
+    public static string? CurrentProfile(IntPtr window)
+    {
+        try
+        {
+            var root = AutomationElement.FromHandle(window);
+            var page = Page(root) ?? Page(root);
+            var group = page?.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Group)).Cast<AutomationElement>()
+                .FirstOrDefault(g => (g.Current.ClassName ?? "").Split(' ').Contains("sc-137w4kd-0"));
+            return group?.FindFirst(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Text))?.Current.Name is { Length: > 0 } n ? n : null;
+        }
+        catch (Exception e) when (e is ElementNotAvailableException or InvalidOperationException or System.Runtime.InteropServices.COMException) { return null; }
+    }
+
+    /// <summary>Presses one avatar's button (from <see cref="OtherAccounts"/>).</summary>
+    public static bool Press(AutomationElement button)
+    {
+        try
+        {
+            if (!button.TryGetCurrentPattern(InvokePattern.Pattern, out var p)) return false;
+            ((InvokePattern)p).Invoke();
+            return true;
+        }
+        catch (Exception e) when (e is ElementNotAvailableException or InvalidOperationException or System.Runtime.InteropServices.COMException) { return false; }
+    }
+
+    /// <summary>
+    /// Which avatar to press for the account wanted: the one whose profile is known to be it (<paramref name="profiles"/>: profile name to player id, learnt on
+    /// switches); else one whose profile is not known yet (it is then learnt); never one known to be another account. Null: none can be it.
+    /// </summary>
+    public static int? Choose(IReadOnlyList<string?> names, long want, IReadOnlyDictionary<string, long> profiles)
+    {
+        for (var i = 0; i < names.Count; i++) if (names[i] is { } n && profiles.TryGetValue(n, out var id) && id == want) return i;
+        for (var i = 0; i < names.Count; i++) if (names[i] is not { } n || !profiles.ContainsKey(n)) return i;
+        return null;
+    }
+
     /// <summary>The "Other Accounts" avatar's component (a styled component's class, seen 2026-11-06).</summary>
     public static bool IsOtherAccount(string? className) =>
         (className ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains("sc-12k8j5c-6");

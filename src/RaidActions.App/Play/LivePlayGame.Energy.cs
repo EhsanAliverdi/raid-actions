@@ -94,14 +94,26 @@ public sealed partial class LivePlayGame : IEnergyGame
             var gone = planned.Where(id => !champs.TryGetValue(id, out var c) || c.InVault && run.Target.Team.Contains(id) || c.InBathhouse || _notPickable.Contains(id)).ToList();
             if (gone.Count > 0) log($"autoplay: left out of the team (in a vault, gone, or refused here): {string.Join(", ", gone.Select(Who))}");
             var team = planned.Except(gone).ToList();
+            // A champion already in the team stays until it is maxed, food or not (Ehsan 2026-11-06: "you keep removing existing champions from campaign
+            // heroes even if not maxed"; "I am trying to level up an epic and you remove it"): the planned food only fills the slots that are empty or hold
+            // a maxed champion. The row's own team (the farmers chosen in the settings, Kael and Pelops) always plays. Every Campaign row, the 3-star sweep too.
+            if (run.Target.Food || run.Target.Area == "Story")
+            {
+                var slots = EnergyPlaces.Slots(run.Target.Area);
+                var farmers = team.Where(run.Target.Team.Contains).ToList();
+                var kept = ((await Read(ct)).Play.TeamIds ?? []).Where(id => !farmers.Contains(id) && champs.TryGetValue(id, out var c) && !FoodPlanner.Maxed(c)
+                    && !c.InBathhouse && !_notPickable.Contains(id)).ToList();
+                var merged = farmers.Concat(kept).Concat(team.Where(id => !farmers.Contains(id) && !kept.Contains(id))).Distinct().Take(slots).ToList();
+                if (kept.Count > 0) log($"autoplay: kept in the team (not maxed): {string.Join(", ", kept.Select(Who))}");
+                team = merged;
+            }
             if (team.Count == 0)
             {
                 await Back(teamView, ct);
                 return new BattleOutcome(BattleResult.NotStarted, "none of the row's team can be picked (in a vault, gone, or refused)");
             }
             var fromVault = team.Any(id => champs[id].InVault);
-            if (fromVault || _vaultFilter == true) await VaultFilter(fromVault, ct);
-            if (!await SetRunTeam(team, teamView, ct))
+            if (!await SetRunTeam(team, teamView, ct, vault: fromVault))
                 return new BattleOutcome(BattleResult.Retry, $"not pickable here, left out from now on: {string.Join(", ", _notPickable.Select(Who))}");
         }
         // A run with its own team (the food farm) keeps it; any other uses the Teams card.

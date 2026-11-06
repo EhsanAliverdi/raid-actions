@@ -472,9 +472,11 @@ public sealed partial class LivePlayGame : ICursedCityGame
     /// The team screen's squad set to exactly <paramref name="team"/>: champions not in it taken out (a click on their slot), the missing ones
     /// picked from the list (scrolled with the wheel when not shown). Checked from memory after each click.
     /// </summary>
-    private async Task SetTeam(IReadOnlyList<int> team, CancellationToken ct, string view = PlayTargets.CcTeamView)
+    /// <param name="vault">The list's vault boxes: on, off (the default: a shorter list), or left as they are (null).</param>
+    private async Task SetTeam(IReadOnlyList<int> team, CancellationToken ct, string view = PlayTargets.CcTeamView, bool? vault = false)
     {
-        if (_vaultFilter != false) await VaultFilter(false, ct);
+        // 2026-11-06: the vaults were ticked for vault food, then unticked here at once, and the food searched for a minute in a list without it.
+        if (vault is { } v && _vaultFilter != v) await VaultFilter(v, ct);
         var wanted = team.ToHashSet();
         var emptied = 0;
         var down = true;

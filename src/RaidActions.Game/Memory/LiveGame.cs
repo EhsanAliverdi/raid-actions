@@ -179,9 +179,9 @@ public sealed class LiveGame : IDisposable
 
     /// <summary>
     /// The last account read and when it started. A full read (every champion and piece of gear, written to output/live) takes seconds, and Auto Play
-    /// asked for one many times a turn with nothing sent in between (Ehsan 2026-11-06: "you seem to be very slow"): reused for 2 s while no input was sent.
+    /// asked for one many times a turn with nothing sent in between (Ehsan 2026-11-06: "you seem to be very slow"): reused for 3 s after it is done while no input was sent.
     /// </summary>
-    private (SavedExport Data, DateTime StartedUtc)? _lastRead;
+    private (SavedExport Data, DateTime StartedUtc, DateTime DoneUtc)? _lastRead;
 
     private sealed class LiveAccount(LiveGame game) : IAccountSource
     {
@@ -191,7 +191,8 @@ public sealed class LiveGame : IDisposable
             lock (game._lock)
             {
                 var now = DateTime.UtcNow;
-                if (game._lastRead is { } last && now - last.StartedUtc < TimeSpan.FromSeconds(2) && (LastInputUtc?.Invoke() ?? DateTime.MaxValue) < last.StartedUtc)
+                // Its age from when it was done (a read takes about 2 s: counted from its start, the next one never found it fresh); any input since it began: read again.
+                if (game._lastRead is { } last && now - last.DoneUtc < TimeSpan.FromSeconds(3) && (LastInputUtc?.Invoke() ?? DateTime.MaxValue) < last.StartedUtc)
                     return last.Data;
                 var clock = System.Diagnostics.Stopwatch.StartNew();
                 var dir = Path.Combine(game._paths.Output, "live");
@@ -199,7 +200,7 @@ public sealed class LiveGame : IDisposable
                 var r = Exporter.Export(new Account(game._session, game._offsets), dir, names, historyMinInterval: TimeSpan.FromHours(1), accountFolders: false);
                 if (!r.Ok || r.Data is null) throw new InvalidOperationException("Live account read failed: " + r.Message);
                 if (clock.ElapsedMilliseconds > 1500) SlowReadLog?.Invoke($"the account read took {clock.ElapsedMilliseconds} ms");
-                game._lastRead = (r.Data, now);
+                game._lastRead = (r.Data, now, DateTime.UtcNow);
                 return r.Data;
             }
         }, ct);

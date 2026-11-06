@@ -155,7 +155,13 @@ public sealed partial class LivePlayGame : IEnergyGame
         }
         catch (PlayStopException)
         {
-            if (Top(await ReadState(ct)) != teamView) throw;
+            var nothing = await ReadState(ct);
+            // 2026-11-06 (Brutal 12-3, BlackLord65): the game's Energy box (an inbox potion and a gem refill) opened but was not the expected view:
+            // the screen is dumped to learn its name, then closed with the team screen.
+            var dump = DumpScreen("start did nothing");
+            log($"autoplay: Start did nothing; the screen shows {string.Join(" > ", nothing.Active.Select(v => v.Name))}; energy read {(await ReadAccountAsync(ct)).Resources.GetValueOrDefault("Energy")}. Screen dump: {dump}");
+            if (Top(nothing) != teamView && !Has(nothing, teamView)) throw;
+            if (Top(nothing) != teamView) await Back(Top(nothing)!, ct);
             await Back(teamView, ct);
             return new BattleOutcome(BattleResult.NotStarted, "Start did nothing (not enough energy?)");
         }

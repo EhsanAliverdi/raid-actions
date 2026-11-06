@@ -112,7 +112,17 @@ public sealed partial class LivePlayGame : IEnergyGame
                 await Back(teamView, ct);
                 return new BattleOutcome(BattleResult.NotStarted, "none of the row's team can be picked (in a vault, gone, or refused)");
             }
-            if (!await SetRunTeam(team, teamView, ct))
+            // A level-1 food champion is any level-1 food of its rank (the list's shown ones first); a levelled one is wanted by name (its levels count).
+            var foodRules = AutoplaySettings.Load(ExtractorOutput).Energy.Food;
+            var farmerIds = run.Target.Team;
+            int? StandIn(int id, IReadOnlyList<TeamPickRead> picks, IReadOnlyCollection<int> inTeam)
+            {
+                if (!run.Target.Food || farmerIds.Contains(id) || !champs.TryGetValue(id, out var want) || want.Level > 1) return null;
+                return picks.Where(p => p.State is 0 or null && p.Pick is { NotClickable: null } && !inTeam.Contains(p.HeroId) && !_notPickable.Contains(p.HeroId))
+                    .Select(p => champs.GetValueOrDefault(p.HeroId)).FirstOrDefault(c => c is { Level: 1 } && c.Rank == want.Rank && !c.InBathhouse
+                        && FoodPlanner.IsFood(c, foodRules with { UseVault = true }, farmerIds))?.Id;
+            }
+            if (!await SetRunTeam(team, teamView, ct, standIn: StandIn))
                 return new BattleOutcome(BattleResult.Retry, $"not pickable here, left out from now on: {string.Join(", ", _notPickable.Select(Who))}");
         }
         // A run with its own team (the food farm) keeps it; any other uses the Teams card.

@@ -479,8 +479,11 @@ public sealed partial class LivePlayGame : ICursedCityGame
     /// </summary>
     /// <param name="vault">The list's vault boxes: on (the default: Ehsan 2026-11-06, "whenever you select a champion, make sure the filter shows both
     /// vaults"), off, or left as they are (null).</param>
-    private async Task SetTeam(IReadOnlyList<int> team, CancellationToken ct, string view = PlayTargets.CcTeamView, bool? vault = true)
+    /// <param name="standIn">For a member not shown in the list: another champion shown that does the same job (any level-1 food of its rank), or null.</param>
+    private async Task SetTeam(IReadOnlyList<int> planned, CancellationToken ct, string view = PlayTargets.CcTeamView, bool? vault = true,
+        Func<int, IReadOnlyList<TeamPickRead>, IReadOnlyCollection<int>, int?>? standIn = null)
     {
+        var team = planned.ToList();
         // 2026-11-06: the vaults were ticked for vault food, then unticked here at once, and the food searched for a minute in a list without it.
         // Vaults wanted: checked on this screen every time (2026-11-06: a team screen opened again had the vaults hidden while the bot thought them shown).
         if (vault is { } v && (_vaultFilter != v || v)) await VaultFilter(v, ct);
@@ -524,6 +527,16 @@ public sealed partial class LivePlayGame : ICursedCityGame
                 return;
             }
             var pick = (play.Picks ?? []).FirstOrDefault(p => p.HeroId == missing);
+            // Food is a pool, not a name (Ehsan 2026-11-06: "if you want a level 1 champion any level one can sit in that spot"): a stand-in the list shows
+            // takes the place of one it does not, no scrolling.
+            if (pick?.Pick is not { NotClickable: null } && standIn?.Invoke(missing, play.Picks ?? [], team) is { } sub && sub != missing)
+            {
+                log($"autoplay: {Who(missing)} is not in view: {Who(sub)} takes its place (the same food)");
+                team[team.IndexOf(missing)] = sub;
+                wanted.Remove(missing);
+                wanted.Add(sub);
+                continue;
+            }
             if (pick?.Pick is { } t && t.NotClickable is null)
             {
                 if (pick.State is >= 2 and not 7)

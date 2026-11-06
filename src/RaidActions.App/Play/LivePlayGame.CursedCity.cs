@@ -445,11 +445,16 @@ public sealed partial class LivePlayGame : ICursedCityGame
     {
         // The filter panel stays loaded when closed (2026-10-30), so its boxes are read without opening it: opened only when one is set the other way.
         var (from, to) = include ? ("off", "on") : ("on", "off");
+        // A team screen whose filter was never opened has no boxes loaded (2026-11-06, the Campaign's: "already set" was assumed, and vault food was
+        // searched a minute in a list without the vaults): opened then, to see them.
         var (_, targets, _) = await Read(ct);
-        _vaultFilter = include;
-        if (!targets.Any(t => t.Kind == "team-filter-vault" && t.Note == from)) return;
+        var boxes = targets.Where(t => t.Kind == "team-filter-vault").ToList();
+        if (boxes.Count > 0 && !boxes.Any(t => t.Note == from)) { _vaultFilter = include; return; }
         await Click("team-filter", null, (_, _) => true, "the filter opens", ct);
         await Pause(800, ct);
+        if (!(await Read(ct)).Targets.Any(t => t.Kind == "team-filter-vault"))
+            log($"autoplay: the team filter shows no vault boxes; screen dump: {DumpScreen("no vault boxes in the filter")}");
+        _vaultFilter = include;
         for (var i = 0; i < 4; i++)
         {
             var (_, now, _) = await Read(ct);

@@ -28,6 +28,18 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
 
     // ------------------------------------------------------------------ IPlayGame
 
+    /// <summary>The account's resources, shards, items, gear and champions, for the rewards log (Ehsan 2026-11-06).</summary>
+    public async Task<Holdings?> ReadHoldingsAsync(CancellationToken ct)
+    {
+        var data = await game.Account.ReadAsync(ct);
+        var items = new Dictionary<string, double>(data.Account.Resources);
+        foreach (var (kind, n) in data.Inventory?.Shards ?? []) items[$"{kind} shard"] = n;
+        foreach (var (name, n) in data.Inventory?.Items ?? []) items[name] = items.GetValueOrDefault(name) + n;
+        var gear = data.Artifacts.ToDictionary(a => a.Id, a => $"{a.Rarity} {a.Rank}★ {a.SetName ?? a.Set} {a.Slot}");
+        var heroes = data.Champions.ToDictionary(c => c.Id, c => $"{c.Name ?? "#" + c.Id} ({c.Rarity})");
+        return new Holdings(items, gear, heroes);
+    }
+
     public async Task<GameResources> ReadResourcesAsync(CancellationToken ct)
     {
         var account = await game.Account.ReadAsync(ct);

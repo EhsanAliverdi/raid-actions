@@ -60,7 +60,10 @@ public static class RestartGameCommand
                 {
                     var (state, _) = g.ReadUi();
                     last = $"top view {state?.Top?.Name ?? "none"}";
-                    if (state is not null && (Input.NavigatingDriver.AtVillage(state) || state.Top?.Name is { } top && (top.Contains("Offer", StringComparison.Ordinal) || top.StartsWith("News", StringComparison.Ordinal))))
+                    // The village loaded, whatever the game put over it (Ehsan 2026-11-06: "on game start the game might give many new popups"; a new account's
+                    // Daily14DaysRewardProgramOverlay held the switch 5 minutes): Auto Play's way home closes them.
+                    if (state is not null && (Input.NavigatingDriver.AtVillage(state) || state.Active.Any(v => v.Name is "Village" or "VillageHUD")
+                        || state.Top?.Name is { } top && (top.Contains("Offer", StringComparison.Ordinal) || top.StartsWith("News", StringComparison.Ordinal))))
                     {
                         output.WriteLine($"Raid is up ({last}).");
                         return true;

@@ -178,7 +178,11 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 try
                 {
                     await ctx.ThinkAsync(ct);
+                    var before = await Holdings(ct);
                     var done = await act.RunTurnAsync(ctx, ct);
+                    // What the turn brought in, and from where (the rewards log; nothing in a dry run).
+                    if (!dryRun && before is not null && await Holdings(ct) is { } after && Gains.Describe(before, after) is { } got)
+                        Remember(new AutoplayEvent(host.UtcNow, act.Id, "reward", $"{act.Name}{(done.Length > 0 ? $" ({(done.Length > 80 ? done[..80] + "…" : done)})" : "")}: {got}"));
                     Turns++;
                     errors = 0;
                     _areaErrors.Remove(act.Id);
@@ -240,6 +244,13 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
             if (host.StopRequested() || !host.LoadSettings().Enabled) break;
             WriteStatus();
         }
+    }
+
+    /// <summary>The account's holdings, or null (not readable now: the rewards log skips this turn).</summary>
+    private async Task<Holdings?> Holdings(CancellationToken ct)
+    {
+        try { return await game.ReadHoldingsAsync(ct); }
+        catch (Exception e) when (e is not OperationCanceledException) { return null; }
     }
 
     private void SaveStates()

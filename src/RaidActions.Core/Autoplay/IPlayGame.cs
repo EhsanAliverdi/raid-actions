@@ -13,6 +13,9 @@ public interface IPlayGame
     /// <summary>The amounts that regenerate (and gems, never spent): read from the account, timers from the HUD when it shows them.</summary>
     Task<GameResources> ReadResourcesAsync(CancellationToken ct);
 
+    /// <summary>What the account holds now, for the rewards log (<see cref="Gains"/>); null when it cannot be read (the fakes).</summary>
+    Task<Holdings?> ReadHoldingsAsync(CancellationToken ct) => Task.FromResult<Holdings?>(null);
+
     /// <summary>Back to the village with back/close elements only (waits out a running battle).</summary>
     Task GoHomeAsync(CancellationToken ct);
 

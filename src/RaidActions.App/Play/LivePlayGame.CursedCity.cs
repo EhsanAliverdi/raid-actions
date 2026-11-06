@@ -543,6 +543,14 @@ public sealed partial class LivePlayGame : ICursedCityGame
                     $"#{missing} joins the team", ct);
                 continue;
             }
+            // A vault champion the list cannot show (its vault boxes unticked): the filter is changed, never the list scrolled for it (Ehsan 2026-11-06:
+            // "if you need a champion from the vault and it is not in the list, modify the filter, don't keep moving right and left").
+            if (pick is null && _vaultFilter != true && (await Account(ct)).Data.Champions.FirstOrDefault(c => c.Id == missing) is { InVault: true })
+            {
+                log($"autoplay: {Who(missing)} is in a vault: the list's vault boxes ticked to show it");
+                await VaultFilter(true, ct);
+                continue;
+            }
             // Not in view: scroll the list (the shown picks' area) down, then up from the end.
             var shown = (play.Picks ?? []).Where(p => p.Pick is { Rect: not null, Active: true, FullyVisible: true }).Select(p => p.Pick!.Rect!.Value).ToList();
             if (shown.Count == 0) throw new PlayStopException($"The team screen shows no champion list. Screen dump: {DumpScreen("team list empty")}");

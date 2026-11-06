@@ -530,13 +530,21 @@ public sealed partial class LivePlayGame : IChoresGame
                 await Click("pass-claim", t => t.Path == claim.Path, (_, _) => true, $"{claim.Name}", ct);
                 await Pause(1500, ct);
                 // A challenge's card opens its window: its own Claim takes the reward (closing it, as before, took nothing).
-                if (Top(await ReadState(ct)) == "ChallengeQuestOverlay" && (await Read(ct)).Targets.Any(t => t.Kind == "challenge-confirm" && t.NotClickable is null))
-                    await Click("challenge-confirm", null, (_, _) => true, "the challenge's Claim", ct);
-                log($"autoplay: claimed {claim.Name} on {view}");
-                claimed++;
+                var confirmed = Top(await ReadState(ct)) == "ChallengeQuestOverlay" && (await Read(ct)).Targets.Any(t => t.Kind == "challenge-confirm" && t.NotClickable is null);
+                if (confirmed) await Click("challenge-confirm", null, (_, _) => true, "the challenge's Claim", ct);
                 // The reward's popup is waited for by Settled (a fixed 2 s here made every claim take 6 s; Ehsan 2026-11-06: "very slow between the clicks").
                 var s3 = await Settled(ct);
-                if (Top(s3) is { } top && top != view) await Back(top, ct);
+                // Collect All stays clickable with nothing left (Ehsan 2026-11-06: "it was clicking on claim 100 times while there was nothing to
+                // claim"): a tap that brings no reward box took nothing, and the tab is done. A game notification on top (the Clan Boss's element) is no box.
+                var box = Top(s3) is { } top && top != view && !top.EndsWith("NotificationView", StringComparison.Ordinal) ? top : null;
+                if (box is null && !confirmed)
+                {
+                    log($"autoplay: {claim.Name} on {view}: nothing came of it, nothing left to claim on this tab");
+                    break;
+                }
+                log($"autoplay: claimed {claim.Name} on {view}");
+                claimed++;
+                if (box is not null) await Back(box, ct);
                 await Pause(800, ct);
             }
         }

@@ -481,7 +481,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 // What the run really took (the regeneration during it is under one energy for a short battle): learnt when not exported.
                 _account = await game.ReadAccountAsync(ct);
                 _accountAt = ctx.Utc;
-                if (!ctx.DryRun && run.Target is { ThreeStars: true, Progress: true, Area: "Story" } sweepRow) ThreeStarsAfter(ctx, sweepRow, run, outcome.Result == BattleResult.Victory);
+                if (!ctx.DryRun && run.Target is { ThreeStars: true, Progress: true, Area: "Story" } sweepRow) ThreeStarsAfter(ctx, sweepRow, run, outcome.Result);
                 var spent = before - _account.Resources.GetValueOrDefault(run.Resource);
                 var key = EnergyPlanner.LearntKey(run.Target, run.Number);
                 if (spent > 0 && Math.Abs(spent - run.Cost) >= 1 && (!run.CostKnown || _learnt.ContainsKey(key)))
@@ -519,10 +519,18 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     }
 
     /// <summary>A 3-star row's run: its stars read in the account now, the sweep moved on (<see cref="ThreeStarState.After"/>), saved, and told.</summary>
-    private void ThreeStarsAfter(PlayContext ctx, EnergyTarget row, EnergyRun run, bool victory)
+    private void ThreeStarsAfter(PlayContext ctx, EnergyTarget row, EnergyRun run, BattleResult outcome)
     {
         var stars = _account?.Progress.FirstOrDefault(a => a.Area == "Story")?.Regions.FirstOrDefault(r => r.Region == run.Region)?.Difficulties
             .FirstOrDefault(d => EnergyPlaces.SameDifficulty(run.Difficulty, d.Difficulty))?.Results.FirstOrDefault(r => r.Number == run.Number) is { Passed: true } result ? result.Stars : 0;
+        // A result not read (2026-11-06: a champion-type box over the result screen, Hard 1-5 left as "Unknown" though it had 3 stars) is never a defeat:
+        // the account's stars say it; without 3 stars there, nothing is counted (the stage is simply played again).
+        if (outcome is not (BattleResult.Victory or BattleResult.Defeat))
+        {
+            if (stars < 3) { ctx.Event(AreaId, "three-stars", $"row {row.Id}: {ThreeStarState.Key(run.Region, run.Difficulty, run.Number)}: the result was not read; nothing counted"); return; }
+            outcome = BattleResult.Victory;
+        }
+        var victory = outcome == BattleResult.Victory;
         var before = ThreeStarState.For(row, _threeStars);
         var (after, text) = ThreeStarState.After(row, before, ThreeStarState.Key(run.Region, run.Difficulty, run.Number), victory, stars, ctx.Utc);
         _threeStars[row.Id] = after;

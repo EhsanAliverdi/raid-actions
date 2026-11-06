@@ -85,6 +85,19 @@ public class CampaignActivityTests
     }
 
     [Fact]
+    public async Task A_result_not_read_is_not_a_defeat_the_account_s_stars_decide()
+    {
+        var (_, game, engine) = Make(On(HardSweep with { StopOnDefeat = true, StopAfterMisses = 0 }), TimeSpan.FromMinutes(20));
+        game.Energy = 130;
+        game.Story = HardOneStar();
+        game.StoryResult = r => (true, 3);
+        game.UnknownResult = true;   // the run is won with 3 stars, but its result screen is not read
+        await engine.RunAsync(once: false, new CancellationTokenSource(TimeSpan.FromSeconds(20)).Token);
+        Assert.Null(game.ThreeStars["hard3"].Stopped);
+        Assert.Contains(game.Calls, c => c.StartsWith("run Hard 2", StringComparison.Ordinal));   // 1-1 counted as 3 stars: on to 1-2
+    }
+
+    [Fact]
     public async Task A_three_star_sweep_stops_on_a_defeat_when_asked()
     {
         var (_, game, engine) = Make(On(HardSweep with { StopOnDefeat = true, StopAfterMisses = 0 }), TimeSpan.FromHours(1));

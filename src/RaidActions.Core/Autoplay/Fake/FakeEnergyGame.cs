@@ -40,6 +40,8 @@ public sealed class FakeEnergyGame(Func<DateTime> now) : IEnergyGame
     public AreaProgressOut? Story { get; set; }
     /// <summary>A Campaign run's result: won or not, and the stars it gives (kept when better than the stage's).</summary>
     public Func<EnergyRun, (bool Victory, int Stars)>? StoryResult { get; set; }
+    /// <summary>The Campaign run's result screen is not read (the outcome is Unknown, the account still changes).</summary>
+    public bool UnknownResult { get; set; }
 
     /// <summary>The saved 3-star sweeps (as the live game's file).</summary>
     public Dictionary<string, ThreeStarState> ThreeStars { get; } = [];
@@ -99,7 +101,7 @@ public sealed class FakeEnergyGame(Func<DateTime> now) : IEnergyGame
                 {
                     Results = [.. d.Results.Select(x => x.Number == run.Number ? x with { Passed = true, Stars = Math.Max(x.Stars, stars) } : x)],
                 })] })] };
-            return Task.FromResult(new BattleOutcome(won ? BattleResult.Victory : BattleResult.Defeat, $"{RunTime.TotalSeconds:0} s"));
+            return Task.FromResult(new BattleOutcome(UnknownResult ? BattleResult.Unknown : won ? BattleResult.Victory : BattleResult.Defeat, $"{RunTime.TotalSeconds:0} s"));
         }
         return Task.FromResult(new BattleOutcome(LoseAll ? BattleResult.Defeat : BattleResult.Victory, $"{RunTime.TotalSeconds:0} s"));
     }

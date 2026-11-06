@@ -29,6 +29,16 @@ public sealed class LiveArenaActivity(ILiveArenaGame game) : IActivity
 
     public bool IsEnabled(AutoplaySettings settings) => settings.LiveArena.Enabled;
 
+    private sealed record Saved(DateTime CheckAt, string Last);
+
+    // Kept for the next bot on the account (a rotation's restart): it does not open Live Arena again before its time.
+    public string? SaveState() => System.Text.Json.JsonSerializer.Serialize(new Saved(_checkAt, _last), AutoplayJson.Options);
+
+    public void LoadState(string json, DateTime utc)
+    {
+        if (System.Text.Json.JsonSerializer.Deserialize<Saved>(json, AutoplayJson.Options) is { } s) (_checkAt, _last) = (s.CheckAt, s.Last ?? "");
+    }
+
     public Decision Decide(PlayContext ctx)
     {
         if (_dryShown) return Decision.Off("shown in this dry run");

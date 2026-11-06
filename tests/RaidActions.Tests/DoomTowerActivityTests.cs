@@ -42,4 +42,20 @@ public class DoomTowerActivityTests
         Assert.Equal(["fight 7021050", "fight 7021040", "fight 7021040"], game.Calls);
         Assert.Equal(2, game.Gold);
     }
+
+    [Fact]
+    public async Task The_map_read_is_kept_for_the_next_bot_on_the_account()
+    {
+        var (host, game, engine) = Make(new DoomTowerSettings { Enabled = true });
+        (game.Silver, game.Gold) = (0, 0);
+        await engine.RunAsync(once: false, Limit());
+        Assert.True(host.States.ContainsKey(DoomTowerActivity.AreaId));
+
+        // The next bot, half an hour after the last read: it knows the map and does not open the tower to read it.
+        var next = new DoomTowerActivity(game);
+        next.LoadState(host.States[DoomTowerActivity.AreaId], host.UtcNow);
+        var ctx = new PlayContext(host.Settings, new FakeArenaGame(() => host.UtcNow), host, false);
+        var why = next.Decide(ctx).Why;
+        Assert.DoesNotContain("reading", why);
+    }
 }

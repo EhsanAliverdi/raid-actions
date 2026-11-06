@@ -43,6 +43,18 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
     private (DtStage? Stage, string Why) Pick(PlayContext ctx) =>
         _map is null ? (null, "not read") : DoomTowerRules.Pick([.. _map.Stages.Where(s => !_skip.Contains(s.Id) && ctx.Held($"{AreaId}:stage:{s.Id}") is null)], _map.Gold, _map.Silver, ctx.Settings.DoomTower, SilverQuest(ctx));
 
+    private sealed record Saved(DoomTowerMap? Map, DateTime ReadAt, List<int> Skip, DateTime ClimbAfter);
+
+    // Kept for the next bot on the account (a rotation's restart): the map is not opened again before its hour.
+    public string? SaveState() => _map is null ? null : System.Text.Json.JsonSerializer.Serialize(new Saved(_map, _readAt, [.. _skip], _climbAfter), AutoplayJson.Options);
+
+    public void LoadState(string json, DateTime utc)
+    {
+        if (System.Text.Json.JsonSerializer.Deserialize<Saved>(json, AutoplayJson.Options) is not { Map: not null } s) return;
+        (_map, _readAt, _climbAfter) = (s.Map, s.ReadAt, s.ClimbAfter);
+        _skip.UnionWith(s.Skip);
+    }
+
     public Decision Decide(PlayContext ctx)
     {
         if (_map is null || ctx.Utc - _readAt >= Recheck) return Decision.Now("reading the Doom Tower");

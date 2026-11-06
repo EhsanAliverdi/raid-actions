@@ -141,6 +141,28 @@ public sealed partial class LivePlayGame
         return true;
     }
 
+    /// <summary>
+    /// A list item below or above its list's viewport scrolled into view with the wheel (2026-11-06: a ticked rank-up 4th in the Fast Rank Up list was out
+    /// of view, and every rank-up waited an hour). Its own rectangle gives the direction; the shown items of the same kind give where to turn the wheel.
+    /// </summary>
+    private async Task WheelIntoView(string kind, int id, CancellationToken ct)
+    {
+        for (var i = 0; i < 8; i++)
+        {
+            var (_, targets, _) = await Read(ct);
+            if (targets.FirstOrDefault(t => t.Kind == kind && t.Id == id) is not { Rect: { } r } item || item.NotClickable is null) return;
+            var shown = targets.Where(t => t.Kind == kind && t.NotClickable is null && t.Rect is not null).Select(t => t.Rect!.Value).ToList();
+            if (shown.Count == 0) return;
+            var (w, why) = Game.Window.GameWindow.Find();
+            if (w is null) throw new PlayStopException(why!);
+            var (cx, cy) = (shown.Average(x => x.Center.X), shown.Average(x => x.Center.Y));
+            var down = r.Center.Y > cy;
+            if (Input.MouseInput.Wheel(w, cx, cy, down ? -2 : 2) is { } notSent) throw new PlayStopException("Not scrolled: " + notSent);
+            log($"autoplay: scrolled the list {(down ? "down" : "up")} to bring #{id} into view");
+            await Task.Delay(400, ct);
+        }
+    }
+
     public async Task<int> RankUpFoodAsync(IReadOnlyList<RankUpPlan> rankUps, IReadOnlySet<int> pool, bool dryRun, CancellationToken ct)
     {
         log($"autoplay: STEP food rank-ups: {string.Join(", ", rankUps.Select(r => $"{Who(r.HeroId)} {r.Rank}* with {string.Join("+", r.FoodIds.Select(Who))}"))}");
@@ -166,6 +188,7 @@ public sealed partial class LivePlayGame
                 var wrong = (play.RankUps ?? []).FirstOrDefault(r => r.Active == true && !Fine(r));
                 if (wrong is null) break;
                 log($"autoplay: {Who(wrong.HeroId)} (food {string.Join(", ", wrong.FoodIds.Select(id => $"{Who(id)} L{levels.GetValueOrDefault(id)}"))}) is not food or eats levelled food: unticked");
+                await WheelIntoView("fastrankup-item", wrong.HeroId, ct);
                 await Click("fastrankup-item", t => t.Id == wrong.HeroId, (_, scan) => scan().RankUps?.FirstOrDefault(r => r.HeroId == wrong.HeroId)?.Active != true,
                     $"{Who(wrong.HeroId)} unticked", ct);
             }

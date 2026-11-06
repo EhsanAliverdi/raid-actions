@@ -29,6 +29,12 @@ public interface IChoresGame
     /// <summary>The gem Mine's bubble and the Shop's offers the game marks free; returns how many offers came.</summary>
     Task<int> CollectFreeAsync(bool dryRun, CancellationToken ct);
 
+    /// <summary>
+    /// The game's Quick Join when the account has no clan (the "no clan" screen behind the Clan Boss card); what happened ("joined DEFCON-ONE", "already in
+    /// a clan", "no Quick Join on the screen: ..."). Never creates a clan or spends anything.
+    /// </summary>
+    Task<string> JoinClanAsync(bool dryRun, CancellationToken ct) => Task.FromResult("not supported");
+
     /// <summary>One piece upgraded (the choice from the gear advice); null when nothing is worth upgrading.</summary>
     /// <param name="minLevel">A quest's level.</param>
     /// <param name="attempts">A quest counting attempts: the next level only.</param>
@@ -50,6 +56,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
     public string Name => "Chores";
 
     private static readonly TimeSpan Pause = TimeSpan.FromHours(1);
+    private DateTime _clanAt = DateTime.MinValue;
     private DateTime _marketAt = DateTime.MinValue, _upgradeAt = DateTime.MinValue, _freeAt = DateTime.MinValue, _inboxAt = DateTime.MinValue, _passAt = DateTime.MinValue, _pitAt = DateTime.MinValue;
     private readonly Dictionary<string, DateTime> _paused = [];
     private int _bought, _levelUps, _upgrades, _free;
@@ -71,6 +78,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         if (s.TavernLevelUps && ctx.QuestLeft(QuestNeedKind.LevelUp) > 0 && Open(ctx, "level")) return "level";
         if (s.ArtifactUpgrades && ctx.QuestLeft(QuestNeedKind.ArtifactAttempts) > 0 && Open(ctx, "attempts")) return "attempts";
         if (s.ArtifactUpgrades && ctx.QuestLeft(QuestNeedKind.ArtifactLevel) > 0 && Open(ctx, "piece")) return "piece";
+        if (s.AutoJoinClan && ctx.Utc >= _clanAt && Open(ctx, "clan")) return "clan";
         if (s.InboxExpiringTokens && ctx.Utc >= _inboxAt && Open(ctx, "inbox")) return "inbox";
         if (s.PassRewards && ctx.Utc >= _passAt && Open(ctx, "pass")) return "pass";
         if (s.SparringPit && ctx.Utc >= _pitAt && Open(ctx, "pit")) return "pit";
@@ -80,15 +88,15 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         return null;
     }
 
-    private sealed record Saved(DateTime Market, DateTime Upgrade, DateTime Free, DateTime Inbox, DateTime Pass, DateTime Pit, Dictionary<string, DateTime> Paused);
+    private sealed record Saved(DateTime Market, DateTime Upgrade, DateTime Free, DateTime Inbox, DateTime Pass, DateTime Pit, Dictionary<string, DateTime> Paused, DateTime Clan = default);
 
     // The checks' next times kept for the next bot on the account (2026-11-06: each rotation restarted the bot and every reward page was opened again).
-    public string? SaveState() => System.Text.Json.JsonSerializer.Serialize(new Saved(_marketAt, _upgradeAt, _freeAt, _inboxAt, _passAt, _pitAt, new(_paused)), AutoplayJson.Options);
+    public string? SaveState() => System.Text.Json.JsonSerializer.Serialize(new Saved(_marketAt, _upgradeAt, _freeAt, _inboxAt, _passAt, _pitAt, new(_paused), _clanAt), AutoplayJson.Options);
 
     public void LoadState(string json, DateTime utc)
     {
         if (System.Text.Json.JsonSerializer.Deserialize<Saved>(json, AutoplayJson.Options) is not { } s) return;
-        (_marketAt, _upgradeAt, _freeAt, _inboxAt, _passAt, _pitAt) = (s.Market, s.Upgrade, s.Free, s.Inbox, s.Pass, s.Pit);
+        (_marketAt, _upgradeAt, _freeAt, _inboxAt, _passAt, _pitAt, _clanAt) = (s.Market, s.Upgrade, s.Free, s.Inbox, s.Pass, s.Pit, s.Clan);
         foreach (var (k, v) in s.Paused) _paused[k] = v;
     }
 
@@ -110,6 +118,11 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         {
             switch (job)
             {
+                case "clan":
+                    // At most every 6 hours (in a clan, the account read answers at once and nothing is opened).
+                    _clanAt = ctx.Utc + TimeSpan.FromHours(6);
+                    var joined = await game.JoinClanAsync(ctx.DryRun, ct);
+                    return joined.StartsWith("already", StringComparison.Ordinal) ? "" : Report(ctx, "clan", joined);
                 case "inbox":
                     _inboxAt = ctx.Utc + TimeSpan.FromMinutes(Math.Max(30, s.InboxEveryMinutes));
                     var tokens = await game.CollectExpiringTokensAsync(ctx.DryRun, ct);

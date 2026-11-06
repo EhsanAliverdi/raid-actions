@@ -25,6 +25,12 @@ public class ChoresActivityTests
             return Task.FromResult(true);
         }
 
+        public Task<string> JoinClanAsync(bool dryRun, CancellationToken ct)
+        {
+            Calls.Add("clan");
+            return Task.FromResult("joined the clan Test [TST] with Quick Join");
+        }
+
         public Task<int> CollectExpiringTokensAsync(bool dryRun, CancellationToken ct)
         {
             Calls.Add("inbox");
@@ -69,6 +75,21 @@ public class ChoresActivityTests
         var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Chores = new ChoresSettings { Enabled = true } } };
         var game = new Game();
         return (new PlayContext(host.Settings, new FakeArenaGame(() => host.UtcNow), host, false, host.Events.Add) { QuestNeeds = [.. needs] }, game, new ChoresActivity(game));
+    }
+
+    [Fact]
+    public async Task Auto_join_clan_runs_when_switched_on_and_not_again_for_six_hours()
+    {
+        var (off, _, offChores) = Make();
+        Assert.NotEqual("clan", offChores.Decide(off).Why);     // off by default
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Chores = new ChoresSettings { Enabled = true, AutoJoinClan = true } } };
+        var game = new Game();
+        var ctx = new PlayContext(host.Settings, new FakeArenaGame(() => host.UtcNow), host, false, host.Events.Add);
+        var chores = new ChoresActivity(game);
+        Assert.Equal("clan", chores.Decide(ctx).Why);
+        Assert.Contains("joined", await chores.RunTurnAsync(ctx, CancellationToken.None));
+        Assert.NotEqual("clan", chores.Decide(ctx).Why);
+        Assert.Single(game.Calls, "clan");
     }
 
     [Fact]

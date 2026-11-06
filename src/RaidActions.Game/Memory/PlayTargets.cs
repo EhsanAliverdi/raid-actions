@@ -212,7 +212,7 @@ public static partial class PlayTargets
         "mode-dungeon", "dungeon-region", "dungeon-stage", "dungeon-difficulty", "dungeon-dropdown", "super-raid",
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
-        "mode-clan", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-state", "live-phase", "live-slot", "live-confirm",
+        "mode-clan", "clan-quickjoin", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-state", "live-phase", "live-slot", "live-confirm",
         "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "menu-open", "menu-item", "reward-claim", "reward-tab", "event-card", "event-claimall", "event-close", "challenge-confirm", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "village-pass", "village-challenges", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
@@ -1260,6 +1260,14 @@ public static partial class PlayTargets
                 targets.Add(new UiTarget("wizard-arrow", "tutorial: where its arrow points", null, t.View,
                     new ClientRect(x.Screen!.Value.X - 6, x.Screen.Value.Y - 6, 12, 12), true, true, true, false, x.Path, null, ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
         }
+
+        // The "no clan" screen's Quick Join (Ehsan 2026-11-06: "auto join clan"; names to confirm live): an interactable element of the dialog whose name or
+        // binding says quick / auto join, never one that creates a clan or costs anything.
+        if (t.View.EndsWith("AllianceLessDialog", StringComparison.Ordinal))
+            foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null
+                && System.Text.RegularExpressions.Regex.IsMatch(x.Name + " " + (x.BindingPath ?? ""), @"(Quick|Fast|Auto|Random)\w*Join|Join\w*(Quick|Fast|Auto|Random)", System.Text.RegularExpressions.RegexOptions.IgnoreCase)
+                && !System.Text.RegularExpressions.Regex.IsMatch(x.Name + " " + (x.BindingPath ?? ""), @"Create|Gem|Buy|Price", System.Text.RegularExpressions.RegexOptions.IgnoreCase)).Take(1))
+                targets.Add(Make("clan-quickjoin", "no clan: Quick Join", x, x, x.Name));
 
         // Live Arena's badge above the village's Battle button: only while it is open (Ehsan 2026-11-03: "the bot should use that to see when it is live"). Read, never clicked.
         if (t.View == VillageHudView)

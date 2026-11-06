@@ -543,6 +543,45 @@ public sealed partial class LivePlayGame : IChoresGame
         return claimed;
     }
 
+    /// <summary>
+    /// The game's Quick Join for an account without a clan (Ehsan 2026-11-06: "for a new account use quick clan join"): battle menu → the Clan Boss card →
+    /// the "no clan" screen → Quick Join; the account says whether it worked. Nothing that creates a clan or costs is ever a target.
+    /// </summary>
+    public async Task<string> JoinClanAsync(bool dryRun, CancellationToken ct)
+    {
+        var (data, _, _, _) = await Account(ct);
+        if (data.Progress?.Clan is { AllianceId: not null } clan) return $"already in a clan ({clan.Name})";
+        log("autoplay: STEP auto join clan: the account has no clan");
+        await HomeAsync(Action("to the village"), ct);
+        await Click("village-battle", null, (s2, _) => Has(s2, PlayTargets.BattleMenuView), "the battle menu opens", ct);
+        await DragIntoView("mode-clan", ct);
+        await Click("mode-clan", null, (s2, _) => Top(s2)?.EndsWith("AllianceLessDialog", StringComparison.Ordinal) == true || Has(s2, PlayTargets.ClanMapView),
+            "the clan screen opens", ct, within: TimeSpan.FromSeconds(12));
+        await Task.Delay(1500, ct);
+        var (s, targets, _) = await Read(ct);
+        var dump = DumpScreen("no clan screen");
+        log($"autoplay: the clan screen ({Top(s)}). Screen dump: {dump}");
+        var join = targets.FirstOrDefault(t => t.Kind == "clan-quickjoin" && t.NotClickable is null);
+        if (join is null)
+        {
+            await HomeAsync(Action("from the clan screen"), ct);
+            return $"no Quick Join recognised on {Top(s)}: nothing pressed (screen dump {dump})";
+        }
+        if (dryRun)
+        {
+            await HomeAsync(Action("from the clan screen"), ct);
+            return $"dry run: Quick Join ({join.Note}) shown, not pressed";
+        }
+        await Click("clan-quickjoin", null, (_, _) => true, "Quick Join", ct);
+        await Task.Delay(4000, ct);
+        var afterDump = DumpScreen("after Quick Join");
+        var (after, _, _, _) = await Account(ct);
+        await HomeAsync(Action("from the clan screen"), ct);
+        return after.Progress?.Clan is { AllianceId: not null } joined
+            ? $"joined the clan {joined.Name} [{joined.Tag}] with Quick Join"
+            : $"Quick Join pressed, but the account has no clan yet (screen dump {afterDump})";
+    }
+
     public async Task<int> CollectFreeAsync(bool dryRun, CancellationToken ct)
     {
         _nav.FitWindow();

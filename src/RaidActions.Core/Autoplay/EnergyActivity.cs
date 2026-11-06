@@ -432,7 +432,10 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                     // Closed today: remembered, and a "whichever is open today" row tries the next one of its group.
                     var closed = outcome.Text.Contains("closed today", StringComparison.Ordinal) || outcome.Text.Contains("not open today", StringComparison.Ordinal);
                     if (closed) _closedToday.Add(run.Region);
-                    if (!(closed && EnergyPlaces.Group(run.Target.Region) is not null)) _dryShown.Add(run.Target.Id);
+                    // Not enough energy for the start (2026-11-06: Super Raid left on doubled Hard 2-1's cost): the row waits a while, it is not set aside for the run.
+                    if (!ctx.DryRun && outcome.Text.Contains("not enough energy", StringComparison.OrdinalIgnoreCase))
+                        ctx.Hold(PushKey(run.Target), ctx.Utc + TimeSpan.FromMinutes(20), $"{where}: not enough energy to start; tried again in 20 minutes");
+                    else if (!(closed && EnergyPlaces.Group(run.Target.Region) is not null)) _dryShown.Add(run.Target.Id);
                     ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", $"{where}: {outcome.Text}");
                     return "";
                 }

@@ -171,6 +171,18 @@ public sealed class LiveGame : IDisposable
     /// <summary>A fresh account read through Core's exporter, written to output/live (never to raid-extractor).</summary>
     public IAccountSource Account => new LiveAccount(this);
 
+    /// <summary>When the last input was sent to the game (set by the app): a cached account read older than it is read again.</summary>
+    public static Func<DateTime>? LastInputUtc { get; set; }
+
+    /// <summary>Logs an account read that took long (set by Auto Play).</summary>
+    public static Action<string>? SlowReadLog { get; set; }
+
+    /// <summary>
+    /// The last account read and when it started. A full read (every champion and piece of gear, written to output/live) takes seconds, and Auto Play
+    /// asked for one many times a turn with nothing sent in between (Ehsan 2026-11-06: "you seem to be very slow"): reused for 2 s while no input was sent.
+    /// </summary>
+    private (SavedExport Data, DateTime StartedUtc)? _lastRead;
+
     private sealed class LiveAccount(LiveGame game) : IAccountSource
     {
         public Task<SavedExport> ReadAsync(CancellationToken ct) => Task.Run(() =>
@@ -178,10 +190,16 @@ public sealed class LiveGame : IDisposable
             ct.ThrowIfCancellationRequested();
             lock (game._lock)
             {
+                var now = DateTime.UtcNow;
+                if (game._lastRead is { } last && now - last.StartedUtc < TimeSpan.FromSeconds(2) && (LastInputUtc?.Invoke() ?? DateTime.MaxValue) < last.StartedUtc)
+                    return last.Data;
+                var clock = System.Diagnostics.Stopwatch.StartNew();
                 var dir = Path.Combine(game._paths.Output, "live");
                 var names = Path.Combine(game._paths.RaidExtractorRoot, "config", "display-names.json");
                 var r = Exporter.Export(new Account(game._session, game._offsets), dir, names, historyMinInterval: TimeSpan.FromHours(1), accountFolders: false);
                 if (!r.Ok || r.Data is null) throw new InvalidOperationException("Live account read failed: " + r.Message);
+                if (clock.ElapsedMilliseconds > 1500) SlowReadLog?.Invoke($"the account read took {clock.ElapsedMilliseconds} ms");
+                game._lastRead = (r.Data, now);
                 return r.Data;
             }
         }, ct);

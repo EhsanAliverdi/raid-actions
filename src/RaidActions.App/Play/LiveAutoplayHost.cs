@@ -132,6 +132,9 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
             return ran;
         };
         SessionGuard.Log = text => print($"{DateTime.Now:HH:mm:ss} session: {text}");
+        // An account read is reused until the next input (a full read takes seconds; Auto Play asked for many with nothing sent between).
+        RaidActions.Game.Memory.LiveGame.LastInputUtc = () => MouseInput.LastSentUtc;
+        RaidActions.Game.Memory.LiveGame.SlowReadLog = text => print($"{DateTime.Now:HH:mm:ss} autoplay: {text}");
         SessionGuard.Watch(TimeSpan.FromSeconds(3));
     }
 

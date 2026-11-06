@@ -453,7 +453,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             var x = r.X + r.Width * (0.35f + 0.3f * (float)_random.NextDouble());
             var y = r.Y + r.Height * (0.35f + 0.3f * (float)_random.NextDouble());
             var png = Shot(a, $"step {a.Step}: CLICK {t.Name} at {r}", r);
-            await Task.Delay(_random.Next(120, 300), ct);
+            await Task.Delay(_random.Next(60, 150), ct);
             ct.ThrowIfCancellationRequested();
             if (MouseInput.Click(w, x, y, _random) is { } notSent) throw new StopException($"Not clicked ({t.Name}): {notSent}");
             Clicks.Add((a.Step, t.Name, r, true, png ?? "-"));
@@ -462,7 +462,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             var until = DateTime.Now + TimeSpan.FromSeconds(6);
             while (DateTime.Now < until)
             {
-                await Task.Delay(200, ct);
+                await Task.Delay(100, ct);
                 var s2 = await ReadState(ct);
                 // The targets (a walk of the whole UI tree) only when the check looks at them.
                 if (expect(s2, new LazyTargets(() => Screen.Targets(game, ui, s2)))) return;
@@ -537,7 +537,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
         throw new StopException($"{kind} {id} not found after scrolling the list.");
     }
 
-    /// <summary>Reads until the top view has stayed the same for 1.5 s (popups that queue up have appeared), at most 10 s.</summary>
+    /// <summary>Reads until the top view has stayed the same for 1 s (popups that queue up have appeared), at most 10 s.</summary>
     private async Task<UiState> Settled(CancellationToken ct)
     {
         var s = await ReadState(ct);
@@ -545,11 +545,11 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
         var until = DateTime.Now + TimeSpan.FromSeconds(10);
         while (DateTime.Now < until)
         {
-            await Task.Delay(500, ct);
+            await Task.Delay(200, ct);
             var s2 = await ReadState(ct);
             if (s2.Top?.Name != s.Top?.Name || s2.ChampionScreenOpen != s.ChampionScreenOpen) since = DateTime.Now;
             s = s2;
-            if (DateTime.Now - since >= TimeSpan.FromSeconds(1.5)) break;
+            if (DateTime.Now - since >= TimeSpan.FromSeconds(1)) break;
         }
         return s;
     }

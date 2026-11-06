@@ -644,8 +644,11 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         string? view = null, TimeSpan? within = null, Func<PlayScan, string?>? before = null, bool shot = false)
     {
         if (!Allowed.Contains(kind)) throw new PlayStopException($"Refused: {kind} is not an Auto Play click.");
+        var clock = System.Diagnostics.Stopwatch.StartNew();
         _nav.FitWindow();
+        var fit = clock.ElapsedMilliseconds;
         var (s, targets, play) = await Read(ct);
+        var read = clock.ElapsedMilliseconds - fit;
         var top = Top(s);
         if (top is { } t0 && kind is not ("dialog-close" or "back" or "market-item" or "market-get" or "shop-free" or "shop-claim") && IsPurchase(t0)) throw new PlayStopException($"Refused: a purchase window ({t0}) is on top.");
         if (view is not null && top != view && !(view == PlayTargets.BattleHudView && Has(s, view))) throw new PlayStopException($"Expected {view} on top; the screen shows {top}.");
@@ -681,7 +684,16 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         }
         if (sent is { } notSent) throw new PlayStopException($"Not clicked ({target.Name}): {notSent}");
         _clickedUtc = MouseInput.LastSentUtc;
-        log($"autoplay: clicked {target.Name} at ({x:0},{y:0})");
+        var sentAt = clock.ElapsedMilliseconds;
+        var since = _lastClickDone == default ? "" : $"{(DateTime.UtcNow - _lastClickDone).TotalMilliseconds - sentAt:0} ms before, ";
+        log($"autoplay: clicked {target.Name} at ({x:0},{y:0}) [{since}fit {fit}, read {read}, sent {sentAt - fit - read} ms]");
+        try { await AnswerAsync(); } finally { _lastClickDone = DateTime.UtcNow; }
+        if (_lastAnswerMs > 1500) log($"autoplay: the game answered {target.Name} after {_lastAnswerMs} ms");
+        return;
+
+        async Task AnswerAsync()
+        {
+        var answered = System.Diagnostics.Stopwatch.StartNew();
 
         var until = DateTime.UtcNow + (within ?? TimeSpan.FromSeconds(8));
         while (DateTime.UtcNow < until)
@@ -689,7 +701,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             await Task.Delay(100, ct);
             var s2 = await ReadState(ct);
             PlayScan? cache = null;
-            if (expect(s2, () => cache ??= ReadSync().Play)) return;
+            if (expect(s2, () => cache ??= ReadSync().Play)) { _lastAnswerMs = answered.ElapsedMilliseconds; return; }
             // A tutorial step, level-up or intro the click brought (a new account, 2026-11-03): answered, then the click's screen is waited for again.
             if (target.Kind is not ("wizard-next" or "wizard-arrow") && (Top(s2) == "WizardView" || TapAway(Top(s2))))
             {
@@ -703,7 +715,12 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         // Clan Boss, Hydra and Chimera without a clan (2026-11-04, a new account): the same quiet wait; joining a clan is Ehsan's.
         if (Top(end)?.EndsWith("AllianceLessDialog", StringComparison.Ordinal) == true) throw new AreaLockedException($"{target.Name}: this account is not in a clan");
         throw new PlayStopException($"After clicking {target.Name}, expected {expected}; the screen shows {Top(end)}.");
+        }
     }
+
+    /// <summary>When the last click's answer came (the gap to the next click is the time between) and how long that answer took.</summary>
+    private DateTime _lastClickDone;
+    private long _lastAnswerMs;
 
     /// <summary>What the game shows for a feature the account has not unlocked (its BTN_Close closes it).</summary>
     private const string FeatureLockedView = "FeatureLockedOverlay";

@@ -155,6 +155,8 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 // A full resource stops regenerating: its area first, whatever the order; but after three turns in a row another area gets one, or long runs with
                 // energy near its cap starve the rest (2026-11-02: only Energy played for 30 minutes).
                 if (!stepAside && enabled.FirstOrDefault(a => _decisions[a.Id].Act && a.Full(ctx)) is { } full) act = full;
+                // An urgent one (a free arena refresh due with nobody to fight) before anything: what a chain of runs was broken for.
+                if (!stepAside && enabled.FirstOrDefault(a => _decisions[a.Id].Act && a.Urgent(ctx)) is { } urgent) act = urgent;
                 if (act is not null)
                 {
                     _sameArea = act.Id == _lastArea ? _sameArea + 1 : 1;
@@ -295,11 +297,16 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     private string? ChainBreak(PlayContext ctx, IReadOnlyList<IActivity> enabled, string self, bool once)
     {
         if (!once && host.RotateDue(null) is { } rotate) return "rotation: " + rotate;
-        foreach (var a in enabled.Where(a => a.Id != self))
+        // Only an area the next turn would really give to (2026-11-06: arena tokens full broke every Campaign chain, and the next turn went to Energy again,
+        // full too and first in the order): an urgent one, or a full one while this area is not full or comes after it.
+        var me = enabled.FirstOrDefault(a => a.Id == self);
+        var meFull = me?.Full(ctx) == true;
+        var myIndex = me is null ? int.MaxValue : enabled.ToList().IndexOf(me);
+        foreach (var (a, i) in enabled.Select((a, i) => (a, i)).Where(x => x.a.Id != self))
         {
             if (ctx.Held(a.Id) is not null) continue;
             var d = a.Decide(ctx);
-            if (d.Act && (a.Urgent(ctx) || a.Full(ctx))) return $"{a.Name}: {d.Why}";
+            if (d.Act && (a.Urgent(ctx) || a.Full(ctx) && (!meFull || i < myIndex))) return $"{a.Name}: {d.Why}";
         }
         return null;
     }

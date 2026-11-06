@@ -115,6 +115,29 @@ public class EnergyActivityTests
         Assert.Matches(@"\((7|[89]|\d\d) runs from the result screen\)", first.Text);   // all the energy in one go (300: five Super Raids at 48, two at 24)
     }
 
+    /// <summary>An arena at its token cap that wants a look (2026-11-06: it broke every Campaign chain, and Energy, full too and first, played on).</summary>
+    private sealed class FullLooking : IActivity
+    {
+        public string Id => "classic-arena";
+        public string Name => "Classic Arena";
+        public bool IsEnabled(AutoplaySettings settings) => true;
+        public Decision Decide(PlayContext ctx) => Decision.Now("looking at the arena");
+        public bool Full(PlayContext ctx) => true;
+        public Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct) => Task.FromResult("looked");
+        public AreaStatus Status(PlayContext ctx, Decision decision) => new(Id, Name, true, AreaState.Waiting, "", null, [], []);
+    }
+
+    [Fact]
+    public async Task A_full_area_after_a_full_energy_row_does_not_end_the_chain()
+    {
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 }, Energy = On(Row("farm", "Hard")) } };
+        var game = new FakeEnergyGame(() => host.UtcNow) { Energy = 300, Chain = true };
+        host.OnDelay = h => { if (game.Calls.Count(c => c.StartsWith("run", StringComparison.Ordinal)) >= 12) h.Stop = true; };
+        var engine = new AutoplayEngine([new EnergyActivity(game), new FullLooking()], new FakeArenaGame(() => host.UtcNow) { Energy = 1000 }, host, false);
+        await engine.RunAsync(once: false, Limit());
+        Assert.DoesNotContain(host.Events, e => e.Kind == "chain");
+    }
+
     [Fact]
     public async Task A_row_without_its_own_team_or_without_the_setting_gets_no_gear_review()
     {

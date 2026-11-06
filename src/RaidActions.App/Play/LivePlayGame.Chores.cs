@@ -534,7 +534,7 @@ public sealed partial class LivePlayGame : IChoresGame
                     await Click("challenge-confirm", null, (_, _) => true, "the challenge's Claim", ct);
                 log($"autoplay: claimed {claim.Name} on {view}");
                 claimed++;
-                await Pause(2000, ct);
+                // The reward's popup is waited for by Settled (a fixed 2 s here made every claim take 6 s; Ehsan 2026-11-06: "very slow between the clicks").
                 var s3 = await Settled(ct);
                 if (Top(s3) is { } top && top != view) await Back(top, ct);
                 await Pause(800, ct);

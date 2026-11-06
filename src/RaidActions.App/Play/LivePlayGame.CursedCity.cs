@@ -481,7 +481,10 @@ public sealed partial class LivePlayGame : ICursedCityGame
     private async Task SetTeam(IReadOnlyList<int> team, CancellationToken ct, string view = PlayTargets.CcTeamView, bool? vault = false)
     {
         // 2026-11-06: the vaults were ticked for vault food, then unticked here at once, and the food searched for a minute in a list without it.
-        if (vault is { } v && _vaultFilter != v) await VaultFilter(v, ct);
+        // Vaults wanted: checked on this screen every time (2026-11-06: a team screen opened again had the vaults hidden while the bot thought them shown).
+        if (vault is { } v && (_vaultFilter != v || v)) await VaultFilter(v, ct);
+        var vaultChecked = vault == true;
+        var turns = 0;
         var wanted = team.ToHashSet();
         var emptied = 0;
         var down = true;
@@ -550,9 +553,10 @@ public sealed partial class LivePlayGame : ICursedCityGame
             }
             // A vault champion the list cannot show (its vault boxes unticked): the filter is changed, never the list scrolled for it (Ehsan 2026-11-06:
             // "if you need a champion from the vault and it is not in the list, modify the filter, don't keep moving right and left").
-            if (pick is null && _vaultFilter != true && (await Account(ct)).Data.Champions.FirstOrDefault(c => c.Id == missing) is { InVault: true })
+            if (pick is null && !vaultChecked && (await Account(ct)).Data.Champions.FirstOrDefault(c => c.Id == missing) is { InVault: true })
             {
                 log($"autoplay: {Who(missing)} is in a vault: the list's vault boxes ticked to show it");
+                vaultChecked = true;
                 await VaultFilter(true, ct);
                 continue;
             }
@@ -576,7 +580,12 @@ public sealed partial class LivePlayGame : ICursedCityGame
             {
                 // Not built: big steps one way, turning around at an end of the list (the same champions shown twice).
                 var now = string.Join(",", (play.Picks ?? []).Where(p => p.Pick is { FullyVisible: true }).Select(p => p.HeroId));
-                if (now == lastShown) down = !down;
+                if (now == lastShown)
+                {
+                    down = !down;
+                    // Both ends of the list seen (Ehsan 2026-11-06: "it tried 100 times to scroll left and right"): not in it; one sweep, never more.
+                    if (++turns >= 2) break;
+                }
                 lastShown = now;
                 lastX = null;
                 notches = down ? -8 : 8;

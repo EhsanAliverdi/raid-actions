@@ -112,8 +112,7 @@ public sealed partial class LivePlayGame : IEnergyGame
                 await Back(teamView, ct);
                 return new BattleOutcome(BattleResult.NotStarted, "none of the row's team can be picked (in a vault, gone, or refused)");
             }
-            var fromVault = team.Any(id => champs[id].InVault);
-            if (!await SetRunTeam(team, teamView, ct, vault: fromVault))
+            if (!await SetRunTeam(team, teamView, ct))
                 return new BattleOutcome(BattleResult.Retry, $"not pickable here, left out from now on: {string.Join(", ", _notPickable.Select(Who))}");
         }
         // A run with its own team (the food farm) keeps it; any other uses the Teams card.

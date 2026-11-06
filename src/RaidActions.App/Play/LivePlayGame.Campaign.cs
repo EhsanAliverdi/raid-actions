@@ -122,7 +122,7 @@ public sealed partial class LivePlayGame
     private readonly HashSet<int> _notPickable = [];
 
     /// <returns>False when a planned champion could not be picked (the team screen closed; the next plan leaves it out).</returns>
-    private async Task<bool> SetRunTeam(IReadOnlyList<int> team, string teamView, CancellationToken ct, bool vault = false)
+    private async Task<bool> SetRunTeam(IReadOnlyList<int> team, string teamView, CancellationToken ct, bool vault = true)
     {
         log($"autoplay: STEP team: {string.Join(", ", team.Select(Who))}");
         try { await SetTeam(team, ct, teamView, vault); }

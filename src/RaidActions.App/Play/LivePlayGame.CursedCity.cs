@@ -193,7 +193,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
         if (check)
         {
             log($"autoplay: STEP reading {where}'s champion list (who can play it) before moving any gear");
-            if (_vaultFilter != false) await VaultFilter(false, ct);
+            await VaultFilter(true, ct); // both vaults shown whenever champions are picked (Ehsan 2026-11-06)
             await EmptySlots(ct);
             var shownLocked = await ScanList(ct);
             _ccScanned.Add(level.Stage.Id);
@@ -437,9 +437,9 @@ public sealed partial class LivePlayGame : ICursedCityGame
     }
 
     /// <summary>
-    /// The team list without vault champions (Ehsan, 2026-10-30: "make sure those are unchecked", the list is much shorter), or with them when the team takes
-    /// vault food (2026-11-06: "I keep my food in the Master Vault"): the filter opened, each vault box set, the filter closed. The game keeps the filter, so
-    /// later screens need nothing until the other setting is wanted.
+    /// The team list's vault boxes (the list's Filter button): both vaults shown whenever champions are picked (Ehsan 2026-11-06: "whenever you are selecting
+    /// a champion you need to make sure the filters are showing both vaults"; it replaced 2026-10-30's "unchecked"). A screen whose filter was never opened
+    /// has no boxes loaded: the filter is opened to see them, never assumed set.
     /// </summary>
     private async Task VaultFilter(bool include, CancellationToken ct)
     {
@@ -477,8 +477,9 @@ public sealed partial class LivePlayGame : ICursedCityGame
     /// The team screen's squad set to exactly <paramref name="team"/>: champions not in it taken out (a click on their slot), the missing ones
     /// picked from the list (scrolled with the wheel when not shown). Checked from memory after each click.
     /// </summary>
-    /// <param name="vault">The list's vault boxes: on, off (the default: a shorter list), or left as they are (null).</param>
-    private async Task SetTeam(IReadOnlyList<int> team, CancellationToken ct, string view = PlayTargets.CcTeamView, bool? vault = false)
+    /// <param name="vault">The list's vault boxes: on (the default: Ehsan 2026-11-06, "whenever you select a champion, make sure the filter shows both
+    /// vaults"), off, or left as they are (null).</param>
+    private async Task SetTeam(IReadOnlyList<int> team, CancellationToken ct, string view = PlayTargets.CcTeamView, bool? vault = true)
     {
         // 2026-11-06: the vaults were ticked for vault food, then unticked here at once, and the food searched for a minute in a list without it.
         // Vaults wanted: checked on this screen every time (2026-11-06: a team screen opened again had the vaults hidden while the bot thought them shown).

@@ -974,7 +974,13 @@ public static partial class PlayTargets
                 foreach (var x in nodes)
                 {
                     if (x.Name != "Checkbox" || !x.ActiveInHierarchy || x.Screen is null || !blocks.Contains(x.Parent)) continue;
-                    var state = locked == true ? "locked" : enabled == false ? "unavailable" : active switch { true => "on", false => "off", _ => "unknown" };
+                    // What the box shows is the truth (2026-11-06: its tick On_h hidden while MultiRunContext._active read true, so every "off" click
+                    // turned it on): the tick and the lock under the box, else the context.
+                    var shown = nodes.Where(y => y.Parent == x.Index).ToList();
+                    var tick = shown.FirstOrDefault(y => y.Name == "On_h");
+                    var lockShown = shown.FirstOrDefault(y => y.Name == "Locked_h")?.ActiveInHierarchy;
+                    var on = tick is not null ? tick.ActiveInHierarchy : active;
+                    var state = locked == true || lockShown == true ? "locked" : enabled == false ? "unavailable" : on switch { true => "on", false => "off", _ => "unknown" };
                     targets.Add(new UiTarget("super-raid", "team screen: Super Raid", null, t.View, x.Screen, true, true, x.FullyVisible, false, x.Path, state,
                         ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
                 }

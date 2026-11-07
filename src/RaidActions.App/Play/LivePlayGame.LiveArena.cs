@@ -11,7 +11,7 @@ namespace RaidActions.App.Play;
 /// </summary>
 public sealed partial class LivePlayGame : ILiveArenaGame
 {
-    private const string LiveDraftView = "LiveArenaDraftDialog", LiveResultView = "BattleFinishLiveArenaDialog";
+    private const string LiveDraftView = "LiveArenaDraftDialog", LiveResultView = "BattleFinishLiveArenaDialog", LiveDialogView = "LiveArenaDialog";
 
     public async Task<LiveArenaState> ReadLiveArenaAsync(CancellationToken ct)
     {
@@ -39,8 +39,16 @@ public sealed partial class LivePlayGame : ILiveArenaGame
             {
                 if (!targets.Any(t => t.Kind == "live-open")) return false;
                 await DragIntoView("live-open", ct);
-                await Click("live-open", null, (_, scan) => scan().Targets.Any(t => t.Kind == "live-find"), "Live Arena opens", ct, within: TimeSpan.FromSeconds(10));
+                await Click("live-open", null, (s2, scan) => Top(s2) == LiveDialogView || scan().Targets.Any(t => t.Kind == "live-find"), "Live Arena opens", ct, within: TimeSpan.FromSeconds(10));
                 await Pause(1000, ct);
+                // The dialog open with no Find Opponent (2026-11-07 23:36 and 00:28, after its hours, right after five matches): closed now, not an error.
+                for (var wait = 0; wait < 6 && !(await Read(ct)).Targets.Any(t => t.Kind == "live-find"); wait++) await Pause(500, ct);
+                if (!(await Read(ct)).Targets.Any(t => t.Kind == "live-find"))
+                {
+                    log($"autoplay: Live Arena opened with no Find Opponent: closed now. Screen dump: {DumpScreen("live arena without find opponent")}");
+                    await HomeAsync(Action("from Live Arena"), ct);
+                    return false;
+                }
                 continue;
             }
             if (!Input.NavigatingDriver.AtVillage(s)) { await HomeAsync(Action("to the village"), ct); await ToVillage(ct); continue; }

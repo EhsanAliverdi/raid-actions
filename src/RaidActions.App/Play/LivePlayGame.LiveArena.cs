@@ -74,7 +74,9 @@ public sealed partial class LivePlayGame : ILiveArenaGame
         if (Top(after) is PlayTargets.RefillView or UiState.MessageBoxView)
         {
             await HomeAsync(Action("from the token offer"), ct);
-            return new BattleOutcome(BattleResult.NotStarted, "out of Live Arena tokens (the game offered to buy some; closed, nothing bought)");
+            if (s.CollectInboxTokens && await CollectInbox(PlayTargets.IsLiveTokens, "LiveArenaToken", "Live Arena tokens", dryRun, ct) is var got and > 0)
+                return new BattleOutcome(BattleResult.NotStarted, $"took {got:0} Live Arena token(s) from the inbox");
+            return new BattleOutcome(BattleResult.NotStarted, "out of Live Arena tokens (the game offered to buy some; closed, nothing bought; none in the inbox)");
         }
         log("autoplay: looking for a Live Arena opponent");
         return await FinishLiveMatchAsync(s, started, ct);

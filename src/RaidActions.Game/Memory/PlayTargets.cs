@@ -1388,6 +1388,16 @@ public static partial class PlayTargets
     /// <summary>An inbox entry that holds arena tokens of any arena (Classic, Tag Team): by its text and icon.</summary>
     public static bool IsAnyTokens(InboxEntry e) => TokenWord().IsMatch($"{e.Title} {e.Message} {e.Icon}");
 
+    /// <summary>An inbox entry that holds Tag Team Arena tokens (by its text and icon; to confirm live).</summary>
+    public static bool IsTagTokens(InboxEntry e) => TagTokens().IsMatch($"{e.Title} {e.Message} {e.Icon}");
+
+    [GeneratedRegex(@"Arena3x3Token|tag\s*team\s*(arena\s*)?token|3\s*x\s*3.*token", RegexOptions.IgnoreCase)] private static partial Regex TagTokens();
+
+    /// <summary>An inbox entry that holds Live Arena tokens (by its text and icon; to confirm live: the inbox is logged when none matches).</summary>
+    public static bool IsLiveTokens(InboxEntry e) => LiveTokens().IsMatch($"{e.Title} {e.Message} {e.Icon}");
+
+    [GeneratedRegex(@"LiveArenaToken|live\s*arena\s*token", RegexOptions.IgnoreCase)] private static partial Regex LiveTokens();
+
     /// <summary>An inbox entry that holds energy (by its text and icon; to confirm live).</summary>
     public static bool IsEnergy(InboxEntry e) => EnergyWord().IsMatch($"{e.Title} {e.Message} {e.Icon}");
 

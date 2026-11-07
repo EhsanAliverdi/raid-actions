@@ -594,7 +594,9 @@ public sealed partial class LivePlayGame : ICursedCityGame
             if (w is null) throw new PlayStopException(why!);
             var viewX = shown.Average(r => r.Center.X);
             int notches;
-            if (missing != lastLooking) { pxPerNotch = null; lastX = null; lastLooking = missing; }
+            // Each member gets its own sweep of the list (2026-11-08 00:33: the ends already seen while looking for Militia counted for Kael, who was
+            // then "not found" after one scroll, and every food run after was played without him).
+            if (missing != lastLooking) { pxPerNotch = null; lastX = null; lastLooking = missing; turns = 0; lastShown = null; }
             if (pick?.Pick?.Rect is { } off)
             {
                 // Built off view: learn how far a notch moves it, then scroll it to the middle of the shown part in one go.

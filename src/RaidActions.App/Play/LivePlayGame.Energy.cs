@@ -422,7 +422,11 @@ public sealed partial class LivePlayGame : IEnergyGame
     }
 
     public Task<double> CollectInboxAsync(string resource, bool dryRun, CancellationToken ct) =>
-        resource == "Energy" ? CollectInbox(PlayTargets.IsEnergy, "Energy", "energy", dryRun, ct) : Task.FromResult(0d);
+        resource == "Energy"
+            ? AutoplaySettings.Load(ExtractorOutput).Energy.SourceFor("Energy").InboxOnlyExpiring
+                ? CollectInbox(e => PlayTargets.IsEnergy(e) && ChoreRules.ExpiresWithinADay(e.Expires), "Energy", "energy expiring within a day", dryRun, ct)
+                : CollectInbox(PlayTargets.IsEnergy, "Energy", "energy", dryRun, ct)
+            : Task.FromResult(0d);
 
     /// <summary>Not done in the live game yet: the refill window's price must be explored first (plan/energy.md step 7).</summary>
     public Task<RefillResult> BuyRefillAsync(string resource, int maxGems, bool dryRun, CancellationToken ct) =>

@@ -16,6 +16,9 @@ public interface ITagArenaGame
 
     /// <summary>The free refresh (never a paid one); the new board, or null when not free now.</summary>
     Task<ArenaBoard?> RefreshTagFreeAsync(bool dryRun, CancellationToken ct);
+
+    /// <summary>Tag Team tokens waiting in the inbox collected; how many the account gained.</summary>
+    Task<int> CollectInboxTagTokensAsync(bool dryRun, CancellationToken ct) => Task.FromResult(0);
 }
 
 /// <summary>
@@ -57,6 +60,8 @@ public sealed class TagArenaActivity(ITagArenaGame game) : IActivity
 
     public bool Urgent(PlayContext ctx) => ctx.Settings.TagArena.UseFreeRefresh && _board is { FreeRefreshAvailable: true } && Eligible(ctx.Settings.TagArena).Count == 0;
 
+    private DateTime _inboxAfter = DateTime.MinValue;
+
     public bool Full(PlayContext ctx) => _tokens >= 10 - ctx.Settings.Rules.TokenMargin;
 
     public Decision Decide(PlayContext ctx)
@@ -87,6 +92,16 @@ public sealed class TagArenaActivity(ITagArenaGame game) : IActivity
     {
         var s = ctx.Settings.TagArena;
         _tokens = await game.ReadTagTokensAsync(ct);
+        // Out of tokens: the inbox's first (Ehsan 2026-11-08: "all arena tokens must be used by default, classic, live and tag team"), at most once an hour.
+        if (ArenaRules.SpendableTokens(_tokens.Value, s) == 0 && s.CollectInboxTokens && ctx.Utc >= _inboxAfter)
+        {
+            _inboxAfter = ctx.Utc + TimeSpan.FromHours(1);
+            if (await game.CollectInboxTagTokensAsync(ctx.DryRun, ct) is var got and > 0)
+            {
+                ctx.Event(AreaId, "inbox", $"took {got} Tag Team token(s) from the inbox");
+                _tokens = await game.ReadTagTokensAsync(ct);
+            }
+        }
         _board = await game.OpenTagArenaAsync(ct);
         _checkedAt = ctx.Utc;
         var pick = Eligible(s);

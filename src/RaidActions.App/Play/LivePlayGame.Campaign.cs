@@ -123,10 +123,10 @@ public sealed partial class LivePlayGame
 
     /// <returns>False when a planned champion could not be picked (the team screen closed; the next plan leaves it out).</returns>
     private async Task<bool> SetRunTeam(IReadOnlyList<int> team, string teamView, CancellationToken ct, bool vault = true,
-        Func<int, IReadOnlyList<TeamPickRead>, IReadOnlyCollection<int>, int?>? standIn = null)
+        Func<int, IReadOnlyList<TeamPickRead>, IReadOnlyCollection<int>, int?>? standIn = null, int? leader = null)
     {
-        log($"autoplay: STEP team: {string.Join(", ", team.Select(Who))}");
-        try { await SetTeam(team, ct, teamView, vault, standIn); }
+        log($"autoplay: STEP team: {string.Join(", ", team.Select(Who))}{(leader is { } l ? $" ({Who(l)} leads)" : "")}");
+        try { await SetTeam(team, ct, teamView, vault, standIn, leader); }
         catch (LockedHeroException e)
         {
             // Food the screen will not take (state 99 seen 2026-10-31): never planned again this run, nor any other the list showed so.

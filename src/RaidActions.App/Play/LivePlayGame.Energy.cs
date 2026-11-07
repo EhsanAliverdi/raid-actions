@@ -135,7 +135,10 @@ public sealed partial class LivePlayGame : IEnergyGame
                     .Select(p => champs.GetValueOrDefault(p.HeroId)).FirstOrDefault(c => c is { Level: 1 } && c.Rank == want.Rank && !c.InBathhouse
                         && FoodPlanner.IsFood(c, foodRules with { UseVault = true }, farmerIds))?.Id;
             }
-            if (!await SetRunTeam(team, teamView, ct, standIn: StandIn))
+            // The row's first farmer leads (slot 1: his leader skill; Ehsan 2026-11-08: "Kael should be leader, why was he on position 4").
+            var leader = run.Target.Food && run.Target.Team.FirstOrDefault(team.Contains) is var f and not 0 ? f : (int?)null;
+            if (leader is { } l) team = [l, .. team.Where(id => id != l)];
+            if (!await SetRunTeam(team, teamView, ct, standIn: StandIn, leader: leader))
                 return new BattleOutcome(BattleResult.Retry, $"not pickable here, left out from now on: {string.Join(", ", _notPickable.Select(Who))}");
         }
         // A run with its own team (the food farm) keeps it; any other uses the Teams card.

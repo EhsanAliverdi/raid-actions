@@ -481,9 +481,22 @@ public sealed partial class LivePlayGame : ICursedCityGame
     /// vaults"), off, or left as they are (null).</param>
     /// <param name="standIn">For a member not shown in the list: another champion shown that does the same job (any level-1 food of its rank), or null.</param>
     private async Task SetTeam(IReadOnlyList<int> planned, CancellationToken ct, string view = PlayTargets.CcTeamView, bool? vault = true,
-        Func<int, IReadOnlyList<TeamPickRead>, IReadOnlyCollection<int>, int?>? standIn = null)
+        Func<int, IReadOnlyList<TeamPickRead>, IReadOnlyCollection<int>, int?>? standIn = null, int? leader = null)
     {
         var team = planned.ToList();
+        // The leader goes in first (a pick takes the first free slot): with any other champion in a slot before him, every slot is emptied once.
+        if (leader is { } lead)
+        {
+            if (team.IndexOf(lead) > 0) { team.Remove(lead); team.Insert(0, lead); }
+            for (var i = 0; i < 2; i++)
+            {
+                var slots = (await Read(ct)).Play.TeamIds ?? [];
+                if (slots.Count == 0 || slots[0] == lead) break;
+                foreach (var id in slots)
+                    await Click("team-slot", x => x.Id == id && x.View == view, (_, lazy) => !(lazy().TeamIds ?? []).Contains(id), $"#{id} leaves the team", ct);
+                log($"autoplay: emptied the team slots so {Who(lead)} leads (slot 1)");
+            }
+        }
         // 2026-11-06: the vaults were ticked for vault food, then unticked here at once, and the food searched for a minute in a list without it.
         // Vaults wanted: checked on this screen every time (2026-11-06: a team screen opened again had the vaults hidden while the bot thought them shown).
         if (vault is { } v && (_vaultFilter != v || v)) await VaultFilter(v, ct);

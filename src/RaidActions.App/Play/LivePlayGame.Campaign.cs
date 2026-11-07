@@ -201,6 +201,14 @@ public sealed partial class LivePlayGame
                 continue;
             }
             var go = targets.FirstOrDefault(t => t.Kind == "fastrankup-go");
+            // A row left over from the grade before (2026-11-08 03:11: #107, just ranked up on grade 1, still listed ticked on grade 3 with Rank Up off,
+            // "available False, price 0"): nothing of this grade is ticked.
+            var rankNow = (await Account(ct)).Data.Champions.ToDictionary(c => c.Id, c => c.Rank);
+            if (ticked.All(r => rankNow.TryGetValue(r.HeroId, out var rk) && rk != grade) || go?.Note?.StartsWith("available False", StringComparison.Ordinal) == true)
+            {
+                log($"autoplay: grade {grade}: nothing of this grade ticked ({string.Join(", ", ticked.Select(r => Who(r.HeroId)))}; {go?.Note}): skipped");
+                continue;
+            }
             log($"autoplay: grade {grade}: ranking up {string.Join(", ", ticked.Select(r => Who(r.HeroId)))} ({go?.Note})");
             if (dryRun)
             {

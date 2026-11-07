@@ -196,7 +196,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         if (quest)
         {
             var (data, _, _, _) = await Account(ct);
-            var team = TeamRules.Resolve(TeamsOf(ClassicArenaAreaId), variant, shownTeam, data.Champions).Team
+            var team = TeamRules.Resolve(TeamsOf(ClassicArenaAreaId), variant, shownTeam, data.Champions, fillEmpty: true).Team
                 ?? throw new PlayStopException($"No {variant} team can be set: see the Teams card, or a geared champion is missing.");
             if (!dryRun && !File.Exists(ArenaTeamFile))
             {
@@ -214,7 +214,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         }
         else
         {
-            var pick = TeamRules.Resolve(TeamsOf(ClassicArenaAreaId), TeamVariant.Default, shownTeam, (await Account(ct)).Data.Champions);
+            var pick = TeamRules.Resolve(TeamsOf(ClassicArenaAreaId), TeamVariant.Default, shownTeam, (await Account(ct)).Data.Champions, fillEmpty: true);
             if (pick.DontPlay)
             {
                 await Back(PlayTargets.TeamView, ct);

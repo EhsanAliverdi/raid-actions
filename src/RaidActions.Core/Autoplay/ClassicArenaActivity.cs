@@ -24,6 +24,7 @@ public sealed class ClassicArenaActivity : IActivity
     private readonly HashSet<long> _skip = []; // opponents that failed to start on this board
     private DateOnly _day;
     private int _battles, _wins, _losses, _draws, _refreshes, _inboxTokens;
+    private ArenaAdjust _adjust = new();
 
     public bool IsEnabled(AutoplaySettings settings) => settings.ClassicArena.Enabled;
 
@@ -49,15 +50,16 @@ public sealed class ClassicArenaActivity : IActivity
     private bool Stale(PlayContext ctx) =>
         _board is not { } b || ctx.Utc - b.Utc > (_freeRefreshAt is { } fr && fr > b.Utc ? TimeSpan.FromTicks(Math.Min((fr - b.Utc).Ticks, TimeSpan.FromHours(2).Ticks)) : BoardStale);
 
-    private sealed record Saved(ArenaBoard? Board, DateTime? FreeRefreshAt, DateTime InboxCheckAfter, List<long> Skip);
+    private sealed record Saved(ArenaBoard? Board, DateTime? FreeRefreshAt, DateTime InboxCheckAfter, List<long> Skip, ArenaAdjust? Adjust = null);
 
-    public string? SaveState() => _board is null ? null : System.Text.Json.JsonSerializer.Serialize(new Saved(_board, _freeRefreshAt, _inboxCheckAfter, [.. _skip]), AutoplayJson.Options);
+    public string? SaveState() => _board is null ? null : System.Text.Json.JsonSerializer.Serialize(new Saved(_board, _freeRefreshAt, _inboxCheckAfter, [.. _skip], _adjust), AutoplayJson.Options);
 
     public void LoadState(string json, DateTime utc)
     {
         if (System.Text.Json.JsonSerializer.Deserialize<Saved>(json, AutoplayJson.Options) is not { } s || s.Board is null) return;
         (_board, _freeRefreshAt, _inboxCheckAfter) = (s.Board, s.FreeRefreshAt, s.InboxCheckAfter);
         _skip.UnionWith(s.Skip);
+        _adjust = s.Adjust ?? new();
     }
 
     public bool Urgent(PlayContext ctx) =>
@@ -162,6 +164,12 @@ public sealed class ClassicArenaActivity : IActivity
         }
         _board = _board is null ? null : _board with { Utc = DateTime.MinValue }; // the board changed: read it again next turn
         ctx.Event(AreaId, "battle", $"{outcome.Result} vs {who}. {outcome.Text}");
+        if (variant == TeamVariant.Default)
+        {
+            var (adjust, change) = ArenaRules.After(_adjust, s, _board?.MyPower, outcome.Result switch { BattleResult.Victory => true, BattleResult.Defeat => false, _ => null });
+            _adjust = adjust;
+            if (change is not null) ctx.Event(AreaId, "limit", change);
+        }
         if (variant != TeamVariant.Default)
         {
             ctx.QuestNeeds = [.. ctx.QuestNeeds.Where(n => n.Kind != QuestNeedKind.ArenaAffinities)];
@@ -208,7 +216,7 @@ public sealed class ClassicArenaActivity : IActivity
         if (decision.UntilUtc is { } u) timers["Next try"] = u;
         var counters = new Dictionary<string, int>
         {
-            ["Battles"] = _battles, ["Wins"] = _wins, ["Losses"] = _losses, ["Draws"] = _draws, ["Refreshes"] = _refreshes, ["Inbox tokens"] = _inboxTokens,
+            ["Battles"] = _battles, ["Wins"] = _wins, ["Losses"] = _losses, ["Draws"] = _draws, ["Refreshes"] = _refreshes, ["Inbox tokens"] = _inboxTokens, ["Power limit"] = Limit(s),
         };
         if (_board is { } b)
         {
@@ -219,10 +227,10 @@ public sealed class ClassicArenaActivity : IActivity
     }
 
     private List<ArenaOpponentInfo> Eligible(ClassicArenaSettings s) =>
-        _board is null ? [] : ArenaRules.Eligible(_board.Opponents.Where(o => !_skip.Contains(o.UserId)), s, _board.MyPower);
+        _board is null ? [] : ArenaRules.Eligible(_board.Opponents.Where(o => !_skip.Contains(o.UserId)), s, _board.MyPower, _adjust);
 
     /// <summary>The power limit now: my defense team's power when asked for and known, else the setting's number.</summary>
-    private int Limit(ClassicArenaSettings s) => ArenaRules.Limit(s, _board?.MyPower);
+    private int Limit(ClassicArenaSettings s) => ArenaRules.Limit(s, _board?.MyPower, _adjust);
 
     private ArenaBoard Seen(PlayContext ctx, ArenaBoard b)
     {

@@ -172,6 +172,11 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         if (!OnArena(s) || play.Arena is not { } board) throw new PlayStopException($"Expected the Classic Arena on top; the screen shows {Top(s)}.");
         var row = board.Rows.FirstOrDefault(r => r.UserId == userId) ?? throw new PlayStopException($"Opponent {userId} is not on the board.");
         if (row.Status != 0 || !row.Playable) throw new PlayStopException($"Opponent {row.Name} cannot be fought now (status {row.Status}, playable {row.Playable}).");
+        // No defence team (its power reads 0; Ehsan 2026-11-07: "you need to setup defence if defence is not there, otherwise classic arena will not work"):
+        // Battle does nothing until one is set. Read fresh (not the 30-minute cache): it is set once and then stays.
+        _myArenaPower = default;
+        if (await MyArenaPower(ct) is 0)
+            throw new PlayStopException("No Classic Arena defence team is set on this account: Battle does nothing until one is (the arena's Defence tab).");
         await ScrollTo(userId, ct);
         var who = $"{row.Name} ({row.Power:N0})";
 

@@ -97,6 +97,15 @@ public sealed partial class LivePlayGame : IEnergyGame
             // Food the planner took from a vault ("Food from the vaults too") stays: the team list shows the vaults for it. The row's own team never comes from one.
             var gone = planned.Where(id => !champs.TryGetValue(id, out var c) || c.InVault && run.Target.Team.Contains(id) || c.InBathhouse || _notPickable.Contains(id)).ToList();
             if (gone.Count > 0) log($"autoplay: left out of the team (in a vault, gone, or refused here): {string.Join(", ", gone.Select(Who))}");
+            // A food row never plays without its own farmer (2026-11-08: BlackLord65's Kael not found once in the list, then every Brutal and Hard stage
+            // was played with four food, lost, and the farm judge left them all). The refusal is forgotten so the next turn looks for him again.
+            if (run.Target.Food && gone.Where(run.Target.Team.Contains).ToList() is { Count: > 0 } farmersGone)
+            {
+                foreach (var id in farmersGone) _notPickable.Remove(id);
+                log($"autoplay: the row's farmer is not in the team ({string.Join(", ", farmersGone.Select(Who))}): not played");
+                await Back(teamView, ct);
+                return new BattleOutcome(BattleResult.NotStarted, $"the row's farmer {string.Join(", ", farmersGone.Select(Who))} is not available");
+            }
             var team = planned.Except(gone).ToList();
             // A champion already in the team stays until it is maxed, food or not (Ehsan 2026-11-06: "you keep removing existing champions from campaign
             // heroes even if not maxed"; "I am trying to level up an epic and you remove it"): the planned food only fills the slots that are empty or hold

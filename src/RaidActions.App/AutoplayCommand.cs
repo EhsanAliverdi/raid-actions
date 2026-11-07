@@ -23,7 +23,7 @@ public static class AutoplayCommand
         if (at >= 0 && at + 1 < args.Length) dir = Path.GetFullPath(args[at + 1]);
         void Print(string line) { lock (output) output.WriteLine(line); }
 
-        if (args[0].Equals("autoplay-explore", StringComparison.OrdinalIgnoreCase)) return Explore(outDir, Print);
+        if (args[0].Equals("autoplay-explore", StringComparison.OrdinalIgnoreCase)) return Explore(outDir, Print, args.Contains("--tree", StringComparer.OrdinalIgnoreCase));
 
         var dry = args.Contains("--dry-run");
         var once = args.Contains("--once");
@@ -180,7 +180,7 @@ public static class AutoplayCommand
         }
     }
 
-    private static int Explore(string outDir, Action<string> print)
+    private static int Explore(string outDir, Action<string> print, bool tree = false)
     {
         var (live, problem) = LiveGame.Open(GameCommands.LivePaths(outDir));
         if (live is null)
@@ -200,6 +200,7 @@ public static class AutoplayCommand
             var policy = Game.Window.WindowPolicy.Load(GameCommands.WindowConfig);
             var game = new LivePlayGame(live, ui, Path.Combine(outDir, "autoplay", "explore"), policy, print);
             foreach (var line in game.Explore()) print(line);
+            if (tree) print($"element trees: {game.DumpScreenFile("explore --tree")}");
             return Cli.Ok;
         }
     }

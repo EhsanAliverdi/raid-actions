@@ -278,10 +278,13 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         await GoHomeAsync(ct);
         await Click("village-inbox", null, (s2, _) => Has(s2, PlayTargets.InboxView), "the inbox opens", ct);
         await Pause(1500, ct);
+        // The list is built after the dialog (2026-11-08 07:52: read with 0 entries while five Classic Arena refills were there): waited for, up to 8 s.
+        for (var wait = 0; wait < 16 && (await Read(ct)).Play.Inbox.Count == 0; wait++) await Pause(500, ct);
         for (var n = 0; n < 10; n++)
         {
             var (_, _, play) = await Read(ct);
-            var entry = play.Inbox.FirstOrDefault(e => match(e) && e.Collect?.NotClickable is null);
+            // The soonest to expire first (Ehsan 2026-11-08: "many of them about to expire").
+            var entry = play.Inbox.Where(e => match(e) && e.Collect?.NotClickable is null).OrderBy(e => ChoreRules.MinutesLeft(e.Expires) ?? double.MaxValue).FirstOrDefault();
             if (entry is null)
             {
                 if (n == 0) log($"autoplay: inbox: no {what} ({play.Inbox.Count} entries: {string.Join("; ", play.Inbox.Select(e => $"[{e.Title}|{e.Message}|{e.Icon}|{e.Expires}]").Take(10))}). Screen dump: {DumpScreen("inbox")}");
@@ -734,6 +737,9 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     /// The visible screens' elements (active ones: name, binding path, bound context, rectangle, clickable) to a text file in the run
     /// folder, so a target rule that found nothing can be fixed from one run. Returns the file.
     /// </summary>
+    /// <summary>The screen's element trees to a file (autoplay-explore --tree; read only).</summary>
+    public string DumpScreenFile(string why) => DumpScreen(why);
+
     private string DumpScreen(string why)
     {
         var file = Path.Combine(folder, $"{DateTime.Now:HHmmss}-screen.txt");

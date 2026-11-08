@@ -164,6 +164,9 @@ public sealed class FakeHost(DateTime start) : IAutoplayHost
     public AutoplayStatus? Last { get; private set; }
     public int StatusWrites { get; private set; }
 
+    /// <summary>The account's tasks (a test sets a <see cref="MemoryTaskBook"/>); null: no store, as on a dry run host.</summary>
+    public ITaskBook? Tasks { get; set; }
+
     /// <summary>Runs on every delay (a test changing settings at a given time, stopping after N hours, ...).</summary>
     public Action<FakeHost>? OnDelay { get; set; }
 
@@ -191,4 +194,23 @@ public sealed class FakeHost(DateTime start) : IAutoplayHost
     public Dictionary<string, string> States { get; } = [];
     public IReadOnlyDictionary<string, string> LoadActivityState() => new Dictionary<string, string>(States);
     public void SaveActivityState(IReadOnlyDictionary<string, string> states) { States.Clear(); foreach (var (k, v) in states) States[k] = v; }
+}
+
+/// <summary>Tasks in memory, for tests (the live bot uses raid-extractor's SQLite TaskStore).</summary>
+public sealed class MemoryTaskBook : ITaskBook
+{
+    public Dictionary<string, TaskRow> All { get; } = [];
+    public TaskRow Put(TaskRow task)
+    {
+        var old = All.GetValueOrDefault(task.Key);
+        return All[task.Key] = old is null ? task : task with { Checkpoint = task.Checkpoint ?? old.Checkpoint, Why = task.Why ?? old.Why, Parent = task.Parent ?? old.Parent };
+    }
+    public TaskRow? Get(string key) => All.GetValueOrDefault(key);
+    public bool Set(string key, TodoState state, string? why = null, string? checkpoint = null)
+    {
+        if (!All.TryGetValue(key, out var t)) return false;
+        All[key] = t with { State = state, Why = why ?? t.Why, Checkpoint = checkpoint ?? t.Checkpoint };
+        return true;
+    }
+    public IReadOnlyList<TaskRow> OpenTasks() => All.Values.Where(t => t.Open).ToList();
 }

@@ -237,6 +237,24 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
 
     public void SaveQuests(QuestSnapshot snapshot) => snapshot.Save(dir);
 
+    private TaskStore? _store;
+    private ITaskBook? _tasks;
+    private bool _tasksTried;
+
+    /// <summary>The account's tasks in the shared output/tasks.db (the account is this folder's name); null when it cannot be opened.</summary>
+    public ITaskBook? Tasks
+    {
+        get
+        {
+            if (_tasksTried) return _tasks;
+            _tasksTried = true;
+            if (!long.TryParse(Path.GetFileName(Path.GetFullPath(dir).TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar)), out var id)) return null;
+            try { _store = new TaskStore(TaskStore.PathIn(dir)); _tasks = _store.For(id); }
+            catch (Microsoft.Data.Sqlite.SqliteException e) { print($"autoplay: the task store could not be opened ({e.Message}); tasks are not kept this run"); }
+            return _tasks;
+        }
+    }
+
     public string? RotateDue(DateTime? nextUsefulUtc)
     {
         if (RaidExtractor.OutputLayout.GameId(dir) is not { } current) return null;

@@ -103,12 +103,35 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
                 var ids = _day.Strip.Select(x => x.Id).ToList();
                 var done = await game.RemoveGearAsync(ids, ctx.DryRun, ct);
                 _stripped = true;
+                // Earlier days' return tasks are done by the strip (it takes every champion of those teams still wearing gear).
+                if (!ctx.DryRun && ctx.Host.Tasks is { } book)
+                    foreach (var t in book.OpenTasks().Where(t => t.Area == AreaId && t.Kind == "return" && t.DeadlineUtc <= ctx.Utc))
+                        book.Set(t.Key, TodoState.Done, $"done by the new day's strip: {done}");
                 ctx.Event(AreaId, "strip", $"yesterday's teams: {string.Join(", ", _day.Strip.Select(x => $"{x.Name} ({x.Pieces})"))} → Reserve Vault without gear. {done}");
                 return $"stripped {ids.Count} of yesterday's champions";
             }
             case "gear":
             {
-                var done = await game.GearTeamAsync(step.Crypt!, ctx.DryRun, ct);
+                var book = ctx.DryRun ? null : ctx.Host.Tasks;
+                var day = DateOnly.FromDateTime(ctx.Utc);
+                var gearKey = $"fw-gear:{step.Crypt!.Name}:{day:yyyy-MM-dd}";
+                book?.Put(new TaskRow(0, gearKey, "gear", AreaId, $"Gear the {step.Crypt.Name} team: {string.Join(", ", step.Crypt.TeamNames)}", AreaId,
+                    TodoState.InProgress, DeadlineUtc: NextUtcDay(ctx.Utc), Checkpoint: $"team {string.Join(",", step.Crypt.Team)}; out of a vault {string.Join(",", step.Crypt.InVault)}"));
+                string done;
+                try { done = await game.GearTeamAsync(step.Crypt, ctx.DryRun, ct); }
+                catch (Exception e) when (book is not null && e is not OperationCanceledException)
+                {
+                    // Stopped half way: the task stays in progress with why, so the next turn (or the next bot) knows and gears again.
+                    book.Set(gearKey, TodoState.InProgress, $"stopped: {e.Message}");
+                    throw;
+                }
+                book?.Set(gearKey, TodoState.Done, done);
+                // The follow-up: the champions taken out of a vault (and the gear lent to the team) go back when the keys are used or the day ends.
+                if (book is not null && step.Crypt.Removable.Count > 0)
+                    book.Put(new TaskRow(0, $"fw-return:{step.Crypt.Name}:{day:yyyy-MM-dd}", "return", AreaId,
+                        $"Back to the Reserve Vault without gear: {Names(step.Crypt, step.Crypt.Removable)}", "follow-up", TodoState.Blocked,
+                        DeadlineUtc: NextUtcDay(ctx.Utc), Parent: gearKey, Trigger: "the crypt's keys are used, or its day ends (then the next day's strip)",
+                        Checkpoint: string.Join(",", step.Crypt.Removable)));
                 _geared.Add(step.Crypt!.Name);
                 _removed.Remove(step.Crypt!.Name);
                 _farmAt.Remove(step.Crypt!.Name); // defeats before (gear) do not count against it
@@ -121,6 +144,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
                 var c = step.Crypt!;
                 var done = c.Removable.Count == 0 ? "every member is locked: gear kept" : await game.RemoveGearAsync(c.Removable, ctx.DryRun, ct);
                 _removed.Add(c.Name);
+                if (!ctx.DryRun) ctx.Host.Tasks?.Set($"fw-return:{c.Name}:{DateOnly.FromDateTime(ctx.Utc):yyyy-MM-dd}", TodoState.Done, $"keys used: {done}");
                 ctx.Event(AreaId, "remove", $"{c.Name}: keys used; the team's gear off, into the Reserve Vault. {done}");
                 return $"{c.Name}: gear removed";
             }
@@ -176,6 +200,13 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
         timers["New day (UTC)"] = NextUtcDay(ctx.Utc);
         var detail = decision.Why + (_day?.Open.Count > 0 ? "; open: " + string.Join(", ", _day.Open.Select(c => $"{c.Name} {c.Keys} keys, stage {Stage(c, s)}")) : "");
         return new AreaStatus(Id, Name, s.Enabled, state, detail, decision.UntilUtc, counters, timers);
+    }
+
+    /// <summary>The names of these team members (the crypt's team order), for a task's title.</summary>
+    private static string Names(CryptPlan c, IEnumerable<int> ids)
+    {
+        var name = c.Team.Zip(c.TeamNames).ToDictionary(x => x.First, x => x.Second);
+        return string.Join(", ", ids.Select(id => name.GetValueOrDefault(id, $"#{id}")));
     }
 
     private sealed record Step(string Kind, CryptPlan? Crypt, string Why);

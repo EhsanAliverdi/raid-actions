@@ -75,4 +75,47 @@ public class FactionWarsActivityTests
         Assert.Equal(["remove 9", "gear SacredOrder", "fight SacredOrder 11", "remove 2"], game.Calls);
         Assert.Equal(2, game.Open[1].Keys);
     }
+
+    [Fact]
+    public async Task Gearing_a_crypt_team_writes_the_task_and_its_return_follow_up_which_the_keys_close()
+    {
+        var (host, game, engine) = Make(stopAfter: TimeSpan.FromHours(2));
+        var book = new MemoryTaskBook();
+        host.Tasks = book;
+        game.Open.Add(new FakeFactionWarsGame.Crypt { Faction = "SacredOrder", Keys = 2, HighestPassed = 10, Team = [1, 2, 3], Locked = [3] });
+        await engine.RunAsync(once: false, Limit());
+
+        var gear = Assert.Single(book.All.Values, t => t.Kind == "gear");
+        Assert.Equal(TodoState.Done, gear.State);
+        var back = Assert.Single(book.All.Values, t => t.Kind == "return");
+        Assert.Equal(gear.Key, back.Parent);
+        Assert.Equal("1,2", back.Checkpoint);
+        Assert.Equal(TodoState.Done, back.State);
+        Assert.StartsWith("keys used", back.Why);
+    }
+
+    [Fact]
+    public async Task A_gear_run_stopped_half_way_stays_in_progress_with_why_and_is_geared_again()
+    {
+        var (host, game, engine) = Make(stopAfter: TimeSpan.FromHours(2));
+        var book = new MemoryTaskBook();
+        host.Tasks = book;
+        game.FailGear = 1;
+        game.Open.Add(new FakeFactionWarsGame.Crypt { Faction = "SacredOrder", Keys = 1, HighestPassed = 10, Team = [1, 2] });
+        await engine.RunAsync(once: false, Limit());
+
+        Assert.Equal(2, game.Calls.Count(c => c == "gear SacredOrder"));
+        Assert.Equal(TodoState.Done, Assert.Single(book.All.Values, t => t.Kind == "gear").State);
+    }
+
+    [Fact]
+    public async Task A_dry_run_writes_no_task()
+    {
+        var (host, game, engine) = Make(dryRun: true);
+        var book = new MemoryTaskBook();
+        host.Tasks = book;
+        game.Open.Add(new FakeFactionWarsGame.Crypt { Faction = "SacredOrder", Keys = 2, HighestPassed = 10, Team = [1, 2] });
+        await engine.RunAsync(once: true, Limit());
+        Assert.Empty(book.All);
+    }
 }

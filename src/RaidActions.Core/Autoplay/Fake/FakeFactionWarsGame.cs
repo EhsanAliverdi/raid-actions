@@ -28,9 +28,13 @@ public sealed class FakeFactionWarsGame(Func<DateTime> now) : IFactionWarsGame
         [.. Open.Select(c => new CryptPlan(c.Faction, c.Faction, c.Keys, c.HighestPassed, 21, [.. c.Team], [.. c.Team.Select(i => $"#{i}")], "yours", [],
             [.. c.Team.Except(c.Locked)]))], [.. Strip], []));
 
+    /// <summary>The next N gear runs stop half way (a test of the gear task kept in progress).</summary>
+    public int FailGear { get; set; }
+
     public Task<string> GearTeamAsync(CryptPlan crypt, bool dryRun, CancellationToken ct)
     {
         Calls.Add($"{(dryRun ? "show-" : "")}gear {crypt.Faction}");
+        if (!dryRun && FailGear-- > 0) throw new PlayStopException("a piece was not selected (step 23)");
         return Task.FromResult("geared");
     }
 

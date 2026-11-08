@@ -30,6 +30,13 @@
     <UpToDateCheckInput Include="$(CoreLock)" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!-- Core's task store (raid-extractor plan/todo-list.md step 2). Same version as Core's own project. -->
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.0" />
+    <!-- 2.1.11 (what 10.0.0 brings) has a high severity advisory (GHSA-2m69-gcr7-jv3q). -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.14" />
+  </ItemGroup>
+
   <Target Name="CheckCoreSources" BeforeTargets="CoreCompile;BeforeBuild">
     <Error Condition="!Exists('$(CoreSource)\RaidExtractor.Core.csproj')"
            Text="raid-extractor not found at '$(RaidExtractorRoot)'. Set RaidExtractorRoot (msbuild property or environment variable)." />

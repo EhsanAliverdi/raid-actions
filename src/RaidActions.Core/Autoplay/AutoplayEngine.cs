@@ -33,6 +33,9 @@ public interface IAutoplayHost
     /// <summary>Keeps what each area knows for the next bot on this account (rotation restarts the bot every turn).</summary>
     void SaveActivityState(IReadOnlyDictionary<string, string> states) { }
 
+    /// <summary>This account's tasks (raid-extractor plan/todo-list.md step 2: follow-ups, checkpoints); null without a store.</summary>
+    ITaskBook? Tasks => null;
+
     /// <summary>Keeps the last quest read for the app's To-do page (every open quest and what the bot does about it).</summary>
     void SaveQuests(QuestSnapshot snapshot) { }
 }

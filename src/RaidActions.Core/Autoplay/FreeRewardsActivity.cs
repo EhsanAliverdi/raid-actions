@@ -83,7 +83,11 @@ public sealed class FreeRewardsActivity(IFreeRewardsGame game) : IActivity
         if ((s.Quests || ctx.Settings.Quests.Enabled) && (ctx.Utc >= _questAt || ctx.QuestsStale))
         {
             ctx.QuestsStale = false;
-            _questAt = ctx.Utc + TimeSpan.FromMinutes(Math.Max(10, s.QuestEveryMinutes));
+            // The plan: quests read again after a quest fight (QuestsStale), at the reset, or after the fallback; not on every check.
+            var p = ctx.Settings.Planner;
+            _questAt = p.QuestsOnChange
+                ? Min(TodoPlanner.NextReset(ctx.Utc).AddMinutes(2), ctx.Utc + TimeSpan.FromMinutes(Math.Max(s.QuestEveryMinutes, p.QuestFallbackMinutes)))
+                : ctx.Utc + TimeSpan.FromMinutes(Math.Max(10, s.QuestEveryMinutes));
             try
             {
                 var claim = s.Quests && ctx.Settings.Quests.ClaimRewards;
@@ -96,7 +100,12 @@ public sealed class FreeRewardsActivity(IFreeRewardsGame game) : IActivity
                 if (pass.Quests.Count > 0)
                 {
                     ctx.QuestNeeds = QuestPlanner.Needs(pass.Quests, ctx.Settings.Quests);
-                    if (!ctx.DryRun) ctx.Host.SaveQuests(QuestSnapshot.From(ctx.Utc, pass.Quests, ctx.Settings.Quests));
+                    if (!ctx.DryRun)
+                    {
+                        var snap = QuestSnapshot.From(ctx.Utc, pass.Quests, ctx.Settings.Quests);
+                        ctx.Host.SaveQuests(snap);
+                        if (ctx.Settings.Planner.QuestTasks && ctx.Host.Tasks is { } book) QuestTasks.Sync(book, snap);
+                    }
                     var open = ctx.QuestNeeds.Where(n => n.Playable).ToList();
                     var text = open.Count == 0 ? "no open quest the bot can play"
                         : string.Join("; ", open.Select(n => $"{n.Tab} {n.Kind} ×{n.Remaining}"));
@@ -122,4 +131,6 @@ public sealed class FreeRewardsActivity(IFreeRewardsGame game) : IActivity
         if (decision.UntilUtc is { } u) timers["Next check"] = u;
         return new AreaStatus(Id, Name, s.Enabled, state, decision.Why, decision.UntilUtc, new() { ["Collected today"] = _collected }, timers);
     }
+
+    private static DateTime Min(DateTime a, DateTime b) => a < b ? a : b;
 }

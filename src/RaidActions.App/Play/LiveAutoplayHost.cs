@@ -237,6 +237,22 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
 
     public void SaveQuests(QuestSnapshot snapshot) => snapshot.Save(dir);
 
+    private (DateOnly Day, IReadOnlySet<string> Closed)? _schedule;
+
+    /// <summary>The schedule (this account's visits of the last four weeks and raid-extractor's config/dungeon-days.json), worked out once a day.</summary>
+    public IReadOnlySet<string> ClosedBySchedule(DateTime utc)
+    {
+        var day = DateOnly.FromDateTime(utc);
+        if (_schedule is { } s && s.Day == day) return s.Closed;
+        var repo = Path.GetDirectoryName(RaidExtractor.OutputLayout.Shared(dir));
+        var closed = TodoPlanner.Schedule(TodoPlanner.LoadEvents(dir, utc), DungeonDaysConfig.Load(repo))
+            .Where(d => d.IsOpen(utc.DayOfWeek) == false)
+            .Select(d => RaidExtractor.Autoplay.EnergyPlaces.All.FirstOrDefault(p => p.Area == "Dungeon" && p.Name == d.Dungeon)?.Region)
+            .OfType<string>().ToHashSet();
+        _schedule = (day, closed);
+        return closed;
+    }
+
     private TaskStore? _store;
     private ITaskBook? _tasks;
     private bool _tasksTried;
@@ -270,7 +286,29 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
             : kept is { } last && last.Id == current && now - last.EndsUtc(pool.SliceOf(current)) is var over && over >= TimeSpan.Zero && over < TimeSpan.FromHours(2)
                 ? last
                 : RaidExtractor.AccountTurn.Begin(dir, current, pool.SliceOf(current), now);
-        return pool.RotateDue(current, _turn, now, nextUsefulUtc);
+        var due = pool.RotateDue(current, _turn, now, nextUsefulUtc);
+        // The plan: a task in progress or an open follow-up (champions out of a vault) keeps the account up to TurnExtraMinutes past its time,
+        // so work is not left half done for an hour (raid-extractor plan/todo-list.md).
+        if (due is not null && TurnHeldFor(now, _turn.EndsUtc(pool.SliceOf(current))) is { } why)
+        {
+            if (_heldNote != why) { print($"rotation: the turn goes on ({why})"); _heldNote = why; }
+            return null;
+        }
+        return due;
+    }
+
+    private string? _heldNote;
+
+    /// <summary>Why the turn goes on past its time (a task in progress, an open follow-up, within the planner's extra minutes); null: it ends.</summary>
+    private string? TurnHeldFor(DateTime now, DateTime ends)
+    {
+        var extra = LoadSettings().Planner.TurnExtraMinutes;
+        if (extra <= 0 || now >= ends.AddMinutes(extra) || Tasks is not { } book) return null;
+        IReadOnlyList<TaskRow> open;
+        try { open = book.OpenTasks(); }
+        catch (Microsoft.Data.Sqlite.SqliteException) { return null; }
+        var task = open.FirstOrDefault(t => t.State == TodoState.InProgress && t.Kind != "quest") ?? open.FirstOrDefault(t => t.FollowUpDue(now));
+        return task is null ? null : $"{task.Title}: up to {extra} min more";
     }
 
     public static List<AutoplayEvent> Today(string dir) => Day(dir, DateTime.Now);

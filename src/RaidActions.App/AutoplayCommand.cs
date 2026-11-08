@@ -158,7 +158,7 @@ public static class AutoplayCommand
             Print($"Stopped after {engine.Turns} turn(s): {why}");
             // The account's turn is over: the game on the next one, and a new bot for it (this one is tied to the old game process).
             if (why.StartsWith("rotation", StringComparison.Ordinal) && RaidExtractor.OutputLayout.ActiveId(dir) is { } current
-                && RaidExtractor.AccountPool.Load(dir).Next(current) is { } next)
+                && NextAccount(dir, current, host.LoadSettings().Planner) is { } next)
             {
                 live.Dispose();
                 Print($"rotation: from account {current} to {next}");
@@ -203,5 +203,18 @@ public static class AutoplayCommand
             if (tree) print($"element trees: {game.DumpScreenFile("explore --tree")}");
             return Cli.Ok;
         }
+    }
+
+    /// <summary>
+    /// The account to play next: in the pool's order, or (Auto Play's planner "next account by urgency") the one whose plan is most urgent
+    /// (raid-extractor AccountUrgency: energy near its cap, tokens full, follow-ups, daily quests near the reset, hours since last played).
+    /// </summary>
+    private static long? NextAccount(string dir, long current, PlannerSettings p)
+    {
+        var pool = RaidExtractor.AccountPool.Load(dir);
+        if (!p.NextAccountByUrgency) return pool.Next(current);
+        var shared = RaidExtractor.OutputLayout.Shared(dir);
+        var now = DateTime.UtcNow;
+        return pool.NextByUrgency(current, id => RaidExtractor.AccountUrgency.For(shared, id, now, p.QuestDeadlineHours));
     }
 }

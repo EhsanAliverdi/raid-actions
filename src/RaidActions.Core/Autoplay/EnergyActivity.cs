@@ -161,8 +161,12 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         if (expected && ctx.Expected("Energy") is { } e && e > resources.GetValueOrDefault("Energy")) resources["Energy"] = e;
         else if (expected && resources.TryGetValue("Energy", out var read))
             resources["Energy"] = read + Math.Floor((ctx.Utc - _accountAt) / EnergyPeriod);
+        // The plan: a dungeon already seen closed on this weekday is closed today too, without a visit (raid-extractor plan/todo-list.md).
+        IReadOnlySet<string> closed = _closedToday;
+        if (ctx.Settings.Planner.SkipClosedDungeons && ctx.Host.ClosedBySchedule(ctx.Utc) is { Count: > 0 } known)
+            closed = _closedToday.Union(known).ToHashSet();
         return new EnergyWorld(resources, a.Costs, a.Progress, _runsToday, _learnt, a.SuperRaidMultiplier, _refillsToday,
-            ctx.Utc - _inboxAt < InboxRecheck, a.Champions, a.MysteryShards, _closedToday, _threeStars);
+            ctx.Utc - _inboxAt < InboxRecheck, a.Champions, a.MysteryShards, closed, _threeStars);
     }
 
     /// <summary>Mystery shards a quest's summon needs now (0: none asked, no shard to spare, or summons paused).</summary>

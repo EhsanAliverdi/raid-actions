@@ -36,6 +36,9 @@ public interface IAutoplayHost
     /// <summary>This account's tasks (raid-extractor plan/todo-list.md step 2: follow-ups, checkpoints); null without a store.</summary>
     ITaskBook? Tasks => null;
 
+    /// <summary>The dungeons (Energy regions: "SpiritKeep") known to be closed on this UTC day from the schedule (seen closed on this weekday); empty when unknown.</summary>
+    IReadOnlySet<string> ClosedBySchedule(DateTime utc) => new HashSet<string>();
+
     /// <summary>Keeps the last quest read for the app's To-do page (every open quest and what the bot does about it).</summary>
     void SaveQuests(QuestSnapshot snapshot) { }
 }
@@ -79,6 +82,19 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     public static readonly TimeSpan AreaErrorHold = TimeSpan.FromHours(1);
 
     private readonly Dictionary<string, int> _areaErrors = [];
+
+    /// <summary>The area the plan puts first (an open follow-up, then a daily quest due soon), among those that want to act; null: none.</summary>
+    private IActivity? PlanFirst(PlannerSettings p, List<IActivity> enabled, DateTime now)
+    {
+        if (host.Tasks is not { } book || !(p.FollowUpsFirst || p.QuestTasks)) return null;
+        IReadOnlyList<TaskRow> open;
+        try { open = book.OpenTasks(); }
+        catch (Exception e) when (e is InvalidOperationException or System.Data.Common.DbException) { return null; }
+        var wanting = enabled.Where(a => _decisions[a.Id].Act).ToList();
+        if (p.FollowUpsFirst && wanting.FirstOrDefault(a => open.Any(t => t.Area == a.Id && t.FollowUpDue(now))) is { } followUp) return followUp;
+        if (p.QuestTasks && p.QuestDeadlineHours > 0 && wanting.FirstOrDefault(a => QuestTasks.DueSoon(open, a.Id, now, p.QuestDeadlineHours) is not null) is { } quest) return quest;
+        return null;
+    }
 
     public async Task<string> RunAsync(bool once, CancellationToken ct)
     {
@@ -158,6 +174,9 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 if (stepAside)
                     // The one waiting longest, not the next in line: that one and the leader would take turns and the rest never play (2026-11-02: Chores waited 25 minutes).
                     act = enabled.Where(a => _decisions[a.Id].Act && a.Id != _lastArea).OrderBy(a => _playedAt.GetValueOrDefault(a.Id)).FirstOrDefault() ?? act;
+                // The plan (raid-extractor plan/todo-list.md): an area with an open follow-up (champions to put back in a vault) first, then one with a
+                // daily quest close to the reset; a full resource and an urgent chance still come before them.
+                if (!stepAside && PlanFirst(settings.Planner, enabled, now) is { } planned) act = planned;
                 // A full resource stops regenerating: its area first, whatever the order; but after three turns in a row another area gets one, or long runs with
                 // energy near its cap starve the rest (2026-11-02: only Energy played for 30 minutes).
                 if (!stepAside && enabled.FirstOrDefault(a => _decisions[a.Id].Act && a.Full(ctx)) is { } full) act = full;

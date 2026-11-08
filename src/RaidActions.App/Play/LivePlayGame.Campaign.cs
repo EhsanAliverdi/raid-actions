@@ -176,7 +176,7 @@ public sealed partial class LivePlayGame
         await FoodVault(champions.Any(c => c.InVault && pool.Contains(c.Id)), ct);
         foreach (var grade in rankUps.Select(r => r.Rank).Distinct().Order())
         {
-            await SelectGrade(grade, ct);
+            if (!await SelectGrade(grade, ct)) continue;
             // Only food: every champion the game ticked, and every food it picked, must be in the pool; anything else is unticked.
             // Champions only a team screen refused (state 99) are still food here. The food the game picked must never have been levelled
             // (Ehsan 2026-10-31: it took a level 16 common for a rank-up): any other is unticked with its rank-up.
@@ -317,15 +317,34 @@ public sealed partial class LivePlayGame
         throw new PlayStopException($"Fast Rank Up not reached in 10 steps. Screen dump: {DumpScreen("fast rank up not reached")}");
     }
 
-    private async Task SelectGrade(int grade, CancellationToken ct)
+    /// <summary>
+    /// Selects Fast Rank Up's grade tab. False (logged, nothing ranked) when the game has the tab locked (seen 2026-11-08 on a level 32
+    /// account: grade 4 would not select) or the click does not select it: that grade is skipped, the other grades still run.
+    /// </summary>
+    private async Task<bool> SelectGrade(int grade, CancellationToken ct)
     {
         var (_, targets, _) = await Read(ct);
         var tab = targets.FirstOrDefault(t => t.Kind == "fastrankup-grade" && t.Id == grade)
             ?? throw new PlayStopException($"Fast Rank Up shows no grade {grade} ({string.Join(", ", targets.Where(t => t.Kind == "fastrankup-grade").Select(t => $"{t.Id}: {t.Note}"))}).");
-        if (tab.Note?.StartsWith("selected", StringComparison.Ordinal) == true) return;
-        await Click("fastrankup-grade", t => t.Id == grade, (_, scan) => scan().Targets.Any(t => t.Kind == "fastrankup-grade" && t.Id == grade
-            && t.Note?.StartsWith("selected", StringComparison.Ordinal) == true), $"grade {grade} selected", ct);
+        if (tab.Note?.StartsWith("selected", StringComparison.Ordinal) == true) return true;
+        if (tab.Note?.Contains("locked", StringComparison.Ordinal) == true)
+        {
+            log($"autoplay: grade {grade}: the game has this grade locked ({tab.Note}): skipped");
+            return false;
+        }
+        try
+        {
+            await Click("fastrankup-grade", t => t.Id == grade, (_, scan) => scan().Targets.Any(t => t.Kind == "fastrankup-grade" && t.Id == grade
+                && t.Note?.StartsWith("selected", StringComparison.Ordinal) == true), $"grade {grade} selected", ct);
+        }
+        catch (Exception e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal))
+        {
+            var now = (await Read(ct)).Targets.FirstOrDefault(t => t.Kind == "fastrankup-grade" && t.Id == grade)?.Note;
+            log($"autoplay: grade {grade}: the tab did not select ({now ?? "not shown"}): skipped. Screen dump: {DumpScreen($"grade {grade} not selected")}");
+            return false;
+        }
         await Pause(600, ct);
+        return true;
     }
 
     public async Task<int> SummonMysteryAsync(int count, bool dryRun, CancellationToken ct)
@@ -372,7 +391,7 @@ public sealed partial class LivePlayGame
         }
         // Home again; the last champion's card may still be sliding in: one more try after a pause.
         try { await HomeAsync(Action("from the Portal"), ct); }
-        catch (Exception e) when (e is not OperationCanceledException)
+        catch (Exception e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal))
         {
             log($"autoplay: going home from the Portal failed once ({e.Message}); trying again");
             await Pause(2500, ct);

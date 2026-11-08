@@ -96,6 +96,7 @@ public sealed class FreeRewardsActivity(IFreeRewardsGame game) : IActivity
                 if (pass.Quests.Count > 0)
                 {
                     ctx.QuestNeeds = QuestPlanner.Needs(pass.Quests, ctx.Settings.Quests);
+                    if (!ctx.DryRun) ctx.Host.SaveQuests(QuestSnapshot.From(ctx.Utc, pass.Quests, ctx.Settings.Quests));
                     var open = ctx.QuestNeeds.Where(n => n.Playable).ToList();
                     var text = open.Count == 0 ? "no open quest the bot can play"
                         : string.Join("; ", open.Select(n => $"{n.Tab} {n.Kind} ×{n.Remaining}"));

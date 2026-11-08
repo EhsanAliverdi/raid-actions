@@ -235,6 +235,8 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
 
     public void SaveActivityState(IReadOnlyDictionary<string, string> states) => AutoplayJson.WriteAtomic(StatePath, states);
 
+    public void SaveQuests(QuestSnapshot snapshot) => snapshot.Save(dir);
+
     public string? RotateDue(DateTime? nextUsefulUtc)
     {
         if (RaidExtractor.OutputLayout.GameId(dir) is not { } current) return null;

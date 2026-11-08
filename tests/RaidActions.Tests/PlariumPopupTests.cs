@@ -8,6 +8,7 @@ public class PlariumPopupTests
     [InlineData("Close", null, true)]
     [InlineData("×", null, true)]
     [InlineData("Maybe later", null, true)]
+    [InlineData("Ask me later", null, true)]
     [InlineData("Not now", null, true)]
     [InlineData("Got it", null, true)]
     [InlineData("", "close-button", true)]

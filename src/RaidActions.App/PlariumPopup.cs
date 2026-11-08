@@ -12,7 +12,7 @@ namespace RaidActions.App;
 public static class PlariumPopup
 {
     private static readonly Regex Dismiss = new(
-        @"^(close|close (dialog|popup|modal|window)|[x×✕✖╳]|later|maybe later|remind me later|not now|skip|no|no,? thanks|dismiss|cancel|got it|ok|okay)$",
+        @"^(close|close (dialog|popup|modal|window)|[x×✕✖╳]|later|maybe later|remind me later|ask me later|not now|skip|no|no,? thanks|dismiss|cancel|got it|ok|okay)$",
         RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
 
     private static readonly Regex Forbidden = new(

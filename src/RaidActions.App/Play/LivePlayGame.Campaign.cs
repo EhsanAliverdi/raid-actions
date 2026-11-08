@@ -183,6 +183,7 @@ public sealed partial class LivePlayGame
             bool Food(int id) => pool.Contains(id) || _notPickable.Contains(id);
             bool Eatable(int id) => Food(id) && levels.TryGetValue(id, out var lv) && lv <= 1;
             bool Fine(RankUpItemRead r) => Food(r.HeroId) && r.FoodIds.Count > 0 && r.FoodIds.All(Eatable);
+            var missed = new HashSet<int>();
             for (var i = 0; i < 12; i++)
             {
                 var (_, _, play) = await Read(ct);
@@ -190,8 +191,17 @@ public sealed partial class LivePlayGame
                 if (wrong is null) break;
                 log($"autoplay: {Who(wrong.HeroId)} (food {string.Join(", ", wrong.FoodIds.Select(id => $"{Who(id)} L{levels.GetValueOrDefault(id)}"))}) is not food or eats levelled food: unticked");
                 await WheelIntoView("fastrankup-item", wrong.HeroId, ct);
-                await Click("fastrankup-item", t => t.Id == wrong.HeroId, (_, scan) => scan().RankUps?.FirstOrDefault(r => r.HeroId == wrong.HeroId)?.Active != true,
-                    $"{Who(wrong.HeroId)} unticked", ct);
+                try
+                {
+                    await Click("fastrankup-item", t => t.Id == wrong.HeroId, (_, scan) => scan().RankUps?.FirstOrDefault(r => r.HeroId == wrong.HeroId)?.Active != true,
+                        $"{Who(wrong.HeroId)} unticked", ct);
+                }
+                // One missed click is tried again (seen 2026-11-09: the first untick right after the filter's Apply did not take); a second stops.
+                catch (Exception e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal) && missed.Add(wrong.HeroId))
+                {
+                    log($"autoplay: {Who(wrong.HeroId)} stayed ticked: trying once more");
+                    await Pause(1000, ct);
+                }
             }
             var (_, targets, now) = await Read(ct);
             var ticked = (now.RankUps ?? []).Where(r => r.Active == true).ToList();

@@ -40,6 +40,41 @@ public static class SwitchAccountCommand
         return Cli.Failed;
     }
 
+    /// <summary>
+    /// The game on account <paramref name="want"/> before a run (Ehsan 2026-11-09: "if the game is not open it will open the correct account and apply").
+    /// Raid closed: Plarium Play's profile already playing it starts the game; another known profile is switched first; a profile not known yet
+    /// starts the game, and a wrong account is then switched. Raid open on another account: refused before any click (closing it could cut into
+    /// what the person does), with what to do.
+    /// </summary>
+    public static async Task<int> EnsureAccountAsync(string outDir, TextWriter output, long want)
+    {
+        if (Process.GetProcessesByName("Raid").Length > 0)
+        {
+            var now = InGame(outDir);
+            if (now == want) return Cli.Ok;
+            output.WriteLine(now is { } other
+                ? $"Raid is open on account {other}, not {want}: nothing was done. Close Raid and press Apply again (the bot then opens account {want}), or switch the account yourself."
+                : "Raid is open but its account cannot be read yet: nothing was done. Wait until the village shows, then press Apply again.");
+            return Cli.Refused;
+        }
+        var profiles = LoadProfiles(outDir);
+        var current = Process.GetProcessesByName("PlariumPlay").FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero) is { } pp
+            ? PlariumPopup.CurrentProfile(pp.MainWindowHandle) : null;
+        long? knownId = current is not null && profiles.TryGetValue(current, out var id) ? id : null;
+        if (knownId is { } k && k != want)
+        {
+            output.WriteLine($"Raid is closed and Plarium Play is on '{current}' (account {k}): switching to account {want} first.");
+            return await RunAsync(["switch-account", want.ToString(System.Globalization.CultureInfo.InvariantCulture)], outDir, output);
+        }
+        output.WriteLine(knownId == want ? $"Raid is closed: starting it on '{current}' (account {want})." : "Raid is closed: starting it, then checking the account.");
+        if (!await RestartGameCommand.StartAndWaitAsync(outDir, output, TimeSpan.FromMinutes(5))) return Cli.Failed;
+        var started = InGame(outDir);
+        if (current is not null && started is { } sid) Learn(outDir, profiles, current, sid, output);
+        if (started == want) return Cli.Ok;
+        output.WriteLine($"The game started on account {started?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "(not read)"}: switching to {want}.");
+        return await RunAsync(["switch-account", want.ToString(System.Globalization.CultureInfo.InvariantCulture)], outDir, output);
+    }
+
     /// <summary>The player's id of the account in the game; null when the game is not running or not readable.</summary>
     public static long? InGame(string outDir)
     {

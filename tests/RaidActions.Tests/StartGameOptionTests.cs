@@ -12,5 +12,7 @@ public class StartGameOptionTests
         Assert.True(o.StartGame);
         Assert.False(Cli.Parse(["dry-run", "plan.json", "--live", "--navigate"], TextWriter.Null)!.StartGame);
         Assert.Throws<ArgumentException>(() => Cli.Parse(["dry-run", "plan.json", "--start-game"], TextWriter.Null));
+        Assert.Equal(163404481, Cli.Parse(["run", "plan.json", "--live", "--navigate", "--steps", "1", "--start-game", "--player", "163404481"], TextWriter.Null)!.Player);
+        Assert.Throws<ArgumentException>(() => Cli.Parse(["run", "plan.json", "--live", "--navigate", "--steps", "1", "--player", "163404481"], TextWriter.Null));
     }
 }

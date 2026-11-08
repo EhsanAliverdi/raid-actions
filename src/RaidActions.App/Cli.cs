@@ -70,6 +70,8 @@ public static class Cli
           --live                     validate: read the account from the running game instead of account.json
                                      dry-run: observe the running game, sending no input (you open the screens it asks for)
           --start-game               dry-run --live / run --live: starts Raid through Plarium Play first when it is not running
+          --player <id>              with --start-game: the game on this account first (Raid closed: the right profile is opened; open on
+                                     another account: refused before any click)
           --navigate                 dry-run --live: navigate by itself with allowed clicks only; Equip is never pressed
                                      run --live --navigate --steps <n>: the same, and Equip clicked once for each named step
 
@@ -78,7 +80,7 @@ public static class Cli
         """;
 
     public sealed record Options(string Command, string? Plan, string? ExtractorOutput, string? Account, string? Output, string? Confirm,
-        TimeSpan PaceMin, TimeSpan PaceMax, bool Live = false, bool Navigate = false, IReadOnlySet<int>? Steps = null, bool StartGame = false);
+        TimeSpan PaceMin, TimeSpan PaceMax, bool Live = false, bool Navigate = false, IReadOnlySet<int>? Steps = null, bool StartGame = false, long? Player = null);
 
     public static Options? Parse(string[] args, TextWriter err)
     {
@@ -87,6 +89,7 @@ public static class Cli
         var live = false;
         var navigate = false;
         var startGame = false;
+        long? player = null;
         HashSet<int>? steps = null;
         TimeSpan min = TimeSpan.FromMilliseconds(150), max = TimeSpan.FromMilliseconds(450);
         var command = args[0].ToLowerInvariant();
@@ -102,6 +105,7 @@ public static class Cli
                 case "--live": live = true; break;
                 case "--navigate": navigate = true; break;
                 case "--start-game": startGame = true; break;
+                case "--player": player = long.TryParse(Next(), out var pid) && pid > 0 ? pid : throw new ArgumentException("--player needs the account's player id."); break;
                 case "--steps":
                     steps = Next().Split(',').Select(x => int.TryParse(x.Trim(), out var n) && n > 0 ? n : throw new ArgumentException("--steps needs step numbers, e.g. 1 or 1,2.")).ToHashSet();
                     break;
@@ -123,7 +127,8 @@ public static class Cli
         if (navigate && !(live && command is "dry-run" or "run")) throw new ArgumentException("--navigate is only for dry-run --live and run --live.");
         if (steps is not null && !live) throw new ArgumentException("--steps is only for live runs.");
         if (startGame && !live) throw new ArgumentException("--start-game is only for live runs.");
-        return new Options(command, plan, ext, account, output, confirm, min, max, live, navigate, steps, startGame);
+        if (player is not null && !startGame) throw new ArgumentException("--player goes with --start-game.");
+        return new Options(command, plan, ext, account, output, confirm, min, max, live, navigate, steps, startGame, player);
     }
 
     /// <param name="interactive">Whether <paramref name="input"/> is a person at a console (to type the confirmation).</param>
@@ -232,7 +237,14 @@ public static class Cli
 
         paths = AppPaths.ForPlan(o.Plan, o.ExtractorOutput, o.Output);
         // The app's Apply (Team Planner) starts the game when it is closed, as Sell and Upgrade do (2026-11-09: Apply failed with "Raid.exe is not running").
-        if (o.Live && o.StartGame && System.Diagnostics.Process.GetProcessesByName("Raid").Length == 0)
+        // With --player the game is on that account first (Ehsan 2026-11-09: "make sure it is the correct account at the beginning").
+        if (o.Live && o.StartGame && o.Player is { } want)
+        {
+            var wasClosed = System.Diagnostics.Process.GetProcessesByName("Raid").Length == 0;
+            if (await SwitchAccountCommand.EnsureAccountAsync(paths.Output, output, want) is var ready && ready != Ok) return ready;
+            if (wasClosed) await Task.Delay(TimeSpan.FromSeconds(5)); // offers that queue up after the village appear
+        }
+        else if (o.Live && o.StartGame && System.Diagnostics.Process.GetProcessesByName("Raid").Length == 0)
         {
             output.WriteLine("Raid is not running: starting it.");
             if (!await RestartGameCommand.StartAndWaitAsync(paths.Output, output, TimeSpan.FromMinutes(5))) return Failed;

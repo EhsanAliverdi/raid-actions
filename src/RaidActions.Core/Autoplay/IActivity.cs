@@ -80,6 +80,9 @@ public sealed class PlayContext(AutoplaySettings settings, IPlayGame game, IAuto
         return r;
     }
 
+    /// <summary>A resource of the account at the last read (an area's keys), from memory; null when not read or not known.</summary>
+    public double? Resource(string name) => LastResources?.All is { } all ? all.GetValueOrDefault(name) : null;
+
     /// <summary>The amount a clock expects now (null: never read).</summary>
     public double? Expected(string resource) => Clocks[resource].Out()?.ValueAt(Utc);
 

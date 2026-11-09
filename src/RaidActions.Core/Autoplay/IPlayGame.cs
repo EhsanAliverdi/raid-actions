@@ -44,8 +44,11 @@ public interface IPlayGame
 
 /// <param name="TokenTimer">Time to the next arena token, when the game shows it.</param>
 /// <param name="TokenCap">The regeneration cap, when the game shows it ("7/10").</param>
+/// <param name="All">Every resource of the account by the game's name (keys of each area: DoomTowerGoldKey, ...), read from memory wherever the game is:
+/// an area knows from the village whether it has a key before it goes anywhere (Ehsan 2026-11-10: "from village you should be able to see if there is a key
+/// for specific area or not ... you went to doom tower while there is no key there").</param>
 public sealed record GameResources(DateTime Utc, double Tokens, double Energy, double Gems, TimeSpan? TokenTimer = null, TimeSpan? EnergyTimer = null,
-    int? TokenCap = null, int? EnergyCap = null);
+    int? TokenCap = null, int? EnergyCap = null, IReadOnlyDictionary<string, double>? All = null);
 
 /// <param name="FreeRefreshIn">Time to the next free refresh, when the game shows it.</param>
 /// <param name="MyPower">My Classic Arena defense team's power (from the account), for "up to my power"; null when not known.</param>

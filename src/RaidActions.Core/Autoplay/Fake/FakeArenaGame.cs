@@ -49,11 +49,14 @@ public sealed class FakeArenaGame(Func<DateTime> now, int seed = 7) : IPlayGame
 
     public IReadOnlyList<ArenaOpponentInfo> Board => _board;
 
+    /// <summary>The account's other resources (an area's keys), as the live game reads them; null: not read.</summary>
+    public Dictionary<string, double>? Resources { get; set; }
+
     public Task<GameResources> ReadResourcesAsync(CancellationToken ct)
     {
         Regen();
         var left = Tokens >= TokenCap ? (TimeSpan?)null : _tokenTick + TokenPeriod - now();
-        return Task.FromResult(new GameResources(now(), Tokens, Energy, Gems, left, null, TokenCap));
+        return Task.FromResult(new GameResources(now(), Tokens, Energy, Gems, left, null, TokenCap, All: Resources));
     }
 
     public Task GoHomeAsync(CancellationToken ct)

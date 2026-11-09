@@ -11,7 +11,10 @@ public sealed class FakeDoomTowerGame : IDoomTowerGame
     public HashSet<int> Loses { get; } = [];
     public List<string> Calls { get; } = [];
 
-    public Task<DoomTowerMap> ReadDoomTowerAsync(CancellationToken ct) => Task.FromResult(new DoomTowerMap([.. Stages], Gold, Silver));
+    /// <summary>How many times the tower was opened to read it.</summary>
+    public int Reads { get; private set; }
+
+    public Task<DoomTowerMap> ReadDoomTowerAsync(CancellationToken ct) { Reads++; return Task.FromResult(new DoomTowerMap([.. Stages], Gold, Silver)); }
 
     /// <summary>Floors climbed; the outcome of the next climb.</summary>
     public int Climbs { get; private set; }

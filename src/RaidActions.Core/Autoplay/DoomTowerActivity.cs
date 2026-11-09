@@ -57,6 +57,9 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
 
     public Decision Decide(PlayContext ctx)
     {
+        // No key the settings let it use, seen from the village: the tower is not opened at all (Ehsan 2026-11-10: "you went to doom tower while there is
+        // no key there"). Floors and bosses take gold keys, secret rooms silver.
+        if (NoKeys(ctx) is { } none) return Decision.Wait(ctx.Utc + Recheck, none);
         if (_map is null || ctx.Utc - _readAt >= Recheck) return Decision.Now("reading the Doom Tower");
         var (stage, why) = Pick(ctx);
         if (stage is null && NormalDue(ctx)) return Decision.Now("climbing the Normal tower");
@@ -69,7 +72,7 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
 
     private const string ClimbKey = AreaId + ":climb";
 
-    private bool ClimbDue(PlayContext ctx) => ctx.Settings.DoomTower.Climb && ctx.Utc >= _climbAfter && ctx.Held(ClimbKey) is null;
+    private bool ClimbDue(PlayContext ctx) => ctx.Settings.DoomTower.Climb && ctx.Utc >= _climbAfter && ctx.Held(ClimbKey) is null && GoldFree(ctx);
 
     /// <summary>
     /// The Normal tower's free floors (Ehsan 2026-11-10: "on main account yesterday you did not play doomtower normal"; a new tower left BlackLord65 with
@@ -80,7 +83,25 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
 
     private const string NormalKey = AreaId + ":climb-normal";
 
-    private bool NormalDue(PlayContext ctx) => ctx.Utc >= _normalAfter && ctx.Held(NormalKey) is null;
+    private bool NormalDue(PlayContext ctx) => ctx.Utc >= _normalAfter && ctx.Held(NormalKey) is null && GoldFree(ctx);
+
+    /// <summary>A gold key above the kept ones (a floor takes one; Ehsan 2026-11-10: with none left, Start on a floor does nothing). Unknown counts as free.</summary>
+    private bool GoldFree(PlayContext ctx)
+    {
+        var s = ctx.Settings.DoomTower;
+        var gold = ctx.Resource(DoomTowerRules.Gold) ?? _map?.Gold;
+        return gold is null || s.UseGold && gold.Value - s.KeepGold >= 1;
+    }
+
+    /// <summary>Why the tower has nothing to do with the keys the account has now (from the last resources read); null when a key can be used or none was read.</summary>
+    private static string? NoKeys(PlayContext ctx)
+    {
+        var s = ctx.Settings.DoomTower;
+        if (ctx.Resource(DoomTowerRules.Gold) is not { } gold || ctx.Resource(DoomTowerRules.Silver) is not { } silver) return null;
+        var goldOk = s.UseGold && gold - s.KeepGold >= 1;
+        var silverOk = (s.UseSilver || SilverQuest(ctx)) && silver - (SilverQuest(ctx) ? 0 : s.KeepSilver) >= 1;
+        return goldOk || silverOk ? null : $"no key to use (gold {gold:0}, silver {silver:0}): the tower is not opened until one comes";
+    }
 
     private async Task<string> Climb(PlayContext ctx, bool hard, CancellationToken ct)
     {

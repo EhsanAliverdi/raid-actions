@@ -17,8 +17,10 @@ public class DoomTowerActivityTests
         var game = new FakeDoomTowerGame();
         game.Stages.AddRange([S(7021801, 2), S(7021802, 1), S(7021040, 2), S(7021050, 2), S(7021060, 1)]);
         host.OnDelay = h => { if (h.UtcNow - Start >= TimeSpan.FromHours(3)) h.Stop = true; };
-        return (host, game, new AutoplayEngine([new DoomTowerActivity(game)], new FakeArenaGame(() => host.UtcNow), host, false));
+        return (host, game, new AutoplayEngine([new DoomTowerActivity(game)], Arena = new FakeArenaGame(() => host.UtcNow), host, false));
     }
+
+    [ThreadStatic] private static FakeArenaGame? Arena;
 
     private static CancellationToken Limit() => new CancellationTokenSource(TimeSpan.FromSeconds(20)).Token;
 
@@ -65,7 +67,8 @@ public class DoomTowerActivityTests
     public async Task The_Normal_tower_is_climbed_when_no_key_has_anything_to_do_even_with_Climb_off()
     {
         var (_, game, engine) = Make(new DoomTowerSettings { Enabled = true, Climb = false });
-        (game.Silver, game.Gold, game.NormalDone) = (0, 0, false);
+        game.Stages.Clear(); // nothing for the keys: climbing is what is left
+        (game.Silver, game.Gold, game.NormalDone) = (0, 5, false);
         await engine.RunAsync(once: false, Limit());
         Assert.True(game.NormalClimbs > 0);
         Assert.Equal(0, game.Climbs);
@@ -75,9 +78,20 @@ public class DoomTowerActivityTests
     public async Task Hard_climbing_comes_once_the_Normal_tower_has_no_floor_left()
     {
         var (_, game, engine) = Make(new DoomTowerSettings { Enabled = true, Climb = true });
-        (game.Silver, game.Gold, game.NormalDone) = (0, 0, true);
+        game.Stages.Clear(); // nothing for the keys: climbing is what is left
+        (game.Silver, game.Gold, game.NormalDone) = (0, 5, true);
         await engine.RunAsync(once: false, Limit());
         Assert.Equal(0, game.NormalClimbs);
         Assert.True(game.Climbs > 0);
+    }
+
+    [Fact]
+    public async Task With_no_key_in_the_account_the_tower_is_not_opened()
+    {
+        var (_, game, engine) = Make(new DoomTowerSettings { Enabled = true, Climb = true });
+        (game.Silver, game.Gold, game.NormalDone) = (0, 0, false);
+        Arena!.Resources = new() { [DoomTowerRules.Gold] = 0, [DoomTowerRules.Silver] = 0 };
+        await engine.RunAsync(once: false, Limit());
+        Assert.Equal(0, game.NormalClimbs + game.Climbs + game.Reads);
     }
 }

@@ -53,7 +53,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             timer = GameText.TimeLeft(hud.Timer);
             cap = GameText.Amount(hud.Value)?.Max;
         }
-        return new GameResources(DateTime.UtcNow, R("Token"), R("Energy"), R("Gem"), timer, null, cap);
+        return new GameResources(DateTime.UtcNow, R("Token"), R("Energy"), R("Gem"), timer, null, cap, All: new Dictionary<string, double>(account.Account.Resources));
     }
 
     public async Task GoHomeAsync(CancellationToken ct)

@@ -111,7 +111,7 @@ public class ClanBossActivityTests
     public async Task The_tower_climbs_and_rests_a_day_after_a_loss()
     {
         var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 }, DoomTower = new DoomTowerSettings { Enabled = true, Climb = true } } };
-        var tower = new FakeDoomTowerGame { ClimbResult = BattleResult.Defeat };
+        var tower = new FakeDoomTowerGame { ClimbResult = BattleResult.Defeat, Gold = 5 }; // a floor takes a gold key
         host.OnDelay = h => { if (h.UtcNow - Start >= TimeSpan.FromHours(3)) h.Stop = true; };
         await new AutoplayEngine([new DoomTowerActivity(tower)], new FakeArenaGame(() => host.UtcNow), host, false).RunAsync(once: false, Limit());
         Assert.Equal(1, tower.Climbs);

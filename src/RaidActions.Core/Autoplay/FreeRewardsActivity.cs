@@ -52,21 +52,27 @@ public sealed class FreeRewardsActivity(IFreeRewardsGame game) : IActivity
         (_checkedAt, _questAt, _lastQuestText) = (s.CheckedAt, s.QuestAt, s.LastQuestText);
     }
 
+    /// <summary>Quests not read since the bot started on this account (or since a quest fight): read before any area acts on them.</summary>
+    public bool Urgent(PlayContext ctx) => ctx.QuestsStale && (ctx.Settings.FreeRewards.Quests || ctx.Settings.Quests.Enabled);
+
     public Decision Decide(PlayContext ctx)
     {
         if (_dryShown) return Decision.Off("shown in this dry run");
         if (!ctx.Settings.FreeRewards.PlaytimeGifts && !ctx.Settings.FreeRewards.Quests && !ctx.Settings.Quests.Enabled) return Decision.Off("nothing switched on");
         var next = _checkedAt + Every(ctx);
-        if (ctx.QuestsStale) return Decision.Now("reading the quests after a quest fight");
+        if (ctx.QuestsStale && (ctx.Settings.FreeRewards.Quests || ctx.Settings.Quests.Enabled)) return Decision.Now("reading the quests (new run, or after a quest fight)");
         return ctx.Utc >= next ? Decision.Now("checking the free rewards") : Decision.Wait(next, "next check of the free rewards");
     }
 
     public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
     {
-        _checkedAt = ctx.Utc;
+        // A turn only for the quests (a new bot on the account, or after a quest fight) leaves the gifts to their own interval (2026-11-06:
+        // each rotation's new bot opened the reward pages at once).
+        var giftsDue = ctx.Utc >= _checkedAt + Every(ctx);
+        if (giftsDue) _checkedAt = ctx.Utc;
         var s = ctx.Settings.FreeRewards;
         var done = new List<string>();
-        if (s.PlaytimeGifts)
+        if (s.PlaytimeGifts && giftsDue)
         {
             try
             {

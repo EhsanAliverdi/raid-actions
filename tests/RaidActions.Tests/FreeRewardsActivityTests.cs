@@ -29,8 +29,11 @@ public class FreeRewardsActivityTests
 
         public List<QuestRead> Quests { get; set; } = [];
 
+        public DateTime FirstQuestAt { get; private set; } = DateTime.MaxValue;
+
         public Task<QuestPass> QuestPassAsync(bool claim, bool dryRun, CancellationToken ct)
         {
+            if (FirstQuestAt == DateTime.MaxValue) FirstQuestAt = DateTime.UtcNow;
             QuestCalls++;
             if (Fail) throw new PlayStopException("the quests button is not recognised");
             return Task.FromResult(new QuestPass(0, Quests));
@@ -100,5 +103,43 @@ public class FreeRewardsActivityTests
         Assert.Contains("ArenaWin ×3", ev.Text);
         Assert.Contains("FactionWarsBoss ×1", ev.Text);
         Assert.Contains("given up: 1", ev.Text);
+    }
+
+    /// <summary>Ehsan 2026-11-09: a mission done on another device while the bot was away; the bot's first act on the account is a quest read, which closes its task.</summary>
+    [Fact]
+    public async Task A_new_run_reads_the_quests_before_any_other_area_and_closes_tasks_of_quests_gone()
+    {
+        var turns = new List<string>();
+        // The mission was finished on another device: the read shows only another quest.
+        var game = new FakeGifts { Quests = [new QuestRead(2, "Daily", "Win 5 Classic Arena battles", "WinArenaBattles", "1/5", false, false)] };
+        var book = new MemoryTaskBook();
+        book.Put(new TaskRow(0, "quest:Mission:abc", "quest", "energy", "Mission: Win 5 Superior Spirit Potions", "quests"));
+        var host = new FakeHost(Start)
+        {
+            Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 }, FreeRewards = new FreeRewardsSettings { Enabled = true, Quests = true } },
+            Tasks = book,
+        };
+        host.OnDelay = h => { if (h.UtcNow - Start > TimeSpan.FromMinutes(5)) h.Stop = true; };
+        var first = new Recorder("first", turns);
+        await new AutoplayEngine([first, new FreeRewardsActivity(game)], new FakeArenaGame(() => host.UtcNow), host, false).RunAsync(once: false, new CancellationTokenSource(TimeSpan.FromSeconds(20)).Token);
+        Assert.True(game.QuestCalls >= 1);
+        Assert.Equal("free-rewards", turns.Count == 0 || first.FirstAt > game.FirstQuestAt ? "free-rewards" : "first");
+        Assert.Equal(TodoState.Done, book.Get("quest:Mission:abc")!.State);
+    }
+
+    private sealed class Recorder(string id, List<string> turns) : IActivity
+    {
+        public DateTime FirstAt { get; private set; } = DateTime.MaxValue;
+        public string Id => id;
+        public string Name => id;
+        public bool IsEnabled(AutoplaySettings settings) => true;
+        public Decision Decide(PlayContext ctx) => Decision.Now("go");
+        public Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
+        {
+            if (FirstAt == DateTime.MaxValue) FirstAt = DateTime.UtcNow;
+            turns.Add(id);
+            return Task.FromResult("turn");
+        }
+        public AreaStatus Status(PlayContext ctx, Decision decision) => new(Id, Name, true, AreaState.Playing, "", null, [], []);
     }
 }

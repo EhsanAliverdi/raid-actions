@@ -452,6 +452,16 @@ public sealed partial class LivePlayGame : ICursedCityGame
         if (boxes.Count > 0 && !boxes.Any(t => t.Note == from)) { _vaultFilter = include; return; }
         await Click("team-filter", null, (_, _) => true, "the filter opens", ct);
         await Pause(800, ct);
+        // The panel slides in: a box clicked before it settles misses, and the click lands on what is under it (2026-11-08 11:30 and 2026-11-09
+        // 13:28, 13:39: the Battle Pass opened and Energy paused for an hour). The boxes in the same place on two reads in a row first (up to 3 s).
+        string? lastPlace = null;
+        for (var settle = 0; settle < 10; settle++)
+        {
+            var place = string.Join(";", (await Read(ct)).Targets.Where(t => t.Kind == "team-filter-vault").Select(t => $"{t.Rect}"));
+            if (place.Length > 0 && place == lastPlace) break;
+            lastPlace = place;
+            await Pause(300, ct);
+        }
         if (!(await Read(ct)).Targets.Any(t => t.Kind == "team-filter-vault"))
             log($"autoplay: the team filter shows no vault boxes; screen dump: {DumpScreen("no vault boxes in the filter")}");
         _vaultFilter = include;

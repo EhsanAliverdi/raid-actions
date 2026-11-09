@@ -102,7 +102,9 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     public async Task<string> RunAsync(bool once, CancellationToken ct)
     {
         var settings = host.LoadSettings();
-        var ctx = _ctx = new PlayContext(settings, game, host, dryRun, Remember) { QuestNeeds = [.. StartNeeds] };
+        // The quests read first in every run (Ehsan 2026-11-09: the player may finish a mission on another device while the bot is away, e.g. the
+        // Spirit Keep potions on Monday at 11:10; the bot coming at 14:00 must not act on the old read): the read closes the tasks of quests gone.
+        var ctx = _ctx = new PlayContext(settings, game, host, dryRun, Remember) { QuestNeeds = [.. StartNeeds], QuestsStale = StartNeeds.Count == 0 };
         ctx.RestoreHolds(host.RecentEvents());
         // What the areas knew when the last bot here stopped (Ehsan 2026-11-06: "track stuff, don't just check them": the arena's board and refresh, the
         // reward checks' times), so a rotation's new bot does not go and look again.

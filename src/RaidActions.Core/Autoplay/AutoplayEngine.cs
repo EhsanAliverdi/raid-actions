@@ -76,6 +76,9 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     /// <summary>A locked area is tried again after this.</summary>
     public static readonly TimeSpan LockedHold = TimeSpan.FromHours(6);
 
+    /// <summary>How the host's block reason starts when the account is open on another device (LivePlayGame.SessionTaken).</summary>
+    public const string AnotherDevice = "the account is open on another device";
+
     /// <summary>An area that failed this many turns in a row waits <see cref="AreaErrorHold"/>; the others go on.</summary>
     public const int AreaErrorsToHold = 2;
 
@@ -138,6 +141,10 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 }
                 if (host.InputBlocked() is { } blocked)
                 {
+                    // The account is open on another device (Ehsan 2026-11-09: "if it is logged in from another device you switch account to the next
+                    // and come back after the next account"): with other accounts to play, this account's turn ends now instead of waiting.
+                    if (!once && blocked.StartsWith(AnotherDevice, StringComparison.Ordinal) && host.RotateDue(now.AddDays(1)) is not null)
+                        return Stop("rotation: " + blocked);
                     // Nothing can be clicked (Remote Desktop disconnected, PC locked): wait, look again every minute, carry on after.
                     await Idle("waiting", "no input reaches the game: " + blocked, now + TimeSpan.FromMinutes(1), ct, untilOnly: true);
                     continue;

@@ -142,10 +142,15 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     /// <summary>A team screen open: what it shows noted, and the area's default set when the page says so. False: the game refused a champion.</summary>
     private async Task<bool> ApplyDefaultTeam(string area, string teamView, CancellationToken ct)
     {
-        var shown = (await Read(ct)).Play.TeamIds ?? [];
+        var (_, _, play) = await Read(ct);
+        var shown = play.TeamIds ?? [];
         NoteTeam(area, shown);
         var (data, _, _, _) = await Account(ct);
-        var pick = TeamRules.Resolve(TeamsOf(area), TeamVariant.Default, shown, data.Champions);
+        // An empty team screen with no team saved for it (Ehsan 2026-11-09: "when there is no team setup for an account for specific area, robot can
+        // choose the team"): the strongest geared champions, as many as the screen's slots.
+        var pick = TeamRules.Resolve(TeamsOf(area), TeamVariant.Default, shown, data.Champions, slots: play.TeamSlots ?? 0, fillEmpty: play.TeamSlots is > 0);
+        if (shown.Count == 0 && pick.Team is { Count: > 0 } chosen)
+            log($"autoplay: {area}: no team on its screen and none saved: the bot chooses the {chosen.Count} strongest geared champions ({play.TeamSlots} slots)");
         if (pick.DontPlay)
         {
             log($"autoplay: {area}: a champion of the saved team is missing: not played (Teams card)");
@@ -538,10 +543,12 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     {
         for (var i = 0; i < 30; i++)
         {
-            var top = Top(await ReadState(ct));
-            if (top == "WizardView")
+            var (st, targets, _) = await Read(ct);
+            var top = Top(st);
+            // The tutorial's arrow or Next over another screen counts too (2026-11-09, the third account's newly opened Chimera: the tutorial lay over the
+            // Clan Boss screen, not on top, and swallowed every click on Close; Ehsan: "the game forces you to click on specific areas one after another").
+            if (top == "WizardView" || targets.Any(t => t.Kind is "wizard-next" or "wizard-arrow"))
             {
-                var (_, targets, _) = await Read(ct);
                 var step = targets.FirstOrDefault(t => t.Kind == "wizard-next") ?? targets.FirstOrDefault(t => t.Kind == "wizard-arrow");
                 if (step is null) { log($"autoplay: a tutorial step with no Next and no arrow. Screen dump: {DumpScreen("tutorial")}"); return; }
                 Shot($"autoplay: tutorial: {step.Name}", step.Rect!.Value, always: true);
@@ -701,6 +708,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
 
         async Task AnswerAsync()
         {
+        var tutorialFollowed = false;
         var answered = System.Diagnostics.Stopwatch.StartNew();
 
         var until = DateTime.UtcNow + (within ?? TimeSpan.FromSeconds(8));
@@ -716,6 +724,16 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 await DismissLevelUp(ct);
                 until = DateTime.UtcNow + (within ?? TimeSpan.FromSeconds(8));
             }
+        }
+        // A tutorial over the screen (its arrow or Next, not on top) takes every tap until it is followed: followed, then the click's answer is
+        // looked for once more (the click itself is not repeated: the tutorial may have done what it was for).
+        if (target.Kind is not ("wizard-next" or "wizard-arrow") && !tutorialFollowed && (await Read(ct)).Targets.Any(t => t.Kind is "wizard-next" or "wizard-arrow"))
+        {
+            tutorialFollowed = true;
+            log($"autoplay: a tutorial is up over {Top(await ReadState(ct))}: following it");
+            await DismissLevelUp(ct);
+            var after = await ReadState(ct);
+            if (expect(after, () => ReadSync().Play)) return;
         }
         var end = await ReadState(ct);
         // The game's "not unlocked yet" (2026-11-04, a new account's Tag Team Arena): the area waits quietly (AreaLockedException); going home closes it.

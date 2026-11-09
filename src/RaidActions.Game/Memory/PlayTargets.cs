@@ -41,14 +41,15 @@ public sealed record PlayScan(List<UiTarget> Targets, ArenaBoardRead? Arena, boo
     List<InboxEntry> Inbox, List<string> Notes, List<CryptRead>? Crypts = null, List<StageRead>? Stages = null, List<int>? TeamIds = null,
     PveResultRead? Pve = null, List<CcMapRead>? CcLevels = null, List<TeamPickRead>? Picks = null, int? CcDifficulty = null,
     List<RankUpItemRead>? RankUps = null, int? SelectedShard = null, string? ClanDamage = null, List<RaidExtractor.Autoplay.QuestRead>? Quests = null,
-    ArenaBoardRead? Tag = null)
+    ArenaBoardRead? Tag = null, int? TeamSlots = null)
 {
     public static PlayScan Empty => new([], null, null, null, [], [], []);
 
     public PlayScan Merge(PlayScan o) => new([.. Targets, .. o.Targets], Arena ?? o.Arena, AutoOn ?? o.AutoOn, Result ?? o.Result, [.. Hud, .. o.Hud],
         [.. Inbox, .. o.Inbox], [.. Notes, .. o.Notes], [.. Crypts ?? [], .. o.Crypts ?? []], [.. Stages ?? [], .. o.Stages ?? []],
         [.. TeamIds ?? [], .. o.TeamIds ?? []], Pve ?? o.Pve, [.. CcLevels ?? [], .. o.CcLevels ?? []], [.. Picks ?? [], .. o.Picks ?? []], CcDifficulty ?? o.CcDifficulty,
-        [.. RankUps ?? [], .. o.RankUps ?? []], SelectedShard ?? o.SelectedShard, ClanDamage ?? o.ClanDamage, [.. Quests ?? [], .. o.Quests ?? []], Tag ?? o.Tag);
+        [.. RankUps ?? [], .. o.RankUps ?? []], SelectedShard ?? o.SelectedShard, ClanDamage ?? o.ClanDamage, [.. Quests ?? [], .. o.Quests ?? []], Tag ?? o.Tag,
+        TeamSlots is null && o.TeamSlots is null ? null : (TeamSlots ?? 0) + (o.TeamSlots ?? 0));
 }
 
 /// <summary>
@@ -251,6 +252,7 @@ public static partial class PlayTargets
         List<CryptRead>? crypts = null;
         List<StageRead>? stages = null;
         List<int>? team = null;
+        int? teamSlots = null;
         List<CcMapRead>? ccLevels = null;
         List<TeamPickRead>? picks = null;
         PveResultRead? pve = null;
@@ -814,6 +816,9 @@ public static partial class PlayTargets
                     // Our team's slots (seen 2026-10-29: the team screen's own HeroSlotContext under the group bound to MySquad; the enemy's
                     // under EnemySquad): the champion is the slot's Hero avatar's entity id; an empty slot is not filled.
                     var filled = Try(() => BoolValue(g, g.Ref(c.Address, SelectionSlot, "_filled")), null, notes, "HeroSlotContext._filled");
+                    // Every shown slot, filled or empty: how many champions an empty team screen takes (2026-11-09; four on a five-slot Doom Tower
+                    // screen did nothing, 2026-11-07).
+                    if (n.ActiveInHierarchy) teamSlots = (teamSlots ?? 0) + 1;
                     var avatar = Try(() => g.Ref(c.Address, SelectionSlot, "Hero"), 0UL, notes, "HeroSlotContext.Hero");
                     var hero = avatar == 0 ? null : Try(() => (int?)g.Int(avatar, HeroAvatar, "_EntityId_k__BackingField"), null, notes, "HeroAvatarContext._EntityId");
                     if (filled != false && hero is > 0 && n.ActiveInHierarchy)
@@ -1375,7 +1380,7 @@ public static partial class PlayTargets
         return new PlayScan(targets, arena, auto, result, hud, inbox, notes.Distinct().ToList(), crypts, stages, team?.Distinct().ToList(), pve, ccLevels, picks, ccDifficulty,
             rankUps, selectedShard, clanDamage,
             [.. quests.Select(q => q.Tab == "?" ? q with { Tab = questTab is { } k && k >= 0 && k < QuestTabs.Length ? QuestTabs[k] : "Daily" } : q)],
-            tagRows is not null || tagFree is not null ? new ArenaBoardRead(tagRows ?? [], tagFree, tagFreeText, null, null) : null);
+            tagRows is not null || tagFree is not null ? new ArenaBoardRead(tagRows ?? [], tagFree, tagFreeText, null, null) : null, TeamSlots: teamSlots);
     }
 
     /// <summary>An inbox entry that holds Classic Arena tokens (not Tag/Live arena tokens or auto-battle tickets), by its text and icon.</summary>

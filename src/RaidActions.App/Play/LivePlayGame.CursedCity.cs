@@ -441,8 +441,12 @@ public sealed partial class LivePlayGame : ICursedCityGame
     /// a champion you need to make sure the filters are showing both vaults"; it replaced 2026-10-30's "unchecked"). A screen whose filter was never opened
     /// has no boxes loaded: the filter is opened to see them, never assumed set.
     /// </summary>
+    /// <summary>The vault box opened another screen in this run (2026-11-09): the vault filter is left alone for the rest of the run.</summary>
+    private bool _vaultBroken;
+
     private async Task VaultFilter(bool include, CancellationToken ct)
     {
+        if (_vaultBroken) { log("autoplay: the team filter's vault boxes are skipped in this run (their click opened another screen earlier)"); return; }
         // The filter panel stays loaded when closed (2026-10-30), so its boxes are read without opening it: opened only when one is set the other way.
         var (from, to) = include ? ("off", "on") : ("on", "off");
         // A team screen whose filter was never opened has no boxes loaded (2026-11-06, the Campaign's: "already set" was assumed, and vault food was
@@ -470,8 +474,24 @@ public sealed partial class LivePlayGame : ICursedCityGame
             var (_, now, _) = await Read(ct);
             var box = now.FirstOrDefault(t => t.Kind == "team-filter-vault" && t.Note == from && t.NotClickable is null);
             if (box is null) break;
-            await Click("team-filter-vault", t => t.Path == box.Path, (_, scan) => scan().Targets.Any(t => t.Kind == "team-filter-vault" && t.Path == box.Path && t.Note == to),
-                $"{box.Name} {(include ? "ticked" : "unticked")}", ct, within: TimeSpan.FromSeconds(5));
+            // The spot about to be clicked, kept (2026-11-09: this click opened the Battle Pass three times; the picture shows what is under it).
+            var shot = box.Rect is { } br ? Shot($"vault box {box.Name} at {br}", br, always: true) : null;
+            try
+            {
+                await Click("team-filter-vault", t => t.Path == box.Path, (_, scan) => scan().Targets.Any(t => t.Kind == "team-filter-vault" && t.Path == box.Path && t.Note == to),
+                    $"{box.Name} {(include ? "ticked" : "unticked")}", ct, within: TimeSpan.FromSeconds(5));
+            }
+            catch (PlayStopException e) when (e.Message.StartsWith("After clicking filter", StringComparison.Ordinal))
+            {
+                // Something else opened instead: closed by going home, and this run goes on without the vault boxes (no error, so Energy is not
+                // paused for an hour); the picture and a screen dump say why.
+                var dump = DumpScreen("vault box click opened something else");
+                log($"autoplay: the vault box click opened {Top((await Read(ct)).State)} instead (picture {shot ?? "-"}, dump {dump}): left as it is for this run");
+                _vaultFilter = !include;
+                _vaultBroken = true;
+                await HomeAsync(Action("back after the vault box"), ct);
+                throw new PlayStopException("the team filter's vault box could not be set (another screen opened); the run is tried again later");
+            }
             log($"autoplay: {(include ? "ticked" : "unticked")} {box.Name}");
         }
         await Click("filter-hide", null, (_, _) => true, "the filter closes", ct);

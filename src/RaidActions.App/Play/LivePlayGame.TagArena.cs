@@ -78,9 +78,16 @@ public sealed partial class LivePlayGame : ITagArenaGame
             log($"autoplay: dragged the Tag Team board {-dy:0} px towards {row.Name}");
             await Pause(900, ct);
         }
-        await Click("tag-opponent", t => t.Key == userId, (s2, _) => s2.Top?.Name is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView),
+        await Click("tag-opponent", t => t.Key == userId, (s2, _) => s2.Top?.Name is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView or SetDefenceView),
             "the team screen", ct, within: TimeSpan.FromSeconds(10));
         var after = await Settled(ct);
+        // No defence teams set on this account (2026-11-09, KaelStormVex): the game asks for them before any attack. Setting them is a flow the
+        // bot does not have yet (a new screen: explored, dry run, then Ehsan's go-ahead), so the popup is closed and the area held like a locked one.
+        if (Top(after) == SetDefenceView)
+        {
+            await Back(SetDefenceView, ct);
+            throw new AreaLockedException("Tag Team Arena asks for its defence teams first (the bot does not set them yet)");
+        }
         if (Top(after) == PlayTargets.RefillView)
         {
             await Back(PlayTargets.RefillView, ct);
@@ -146,4 +153,7 @@ public sealed partial class LivePlayGame : ITagArenaGame
         var (_, _, now) = await Read(ct);
         return now.Tag is { } b ? TagBoard(b) : null;
     }
+
+    /// <summary>The popup the game shows on an attack while the Tag Team Arena's defence teams are not set.</summary>
+    private const string SetDefenceView = "Arena3x3SetDefenceOverlay";
 }

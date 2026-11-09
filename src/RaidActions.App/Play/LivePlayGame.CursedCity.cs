@@ -469,6 +469,8 @@ public sealed partial class LivePlayGame : ICursedCityGame
         if (!(await Read(ct)).Targets.Any(t => t.Kind == "team-filter-vault"))
             log($"autoplay: the team filter shows no vault boxes; screen dump: {DumpScreen("no vault boxes in the filter")}");
         _vaultFilter = include;
+        // The screen the boxes are on: a click that leaves it there (the box only slow to change) is tried again, not taken for another screen.
+        var screen = Top((await Read(ct)).State);
         for (var i = 0; i < 4; i++)
         {
             var (_, now, _) = await Read(ct);
@@ -483,6 +485,13 @@ public sealed partial class LivePlayGame : ICursedCityGame
             }
             catch (PlayStopException e) when (e.Message.StartsWith("After clicking filter", StringComparison.Ordinal))
             {
+                // Still on the same screen (2026-11-09 21:10: the box did not change within 5 s, nothing else opened): read again and retried.
+                if (Top((await Read(ct)).State) == screen)
+                {
+                    log($"autoplay: {box.Name} did not change within 5 s and the screen is the same; trying again");
+                    await Pause(1500, ct);
+                    continue;
+                }
                 // Something else opened instead: closed by going home, and this run goes on without the vault boxes (no error, so Energy is not
                 // paused for an hour); the picture and a screen dump say why.
                 var dump = DumpScreen("vault box click opened something else");

@@ -210,6 +210,21 @@ public static class MouseInput
     private static string? Prepare(GameWindowInfo w, float x, float y)
     {
         if (x < 0 || y < 0 || x >= w.Client.Width || y >= w.Client.Height) return $"({x:0},{y:0}) is outside the client area.";
+        // The game can lose the front for a few seconds while a Remote Desktop hands the session to the console (2026-11-09 17:02: a gear run
+        // stopped at step 21): waited and tried again, up to twice; a window that changed meanwhile (the console's other size) is not clicked.
+        for (var attempt = 0; ; attempt++)
+        {
+            var why = PrepareOnce(w, x, y);
+            if (why is null || attempt == 2 || !(why.StartsWith("Could not bring", StringComparison.Ordinal) || why.StartsWith("The window under", StringComparison.Ordinal)))
+                return why;
+            Thread.Sleep(3000);
+            if (Game.Window.GameWindow.Find().Window is { } now && (now.Handle != w.Handle || now.Client != w.Client))
+                return "The game window changed while it was not in front (a Remote Desktop came or went): nothing sent; the next step reads it again.";
+        }
+    }
+
+    private static string? PrepareOnce(GameWindowInfo w, float x, float y)
+    {
         if (EnsureForeground(w) is { } fg) return fg;
         var sx = w.Client.X + (int)Math.Round(x);
         var sy = w.Client.Y + (int)Math.Round(y);

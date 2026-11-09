@@ -53,9 +53,31 @@ public class DoomTowerActivityTests
 
         // The next bot, half an hour after the last read: it knows the map and does not open the tower to read it.
         var next = new DoomTowerActivity(game);
-        next.LoadState(host.States[DoomTowerActivity.AreaId], host.UtcNow);
+        var saved = host.States[DoomTowerActivity.AreaId];
+        host.UtcNow = System.Text.Json.JsonDocument.Parse(saved).RootElement.GetProperty("readAt").GetDateTime().ToUniversalTime() + TimeSpan.FromMinutes(30);
+        next.LoadState(saved, host.UtcNow);
         var ctx = new PlayContext(host.Settings, new FakeArenaGame(() => host.UtcNow), host, false);
         var why = next.Decide(ctx).Why;
         Assert.DoesNotContain("reading", why);
+    }
+
+    [Fact]
+    public async Task The_Normal_tower_is_climbed_when_no_key_has_anything_to_do_even_with_Climb_off()
+    {
+        var (_, game, engine) = Make(new DoomTowerSettings { Enabled = true, Climb = false });
+        (game.Silver, game.Gold, game.NormalDone) = (0, 0, false);
+        await engine.RunAsync(once: false, Limit());
+        Assert.True(game.NormalClimbs > 0);
+        Assert.Equal(0, game.Climbs);
+    }
+
+    [Fact]
+    public async Task Hard_climbing_comes_once_the_Normal_tower_has_no_floor_left()
+    {
+        var (_, game, engine) = Make(new DoomTowerSettings { Enabled = true, Climb = true });
+        (game.Silver, game.Gold, game.NormalDone) = (0, 0, true);
+        await engine.RunAsync(once: false, Limit());
+        Assert.Equal(0, game.NormalClimbs);
+        Assert.True(game.Climbs > 0);
     }
 }

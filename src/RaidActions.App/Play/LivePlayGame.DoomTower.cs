@@ -87,12 +87,13 @@ public sealed partial class LivePlayGame : IDoomTowerGame
     /// <summary>
     /// One floor of Hard: the gold banner found on the screen and tapped (the floors have no rectangles). A boss floor takes a gold key, and only for a win.
     /// </summary>
-    public async Task<BattleOutcome> ClimbDoomTowerAsync(bool dryRun, CancellationToken ct)
+    public async Task<BattleOutcome> ClimbDoomTowerAsync(bool hard, bool dryRun, CancellationToken ct)
     {
         var started = DateTime.UtcNow;
-        log("autoplay: STEP Doom Tower: climbing Hard");
+        var tower = hard ? "Hard" : "Normal";
+        log($"autoplay: STEP Doom Tower: climbing {tower}");
         await OpenDoomTower(ct);
-        await SelectTowerDifficulty("Hard", ct);
+        await SelectTowerDifficulty(tower, ct);
         var (w, why) = GameWindow.Find();
         if (w is null) throw new PlayStopException(why!);
         var (capture, problem) = WindowCapture.Take(w);
@@ -101,14 +102,14 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         using (capture)
         {
             spot = DoomTowerSpot.Find(capture.Image);
-            if (spot is null) { var saved = Path.Combine(folder, $"tower-hard-{DateTime.Now:HHmmss}.png"); OpenCvSharp.Cv2.ImWrite(saved, capture.Image); log($"autoplay: no gold floor found; the map as seen: {saved}"); }
+            if (spot is null) { var saved = Path.Combine(folder, $"tower-{tower.ToLowerInvariant()}-{DateTime.Now:HHmmss}.png"); OpenCvSharp.Cv2.ImWrite(saved, capture.Image); log($"autoplay: no gold floor found; the map as seen: {saved}"); }
         }
         if (spot is not { } at)
         {
             await SelectTowerDifficulty("Normal", ct);
-            return new BattleOutcome(BattleResult.NotStarted, "no gold floor on the Hard map");
+            return new BattleOutcome(BattleResult.NotStarted, $"no gold floor on the {tower} map");
         }
-        log($"autoplay: the Hard floor to play at ({at.X:0},{at.Y:0})");
+        log($"autoplay: the {tower} floor to play at ({at.X:0},{at.Y:0})");
         if (MouseInput.Click(w, at.X, at.Y, new Random()) is { } notSent) throw new PlayStopException(notSent);
         var until = DateTime.UtcNow + TimeSpan.FromSeconds(10);
         while (DateTime.UtcNow < until && !(Top(await ReadState(ct)) is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView))) await Task.Delay(500, ct);
@@ -118,7 +119,7 @@ public sealed partial class LivePlayGame : IDoomTowerGame
             await SelectTowerDifficulty("Normal", ct);
             return new BattleOutcome(BattleResult.NotStarted, $"the floor did not open ({opened})");
         }
-        return await PlayTowerTeam("Hard floor", started, dryRun, ct);
+        return await PlayTowerTeam($"{tower} floor", started, dryRun, ct);
     }
 
     /// <summary>From the stage's team screen to the result.</summary>

@@ -17,9 +17,19 @@ public sealed class FakeDoomTowerGame : IDoomTowerGame
     public int Climbs { get; private set; }
     public BattleResult ClimbResult { get; set; } = BattleResult.Victory;
 
-    public Task<BattleOutcome> ClimbDoomTowerAsync(bool dryRun, CancellationToken ct)
+    /// <summary>The Normal tower is finished (its climb finds no floor) unless set false.</summary>
+    public bool NormalDone { get; set; } = true;
+    public int NormalClimbs { get; private set; }
+
+    public Task<BattleOutcome> ClimbDoomTowerAsync(bool hard, bool dryRun, CancellationToken ct)
     {
         if (dryRun) return Task.FromResult(new BattleOutcome(BattleResult.NotStarted, "Start shown"));
+        if (!hard)
+        {
+            if (NormalDone) return Task.FromResult(new BattleOutcome(BattleResult.NotStarted, "no gold floor on the Normal map"));
+            NormalClimbs++;
+            return Task.FromResult(new BattleOutcome(ClimbResult, "60 s"));
+        }
         Climbs++;
         return Task.FromResult(new BattleOutcome(ClimbResult, "60 s"));
     }

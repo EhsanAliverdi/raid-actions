@@ -14,8 +14,8 @@ public interface IDoomTowerGame
     /// <summary>One battle of the stage with the team the game shows there; a dry run shows Start only.</summary>
     Task<BattleOutcome> FightDoomTowerAsync(DtStage stage, bool dryRun, CancellationToken ct);
 
-    /// <summary>One floor of the Hard tower, the one the game offers; a boss floor takes a gold key for a win.</summary>
-    Task<BattleOutcome> ClimbDoomTowerAsync(bool dryRun, CancellationToken ct);
+    /// <summary>One floor of the Normal or Hard tower, the one the game offers (its gold banner); a boss floor takes a gold key for a win.</summary>
+    Task<BattleOutcome> ClimbDoomTowerAsync(bool hard, bool dryRun, CancellationToken ct);
 }
 
 /// <summary>
@@ -43,15 +43,15 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
     private (DtStage? Stage, string Why) Pick(PlayContext ctx) =>
         _map is null ? (null, "not read") : DoomTowerRules.Pick([.. _map.Stages.Where(s => !_skip.Contains(s.Id) && ctx.Held($"{AreaId}:stage:{s.Id}") is null)], _map.Gold, _map.Silver, ctx.Settings.DoomTower, SilverQuest(ctx));
 
-    private sealed record Saved(DoomTowerMap? Map, DateTime ReadAt, List<int> Skip, DateTime ClimbAfter);
+    private sealed record Saved(DoomTowerMap? Map, DateTime ReadAt, List<int> Skip, DateTime ClimbAfter, DateTime NormalAfter = default);
 
     // Kept for the next bot on the account (a rotation's restart): the map is not opened again before its hour.
-    public string? SaveState() => _map is null ? null : System.Text.Json.JsonSerializer.Serialize(new Saved(_map, _readAt, [.. _skip], _climbAfter), AutoplayJson.Options);
+    public string? SaveState() => _map is null ? null : System.Text.Json.JsonSerializer.Serialize(new Saved(_map, _readAt, [.. _skip], _climbAfter, _normalAfter), AutoplayJson.Options);
 
     public void LoadState(string json, DateTime utc)
     {
         if (System.Text.Json.JsonSerializer.Deserialize<Saved>(json, AutoplayJson.Options) is not { Map: not null } s) return;
-        (_map, _readAt, _climbAfter) = (s.Map, s.ReadAt, s.ClimbAfter);
+        (_map, _readAt, _climbAfter, _normalAfter) = (s.Map, s.ReadAt, s.ClimbAfter, s.NormalAfter);
         _skip.UnionWith(s.Skip);
     }
 
@@ -59,6 +59,7 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
     {
         if (_map is null || ctx.Utc - _readAt >= Recheck) return Decision.Now("reading the Doom Tower");
         var (stage, why) = Pick(ctx);
+        if (stage is null && NormalDue(ctx)) return Decision.Now("climbing the Normal tower");
         if (stage is null && ClimbDue(ctx)) return Decision.Now("climbing the Hard tower");
         return stage is not null ? Decision.Now(why) : Decision.Wait(_readAt + Recheck, why);
     }
@@ -70,15 +71,32 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
 
     private bool ClimbDue(PlayContext ctx) => ctx.Settings.DoomTower.Climb && ctx.Utc >= _climbAfter && ctx.Held(ClimbKey) is null;
 
-    private async Task<string> Climb(PlayContext ctx, CancellationToken ct)
+    /// <summary>
+    /// The Normal tower's free floors (Ehsan 2026-11-10: "on main account yesterday you did not play doomtower normal"; a new tower left BlackLord65 with
+    /// nothing beaten, so its 15 silver and 10 gold keys had nothing to go on): climbed whenever Doom Tower is on, before Hard. A floor costs nothing (a boss
+    /// floor a gold key, for a win only). No floor to play rests it 12 hours (the tower done, or the banner not seen); a loss a day.
+    /// </summary>
+    private DateTime _normalAfter = DateTime.MinValue;
+
+    private const string NormalKey = AreaId + ":climb-normal";
+
+    private bool NormalDue(PlayContext ctx) => ctx.Utc >= _normalAfter && ctx.Held(NormalKey) is null;
+
+    private async Task<string> Climb(PlayContext ctx, bool hard, CancellationToken ct)
     {
+        var tower = hard ? "Hard" : "Normal";
+        var key = hard ? ClimbKey : NormalKey;
+        void Rest(DateTime until, string why)
+        {
+            if (hard) _climbAfter = until; else _normalAfter = until;
+            if (!ctx.DryRun) ctx.Hold(key, until, why);
+        }
         await ctx.ThinkAsync(ct);
-        var outcome = await game.ClimbDoomTowerAsync(ctx.DryRun, ct);
+        var outcome = await game.ClimbDoomTowerAsync(hard, ctx.DryRun, ct);
         if (outcome.Result is BattleResult.NotStarted or BattleResult.Retry)
         {
-            _climbAfter = ctx.Utc + TimeSpan.FromHours(6);
-            if (!ctx.DryRun) ctx.Hold(ClimbKey, _climbAfter, $"Hard tower: {outcome.Text}");
-            ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", $"Hard tower: {outcome.Text}");
+            Rest(ctx.Utc + TimeSpan.FromHours(hard ? 6 : 12), $"{tower} tower: {outcome.Text}");
+            ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", $"{tower} tower: {outcome.Text}");
             return "";
         }
         _battles++;
@@ -86,14 +104,13 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
         else
         {
             _losses++;
-            _climbAfter = ctx.Utc + TimeSpan.FromDays(1);
             // The same team would lose again (Ehsan 2026-11-03: "it tries with exactly the same champions and loses on wave one").
-            ctx.Hold(ClimbKey, _climbAfter, "the Hard floor was lost: tried again in a day");
+            Rest(ctx.Utc + TimeSpan.FromDays(1), $"the {tower} floor was lost: tried again in a day");
         }
-        _last = $"{outcome.Result} Hard tower floor. {outcome.Text}";
+        _last = $"{outcome.Result} {tower} tower floor. {outcome.Text}";
         ctx.Event(AreaId, "battle", _last);
         _readAt = DateTime.MinValue;
-        return $"{outcome.Result}: Hard tower floor";
+        return $"{outcome.Result}: {tower} tower floor";
     }
 
     public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
@@ -101,7 +118,7 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
         _map = await game.ReadDoomTowerAsync(ct);
         _readAt = ctx.Utc;
         var (stage, why) = Pick(ctx);
-        if (stage is null) return ClimbDue(ctx) ? await Climb(ctx, ct) : "";
+        if (stage is null) return NormalDue(ctx) ? await Climb(ctx, false, ct) : ClimbDue(ctx) ? await Climb(ctx, true, ct) : "";
         await ctx.ThinkAsync(ct);
         var outcome = await game.FightDoomTowerAsync(stage, ctx.DryRun, ct);
         var name = DoomTowerRules.Name(stage);

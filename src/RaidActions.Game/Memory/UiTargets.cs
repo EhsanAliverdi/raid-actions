@@ -238,6 +238,10 @@ public static partial class UiTargets
                 "BTN_Close1" when t.View == "RemoveArtifactOverlay" => ("manage-close", "manage gear: close"),
                 // The confirmation Equip opens when it replaces a worn piece: Cancel (allowed), Continue (only inside a step's Equip).
                 "Cancel" when t.View == UiState.SwapView => ("swap-cancel", "swap dialog: Cancel"),
+                // The same confirmation when the champion's slot is empty (2026-11-09: "SWAP ARTIFACT: The Weapon will be removed from Pelops the
+                // Victor and will be equipped on Giscard the Sigiled instead"): Cancel allowed, its Continue ("Unequip") only inside a step's Equip.
+                "Cancel" when t.View == UiState.UndressView => ("swap-cancel", "swap dialog (empty slot): Cancel"),
+                "Unequip" when t.View == UiState.UndressView => ("undress-continue", "swap dialog (empty slot): Continue"),
                 "Continue" when t.View == UiState.SwapView => ("swap-continue", "swap dialog: Continue"),
                 // Upgrading (the upgrade command only): the selected piece's popup Upgrade (opens the upgrade screen) and that screen's one-level
                 // Upgrade. The upgrade screen's Sell and its "upgrade to level" button are never clicked.

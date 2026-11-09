@@ -82,6 +82,8 @@ public sealed record UiState(IReadOnlyList<OpenView> Views, int BlockingEvents, 
 {
     public const string ChampionScreenView = "HeroesInfoOverlay";
     public const string SwapView = "SwapArtifactsOverlay";
+    /// <summary>The swap confirmation when the champion's slot is empty (a piece taken off another champion; 2026-11-09).</summary>
+    public const string UndressView = "UndressArtifactOverlay";
     public const string MessageBoxView = "MessageBox";
     /// <summary>The artifact upgrade screen (Upgrade from a piece's popup).</summary>
     public const string PowerUpView = "ArtifactPowerUpOverlay";

@@ -224,7 +224,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
         {
             await Task.Delay(400, ct);
             var (after, _) = game.ReadUi();
-            if (after?.Top?.Name == UiState.SwapView) return await ConfirmSwap(a, step, ct);
+            if (after?.Top?.Name is UiState.SwapView or UiState.UndressView) return await ConfirmSwap(a, step, ct);
             if (after is not null && Screen.Covering(after) is { } popup) throw new StopException($"After Equip: unexpected popup {popup}.");
             var fresh = await game.Account.ReadAsync(ct);
             var owner = fresh.Artifacts.FirstOrDefault(x => x.Id == step.ArtifactId)?.OwnerHeroId;
@@ -359,6 +359,8 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
     }
 
     private static bool SwapOpenFor(UiState s, PlanStep step) =>
+        (s.Top?.Name == UiState.UndressView && step.FromChampionId is not null && s.ChampionScreen?.Champion == step.ToChampionId
+            && s.ChampionScreen.InventoryArtifactId == step.ArtifactId) ||
         s.Top?.Name == UiState.SwapView && s.ChampionScreen?.Champion == step.ToChampionId
         && (s.Swap?.ArtifactToEquipId == step.ArtifactId || (step.FromChampionId is not null && s.Swap?.EquippedArtifactId == step.ArtifactId));
 
@@ -394,6 +396,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
     {
         await NoBattle(ct);
         var (s, _) = await Read(ct);
+        if (s.Top?.Name == UiState.UndressView) return await ConfirmUndress(a, step, s, ct);
         if (s.Top?.Name != UiState.SwapView || s.Swap is not { } d) throw new StopException($"Expected the swap confirmation; the screen shows {s.Top?.Name}.");
         var worn = PlannedWorn(plan!, step);
         var shown = $"champion #{s.ChampionScreen?.Champion}, worn #{d.EquippedArtifactId}, to equip #{d.ArtifactToEquipId}";
@@ -430,6 +433,36 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
     }
 
     /// <summary>
+    /// The swap confirmation when the champion's slot is empty (UndressArtifactOverlay, 2026-11-09: "SWAP ARTIFACT: The Weapon will be removed
+    /// from Pelops the Victor and will be equipped on Giscard the Sigiled instead. Continue?"): only for a step whose piece another champion
+    /// wears, with memory showing the step's champion and its piece selected; Continue, then the account must show the piece on the champion.
+    /// Anything else: Cancel, then stop.
+    /// </summary>
+    private async Task<DriverResult> ConfirmUndress(UiAction a, PlanStep step, UiState s, CancellationToken ct)
+    {
+        var shown = $"champion #{s.ChampionScreen?.Champion}, selected #{s.ChampionScreen?.InventoryArtifactId}";
+        log($"step {a.Step}: swap confirmation (empty slot): {shown}");
+        if (step.FromChampionId is null || s.ChampionScreen?.Champion != step.ToChampionId || s.ChampionScreen.InventoryArtifactId != step.ArtifactId)
+        {
+            await Click(a, "swap-cancel", null, null, (s2, _) => s2.Top?.Name != UiState.UndressView, "the confirmation closes", ct);
+            throw new StopException($"The swap confirmation (empty slot) shows {shown}; planned: champion #{step.ToChampionId}, #{step.ArtifactId} from #{step.FromChampionId}. Pressed Cancel.");
+        }
+        _once = "undress-continue";
+        await Click(a, "undress-continue", null, null, (s2, _) => s2.Top?.Name != UiState.UndressView, "the confirmation closes", ct,
+            before: s2 => s2.ChampionScreen?.Champion == step.ToChampionId && s2.ChampionScreen.InventoryArtifactId == step.ArtifactId ? null : "the selection changed before Continue");
+        log($"step {a.Step}: confirmed (#{step.ArtifactId} off #{step.FromChampionId}, on {step.ToName})");
+        var until = DateTime.Now + TimeSpan.FromSeconds(25);
+        while (DateTime.Now < until)
+        {
+            await Task.Delay(1500, ct);
+            var fresh = await game.Account.ReadAsync(ct);
+            if (fresh.Artifacts.FirstOrDefault(x => x.Id == step.ArtifactId)?.OwnerHeroId == step.ToChampionId)
+                return DriverResult.Success($"Equip and its confirmation done; the account shows #{step.ArtifactId} on {step.ToName} (#{step.ToChampionId})");
+        }
+        throw new StopException($"After Continue: the account does not show #{step.ArtifactId} on {step.ToName} within 25 s.");
+    }
+
+    /// <summary>
     /// One click: allowed kind, no battle, nothing covering the champion screen, the target resolved fresh with its id, the standard
     /// window, then the click, then reads until <paramref name="expect"/> holds (or stop). <paramref name="read"/>: the caller's read,
     /// made just before with no input since (a walk of the champion screen's tree costs about 0.6 s); else a fresh one.
@@ -456,7 +489,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             if (s.Top?.Name != view) throw new StopException($"Expected {view} on top; the screen shows {s.Top?.Name}.");
             targets = targets.Where(t => t.View == view).ToList();
         }
-        if (Screen.Covering(s) is { } cover && kind is not ("manage-close" or "manage-remove" or "vault-gear-remove" or "dialog-close" or "swap-cancel" or "swap-continue" or "back" or "message-button" or "powerup-level" or "powerup-cancel")) throw new StopException($"Unexpected popup {cover} over the champion screen.");
+        if (Screen.Covering(s) is { } cover && kind is not ("manage-close" or "manage-remove" or "vault-gear-remove" or "dialog-close" or "swap-cancel" or "swap-continue" or "undress-continue" or "back" or "message-button" or "powerup-level" or "powerup-cancel")) throw new StopException($"Unexpected popup {cover} over the champion screen.");
         if (before?.Invoke(s) is { } changed) throw new StopException(changed);
         var (t, problem) = UiTargets.Resolve(targets, kind, id, slot);
         if (t is null) throw new StopException($"{kind}: {problem}");

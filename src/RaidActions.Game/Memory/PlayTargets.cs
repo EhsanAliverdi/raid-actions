@@ -213,7 +213,7 @@ public static partial class PlayTargets
         "mode-dungeon", "dungeon-region", "dungeon-stage", "dungeon-difficulty", "dungeon-dropdown", "super-raid",
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
-        "mode-clan", "clan-quickjoin", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-state", "live-phase", "live-slot", "live-confirm",
+        "mode-clan", "clan-quickjoin", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-reward", "live-state", "live-phase", "live-slot", "live-confirm",
         "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "menu-open", "menu-item", "reward-claim", "reward-tab", "event-card", "event-claimall", "event-close", "challenge-confirm", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "village-pass", "village-challenges", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
@@ -530,6 +530,13 @@ public static partial class PlayTargets
                     var enabled = Try(() => BoolValue(g, g.Ref(c.Address, LiveBattleTab, "_battleButtonEnabled")), null, notes, "LiveArenaBattleTabContext._battleButtonEnabled");
                     foreach (var x in SelfAndBelow(i).Where(x => x.Name == "BattleButton_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
                         targets.Add(Make("live-find", "live arena: Find Opponent", x, x, enabled == true ? "enabled" : "not enabled"));
+                    // Its rewards (Ehsan 2026-11-10: "you dont collect the rewards for live arena ... there are two types of quests, live arena quest and
+                    // progress quest"): the quest panel's progress and daily rewards and each daily-wins chest show an active Available_h (a glow) while
+                    // ready, OwnedState_h once taken (seen in the 2026-11-03 tree); the progress reward also puts its Collect button where Battle is.
+                    foreach (var x in SelfAndBelow(i).Where(x => x.Name == "Available_h" && x.ActiveInHierarchy && x.Screen is { Width: > 0 }))
+                        targets.Add(Make("live-reward", $"live arena: reward ready ({x.Path.Split('/').Reverse().Skip(1).FirstOrDefault(p => p is "RegularQuest" or "DailyQuest" or "0" or "1" or "2" or "3" or "4") ?? "quest"})", x, x, null));
+                    foreach (var x in SelfAndBelow(i).Where(x => x.Name == "CollectRegularRewardButton_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                        targets.Add(Make("live-reward", "live arena: Collect (the progress reward)", x, x, null));
                     break;
                 }
                 case LiveSchedule:

@@ -57,11 +57,46 @@ public sealed partial class LivePlayGame : ILiveArenaGame
         throw new PlayStopException($"Live Arena was not reached. Screen dump: {DumpScreen("live arena not reached")}");
     }
 
+    /// <summary>
+    /// The Live Arena dialog's rewards that are ready (its quest panel and daily-wins chests: Ehsan 2026-11-10), each clicked and its reward window closed. Never
+    /// the reason a match is not played: a click that does not take is logged and left. True when something was clicked (the dialog is read again after).
+    /// </summary>
+    private async Task<bool> CollectLiveRewards(bool dryRun, CancellationToken ct)
+    {
+        var clicked = false;
+        var tried = new HashSet<string>();
+        for (var n = 0; n < 8; n++)
+        {
+            var (_, targets, _) = await Read(ct);
+            var r = targets.FirstOrDefault(t => t.Kind == "live-reward" && t.NotClickable is null && !tried.Contains(t.Path));
+            if (r is null) break;
+            tried.Add(r.Path);
+            if (dryRun) { if (r.Rect is { } rr) Shot($"autoplay: WOULD CLICK {r.Name} (dry run: NOT pressed)", rr, always: true); continue; }
+            try
+            {
+                await Click("live-reward", t => t.Path == r.Path, (s2, scan) => Top(s2) != LiveDialogView || !scan().Targets.Any(t => t.Kind == "live-reward" && t.Path == r.Path),
+                    $"{r.Name} taken", ct, within: TimeSpan.FromSeconds(6));
+                clicked = true;
+                log($"autoplay: Live Arena: took {r.Name}");
+                await Pause(1200, ct);
+                // The reward's window over the dialog: closed with its own close.
+                for (var k = 0; k < 3 && Top(await Settled(ct)) is { } top && top != LiveDialogView; k++) { await Back(top, ct); await Pause(800, ct); }
+            }
+            catch (PlayStopException e)
+            {
+                log($"autoplay: Live Arena: {r.Name} was not taken ({e.Message}). Screen dump: {DumpScreen("live arena reward")}");
+                clicked = true;
+            }
+        }
+        return clicked;
+    }
+
     public async Task<BattleOutcome> PlayLiveArenaAsync(LiveArenaSettings s, bool dryRun, CancellationToken ct)
     {
         var started = DateTime.UtcNow;
         if (InLiveMatch(await ReadState(ct))) return await FinishLiveMatchAsync(s, started, ct);
         if (!await OpenLiveArena(ct)) return new BattleOutcome(BattleResult.NotStarted, "closed now");
+        if (await CollectLiveRewards(dryRun, ct) && !await OpenLiveArena(ct)) return new BattleOutcome(BattleResult.NotStarted, "closed now");
         if (dryRun)
         {
             var (_, t0, _) = await Read(ct);
@@ -114,7 +149,10 @@ public sealed partial class LivePlayGame : ILiveArenaGame
                 case "leader":
                 {
                     var squad = targets.Where(t => t.Kind == "live-slot" && t.Note == "mine" && t.Id is > 0).Select(t => t.Id!.Value).ToList();
-                    var want = LiveArenaDraft.Leader(leaders.Count == 0 ? s.PrimaryLeader : s.SecondaryLeader, squad, leaders, data.Champions);
+                    // The primary leader, else the secondary (Ehsan 2026-11-10: "secondary leader is not Pelops but the bot keeps selecting him": with the
+                    // primary banned only the primary was asked for, and the strongest left, Pelops, came next), else the strongest.
+                    var order = leaders.Count == 0 ? new[] { s.PrimaryLeader, s.SecondaryLeader } : [s.SecondaryLeader, s.PrimaryLeader];
+                    var want = LiveArenaDraft.Leader(order.FirstOrDefault(l => l is { } x && squad.Contains(x) && !leaders.Contains(x)), squad, leaders, data.Champions);
                     if (want is { } id)
                     {
                         await Click("live-slot", t => t.Id == id && t.Note == "mine", (_, _) => true, $"leader {Who(id)}", ct);

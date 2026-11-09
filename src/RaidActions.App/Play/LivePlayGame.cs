@@ -313,8 +313,15 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 log($"autoplay: inbox: Collect on [{entry.Title}|{entry.Message}|{entry.Icon}] did not take it ({e.Message}); left in the inbox. Screen dump: {DumpScreen("inbox collect")}");
                 break;
             }
-            // A rewards popup after collecting: closed with its own close.
+            // The game's "the most is 10: claiming loses the rest" (MissingResourceOverlay, 2026-11-10 07:51: closed and claimed again ten times): closed, the
+            // entry left in the inbox, nothing more of it claimed now (the tokens are spent first, the next inbox check claims it).
             var s3 = await Settled(ct);
+            if (Top(s3) == "MissingResourceOverlay")
+            {
+                await Back("MissingResourceOverlay", ct);
+                log($"autoplay: inbox: [{entry.Title}|{entry.Message}] would go over the cap (the game warns some would be lost): left in the inbox");
+                break;
+            }
             if (Top(s3) is { } top && top != PlayTargets.InboxView && top.EndsWith("Overlay", StringComparison.Ordinal)) await Back(top, ct);
         }
         await GoHomeAsync(ct);

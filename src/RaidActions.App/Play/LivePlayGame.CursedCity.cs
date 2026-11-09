@@ -359,10 +359,11 @@ public sealed partial class LivePlayGame : ICursedCityGame
     private static int MapId(CcStage s) =>
         (int.TryParse(System.Text.RegularExpressions.Regex.Match(s.District, @"\d+$").Value, out var d) ? d : 0) * 1000 + s.Number;
 
-    /// <summary>A target whose middle is outside the window (a list that runs past it): the view dragged until it is inside (at most 4 drags).</summary>
+    /// <summary>A target whose middle is outside the window (a list that runs past it): the view dragged until it is inside (at most 8 drags: at 1298 wide
+    /// the Campaign map's Region12 needed 5 or more, and four left it at x 1550 every first try, 2026-11-09 21:37 and 2026-11-10 07:07).</summary>
     private async Task DragIntoView(string kind, CancellationToken ct, Func<UiTarget, bool>? which = null)
     {
-        for (var i = 0; i < 4; i++)
+        for (var i = 0; i < 8; i++)
         {
             var (_, targets, _) = await Read(ct);
             var t = targets.FirstOrDefault(x => x.Kind == kind && x.Rect is not null && (which is null || which(x)));

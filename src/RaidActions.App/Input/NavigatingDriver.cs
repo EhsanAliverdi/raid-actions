@@ -35,6 +35,8 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
     {
         "open-champions", "screen-close", "champion-tile", "gear-tab", "gear-slot", "inventory-item",
         "picker-close", "popup-close-selected", "popup-close-worn", "manage-close", "dialog-close", "swap-cancel", "back",
+        // The picker's filter (2026-11-09): its button, Free and Equipped (pieces other champions wear are listed only with Equipped on), the kinds.
+        "picker-filter", "picker-filter-free", "picker-filter-equipped", "picker-filter-kind",
     };
 
     /// <summary>The ways back go home may take, innermost first: in the top view, the first of these kinds found is clicked.</summary>
@@ -121,11 +123,15 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
                     await Click(a, "gear-tab", 1, null, (s2, _) => s2.ChampionScreen?.DetailsTab == 0, "the gear tab is on", ct, read: r0);
                     r0 = await Read(ct);
                 }
-                await Click(a, "gear-slot", null, a.Slot, (_, t) => t.Any(x => x.Kind == "inventory-item" && x.Active), "the picker shows pieces", ct, read: r0);
+                // The picker open: pieces listed, or its Filter button shown (a filter with Storage and Equipped both off lists nothing; the
+                // filter step that follows ticks them, 2026-11-09).
+                await Click(a, "gear-slot", null, a.Slot, (_, t) => t.Any(x => x.Kind == "inventory-item" && x.Active) || t.Any(x => x.Kind == "picker-filter" && x.Active),
+                    "the picker opens", ct, read: r0);
                 return DriverResult.Success($"{UiTargets.DisplayName(a.Slot!)} slot open");
             }
             case ActionKind.FindPiece:
             {
+                await PickerFilter(a, ct);
                 var t = await Scrolled(a, "inventory-item", a.ArtifactId, "scroll-picker", ct);
                 var png = Shot(a, $"step {a.Step} FindPiece: {t.Name} in the picker at {t.Rect}", t.Rect!.Value);
                 return DriverResult.Success($"{t.Name} in the picker at {t.Rect} → {png}");
@@ -159,6 +165,16 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             }
             case ActionKind.Equip:
                 return await Equip(a, step!, ct);
+            case ActionKind.ConfirmRemoveFromDonor: // a real run only: actions that change gear are never in a dry run
+            {
+                // The game takes the piece off its champion inside Equip's own confirmation ("SWAP ARTIFACT: ... removed from Apothecary and
+                // equipped on Reliquary Tender instead", 2026-11-09): nothing to click here, only the account checked.
+                var fresh = await game.Account.ReadAsync(ct);
+                var owner = fresh.Artifacts.FirstOrDefault(x => x.Id == a.ArtifactId)?.OwnerHeroId;
+                return owner == a.ChampionId
+                    ? DriverResult.Success($"#{a.ArtifactId} is off its old champion and on #{a.ChampionId} (the game took it off in Equip's confirmation)")
+                    : DriverResult.Failure($"#{a.ArtifactId} is on #{owner?.ToString(System.Globalization.CultureInfo.InvariantCulture) ?? "nobody"}, not #{a.ChampionId}.");
+            }
             default:
                 return DriverResult.Failure($"{a.Kind} is never done by the navigating driver.");
         }
@@ -343,7 +359,18 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
     }
 
     private static bool SwapOpenFor(UiState s, PlanStep step) =>
-        s.Top?.Name == UiState.SwapView && s.ChampionScreen?.Champion == step.ToChampionId && s.Swap?.ArtifactToEquipId == step.ArtifactId;
+        s.Top?.Name == UiState.SwapView && s.ChampionScreen?.Champion == step.ToChampionId
+        && (s.Swap?.ArtifactToEquipId == step.ArtifactId || (step.FromChampionId is not null && s.Swap?.EquippedArtifactId == step.ArtifactId));
+
+    /// <summary>
+    /// Whether the swap confirmation's two ids are the step's. A piece from storage: worn = the piece the champion wears now, to equip = the
+    /// step's piece. A piece another champion wears (2026-11-09, "SWAP ARTIFACT: The Boots will be removed from Apothecary and will be equipped
+    /// on Reliquary Tender instead. The Artifact Reliquary Tender is equipped with will be moved to your Artifact Storage"): the game holds
+    /// them the other way round, worn = the step's piece, to equip = the champion's own piece (none when its slot is empty).
+    /// </summary>
+    public static bool SwapIdsMatch(int? equipped, int? toEquip, int artifactId, int? worn, bool fromChampion) =>
+        (equipped == worn && toEquip == artifactId)
+        || (fromChampion && equipped == artifactId && (toEquip == worn || (worn is null && toEquip is null or 0)));
 
     /// <summary>
     /// Why the swap confirmation's text may not be confirmed: unreadable, or it mentions a cost or a currency (any number counts,
@@ -371,7 +398,9 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
         var worn = PlannedWorn(plan!, step);
         var shown = $"champion #{s.ChampionScreen?.Champion}, worn #{d.EquippedArtifactId}, to equip #{d.ArtifactToEquipId}";
         log($"step {a.Step}: swap confirmation: {shown}; title \"{d.Title}\"; text \"{d.Warning}\"");
-        if (worn is null || s.ChampionScreen?.Champion != step.ToChampionId || d.EquippedArtifactId != worn || d.ArtifactToEquipId != step.ArtifactId)
+        var fromChampion = step.FromChampionId is not null;
+        if ((worn is null && !fromChampion) || s.ChampionScreen?.Champion != step.ToChampionId
+            || !SwapIdsMatch(d.EquippedArtifactId, d.ArtifactToEquipId, step.ArtifactId, worn, fromChampion))
         {
             await Click(a, "swap-cancel", null, null, (s2, _) => s2.Top?.Name != UiState.SwapView, "the swap confirmation closes", ct);
             throw new StopException($"The swap confirmation shows {shown}; planned: champion #{step.ToChampionId}, worn #{(worn is null ? "none" : worn)}, to equip #{step.ArtifactId}. Pressed Cancel.");
@@ -381,7 +410,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
 
         _once = "swap-continue";
         await Click(a, "swap-continue", null, null, (s2, _) => s2.Top?.Name != UiState.SwapView, "the swap confirmation closes", ct,
-            before: s2 => s2.Swap is { } d2 && d2.EquippedArtifactId == worn && d2.ArtifactToEquipId == step.ArtifactId && s2.ChampionScreen?.Champion == step.ToChampionId
+            before: s2 => s2.Swap is { } d2 && SwapIdsMatch(d2.EquippedArtifactId, d2.ArtifactToEquipId, step.ArtifactId, worn, fromChampion) && s2.ChampionScreen?.Champion == step.ToChampionId
                 ? null : "the swap confirmation changed before Continue");
         log($"step {a.Step}: confirmed the swap (#{worn} off, #{step.ArtifactId} on {step.ToName})");
 
@@ -484,6 +513,89 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
     }
 
     /// <summary>Scrolls a list with the wheel until the target with <paramref name="id"/> may be clicked.</summary>
+    /// <summary>The picker's kind boxes, in the game's order (the six gear slots; accessories have their own tab and no kind box here).</summary>
+    private static readonly string[] FilterKinds = ["Weapon", "Helmet", "Shield", "Gloves", "Chest", "Boots"];
+
+    /// <summary>The slot the picker's filter was last set for (its panel keeps its boxes between slots); null: not set in this run.</summary>
+    private string? _filteredFor;
+
+    /// <summary>
+    /// The picker's filter before a piece is looked for (Ehsan 2026-11-09): Storage and Equipped on (a piece another champion wears is listed only
+    /// with Equipped), and only the step's kind ticked (a short list: less scrolling). The panel opens with the picker's Filter button, each box
+    /// is clicked until memory shows it as wanted, and the panel closes again. Already set for this slot: nothing clicked.
+    /// </summary>
+    private async Task PickerFilter(UiAction a, CancellationToken ct)
+    {
+        if (a.Slot is null) return; // no "already set" shortcut: the game turns Equipped off whenever the panel or the picker closes
+        bool Open(IReadOnlyList<UiTarget> t) => t.Any(x => x.Kind == "picker-filter-equipped" && x.Active);
+        // The piece already listed (even off screen): no filter, only scrolling (Ehsan 2026-11-09: "the bot should be smart when to use the
+        // filter"; it costs a few clicks and is needed only for a piece the list does not hold, such as one another champion wears).
+        // Ehsan 2026-11-09: "is the gear in storage or equipped? If equipped: click Filter, select the gear type and make sure Equipped is
+        // checked. If in storage: select the gear and equip." Decided by the plan (the step's donor), not by what the list shows a moment
+        // after the slot opened (2026-11-09: a copy left from the step before said "listed", then the list refreshed without it).
+        if (a.FromChampionId is null)
+        {
+            await Task.Delay(500, ct); // the list settles after the slot opened
+            var (_, first) = await Read(ct);
+            if (first.Any(x => x.Kind == "inventory-item" && x.Id == a.ArtifactId && x.Active && x.NotClickable is null or "not fully visible (outside its scroll viewport)"))
+            {
+                log($"step {a.Step}: #{a.ArtifactId} is in storage and listed: no filter");
+                return;
+            }
+            log($"step {a.Step}: #{a.ArtifactId} is in storage but not listed: setting the filter");
+        }
+        else log($"step {a.Step}: #{a.ArtifactId} is worn by champion #{a.FromChampionId}: Filter, its type and Equipped");
+        // The worn piece's popup (the game opens it with the slot) greys the filter panel out: closed first, the picker stays (2026-11-09).
+        await ClosePiecePanels(a, ct, picker: false);
+        var (_, targets) = await Read(ct);
+        if (!targets.Any(x => x.Kind == "picker-filter")) { log($"step {a.Step}: the picker shows no Filter button: searching without it"); return; }
+        // Opened, tried once more when the click is lost (2026-11-09: once on the Accessories tab).
+        for (var attempt = 1; !Open(targets); attempt++)
+        {
+            try { await Click(a, "picker-filter", null, null, (_, t) => Open(t), "the filter panel opens", ct); }
+            catch (StopException) when (attempt == 1) { log($"step {a.Step}: the filter panel did not open: Filter clicked again"); }
+            await Task.Delay(500, ct);
+            (_, targets) = await Read(ct);
+            if (attempt >= 2 && !Open(targets)) throw new StopException("The picker's filter panel did not open after two clicks.");
+        }
+        await Task.Delay(900, ct); // the panel slides in: a click before it settles is lost
+        (_, targets) = await Read(ct);
+        // Storage (pieces nobody wears) and Equipped (pieces a champion wears) both ticked: every piece is listed (Ehsan 2026-11-09).
+        foreach (var (kind, label) in new[] { ("picker-filter-free", "Storage"), ("picker-filter-equipped", "Equipped") })
+        {
+            var box = targets.FirstOrDefault(x => x.Kind == kind);
+            if (box is null) throw new StopException($"The picker's filter shows no {label} box.");
+            // Never a blind click: a box whose tick cannot be read stops the run (2026-11-09: a guessed read turned Storage off).
+            if (box.Note is null) throw new StopException($"The picker's filter: the {label} box's tick cannot be read; nothing clicked.");
+            if (box.Note != "on")
+            {
+                await Click(a, kind, null, null, (_, t) => t.Any(x => x.Kind == kind && x.Note == "on"), $"{label} is ticked", ct);
+                await Task.Delay(400, ct);
+                (_, targets) = await Read(ct);
+            }
+        }
+        var want = Array.IndexOf(FilterKinds, a.Slot);
+        var kinds = targets.Where(x => x.Kind == "picker-filter-kind" && x.Id is not null).ToList();
+        if (want >= 0 && kinds.Count == FilterKinds.Length && kinds.Any(k => k.Note is null))
+            log($"step {a.Step}: the kind boxes' ticks cannot be read: kinds left as they are");
+        else if (want >= 0 && kinds.Count == FilterKinds.Length)
+            foreach (var k in kinds)
+            {
+                var on = k.Id == want;
+                if ((k.Note == "on") == on) continue;
+                var id = k.Id;
+                await Click(a, "picker-filter-kind", id, null, (_, t) => t.Any(x => x.Kind == "picker-filter-kind" && x.Id == id && (x.Note == "on") == on),
+                    $"kind {id} {(on ? "ticked" : "unticked")}", ct);
+            }
+        else if (want >= 0) log($"step {a.Step}: the filter shows {kinds.Count} kind box(es), not {FilterKinds.Length}: kinds left as they are");
+        (_, targets) = await Read(ct);
+        log($"step {a.Step}: picker filter: {string.Join(", ", targets.Where(x => x.Kind.StartsWith("picker-filter-", StringComparison.Ordinal)).Select(x => $"{x.Name} {x.Note}"))}");
+        // The panel stays open: closing it turns Equipped off again (2026-11-09: the worn boots #1026 were listed with the panel open and gone
+        // once it closed). It sits left of the list, which stays visible and scrollable beside it.
+        await Task.Delay(500, ct);
+        _filteredFor = a.Slot;
+    }
+
     private async Task<UiTarget> Scrolled(UiAction a, string kind, int? id, string areaKind, CancellationToken ct)
     {
         var down = true;
@@ -493,6 +605,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
         float? lastY = null;
         var lastNotches = 0;
         var same = 0;
+        var useFar = false;
         for (var i = 0; i < 80; i++)
         {
             var (s, targets) = await Read(ct);
@@ -505,7 +618,19 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             if (area is null) throw new StopException($"{areaKind}: {problem}");
             var ar = area.Rect!.Value;
             // Direction: towards the target when the list holds it (above or below the viewport); else down, then up at the end.
-            var known = targets.FirstOrDefault(x => x.Kind == kind && x.Id == id && x.Active && x.Rect is not null);
+            // A piece can be listed twice (2026-11-09: the picker showed #3663 at the top of the list and again in its set's group, the top one
+            // never clickable): the copy nearest the viewport, and the other one once the list stops moving short of the first.
+            // Only copies in the list shown (clickable, or outside the viewport): the game keeps other, hidden lists with old copies.
+            var copies = targets.Where(x => x.Kind == kind && x.Id == id && x.Active && x.Rect is not null
+                    && x.NotClickable is null or "not fully visible (outside its scroll viewport)")
+                .OrderBy(x => Math.Abs(x.Rect!.Value.Center.Y - ar.Center.Y)).ToList();
+            var known = copies.Count == 0 ? null : useFar && copies.Count > 1 ? copies[^1] : copies[0];
+            if (known is not null && lastY is { } prevY && lastNotches > 0 && Math.Abs(known.Rect!.Value.Y - prevY) <= 1 && copies.Count > 1 && !useFar)
+            {
+                useFar = true;
+                known = copies[^1];
+                log($"step {a.Step}: {kind} {id} is listed twice and the list stopped short of one copy: heading for the other");
+            }
             // By the centres (2026-10-30: by the top edges a tile inside the view flipped the direction every turn, 80 turns of 2 notches).
             if (known is not null) down = known.Rect!.Value.Center.Y > ar.Center.Y;
             if (known is not null && known.Rect!.Value.Y >= ar.Y && known.Rect!.Value.Bottom <= ar.Bottom && i >= 3)

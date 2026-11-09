@@ -77,6 +77,13 @@ public static partial class UiTargets
             for (var k = i + 1; k < nodes.Count && nodes[k].Depth > nodes[i].Depth; k++) yield return nodes[k];
         }
 
+        // A filter box's state (2026-11-09, seen in the picker's filter panel): Storage and Equipped are buttons whose tick is a child "On_h"
+        // shown when ticked; a kind box shows its "SelectedBG_h" when ticked. "on", "off", or null when neither is found.
+        string? On(UiNode n, int i)
+        {
+            var mark = Below(i).FirstOrDefault(c => c.Name == "On_h") ?? Below(i).FirstOrDefault(c => c.Name == "SelectedBG_h");
+            return mark is null ? (n.IsOn is { } own ? (own ? "on" : "off") : null) : mark.ActiveSelf ? "on" : "off";
+        }
         UiNode? ClickableIn(int i) =>
             (nodes[i].Interactable is not null ? [nodes[i]] : Enumerable.Empty<UiNode>()).Concat(Below(i)).FirstOrDefault(c => c.Interactable is not null && c.ActiveInHierarchy)
             ?? Below(i).FirstOrDefault(c => c.Interactable is not null);
@@ -164,6 +171,29 @@ public static partial class UiTargets
             if (n.Name == "GroupsViewport" && n.Path.Contains("/InventoryWindow/", StringComparison.Ordinal))
             {
                 targets.Add(Make("scroll-picker", "picker (scroll)", null, n, n, null));
+                continue;
+            }
+            // The picker's filter (Ehsan 2026-11-09: "to see the gear other champions wear you need to click filter and check Equipped"): its
+            // button in the picker's header, and while its panel is open, Equipped (worn pieces listed too) and the six kind boxes (0..5), on or
+            // off in the note. Only shown ones (a closed panel stays in the tree without a place on the screen).
+            if (n.Name == "ToggleFilter_h" && n.Path.Contains("/InventoryWindow", StringComparison.Ordinal))
+            {
+                targets.Add(Make("picker-filter", "picker: Filter", null, n, ClickableIn(i), n.IsOn is null ? null : n.IsOn == true ? "on" : "off"));
+                continue;
+            }
+            if (n.Name == "FilterEquipped" && n.BindingPath == "EquippedItemsFilter" && n.Screen is not null)
+            {
+                targets.Add(Make("picker-filter-equipped", "picker filter: Equipped", null, n, ClickableIn(i), On(n, i)));
+                continue;
+            }
+            if (n.Name == "FilterFree" && n.BindingPath == "FreeItemsFilter" && n.Screen is not null)
+            {
+                targets.Add(Make("picker-filter-free", "picker filter: Storage", null, n, ClickableIn(i), On(n, i)));
+                continue;
+            }
+            if (n.Context?.Class.EndsWith("ArtifactKindFilterItemContext", StringComparison.Ordinal) == true && int.TryParse(n.Name, out var kindIndex) && n.Screen is not null)
+            {
+                targets.Add(Make("picker-filter-kind", $"picker filter: kind {kindIndex}", kindIndex, n, ClickableIn(i), On(n, i)));
                 continue;
             }
 

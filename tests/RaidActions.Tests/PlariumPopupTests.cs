@@ -52,5 +52,7 @@ public class PlariumPopupTests
         Assert.Null(PlariumPopup.Choose(["Ehsan Ali", "Ehsan Aliverdi"], 165078741, profiles));           // both known as others
         Assert.Equal(1, PlariumPopup.Choose(["Ehsan Ali", "Ehsan Aliversi"], 165078741, profiles));        // the one not known yet
         Assert.Equal(0, PlariumPopup.Choose([null, "Ehsan Ali"], 165078741, profiles));                     // a name not read counts as not known
+        Assert.Equal(1, PlariumPopup.Choose([null, null], 165078741, profiles, attempt: 2));                // the next try takes the other one
+        Assert.Equal(0, PlariumPopup.Choose([null, null], 165078741, profiles, attempt: 3));
     }
 }

@@ -183,13 +183,15 @@ public static class PlariumPopup
 
     /// <summary>
     /// Which avatar to press for the account wanted: the one whose profile is known to be it (<paramref name="profiles"/>: profile name to player id, learnt on
-    /// switches); else one whose profile is not known yet (it is then learnt); never one known to be another account. Null: none can be it.
+    /// switches); else one whose profile is not known yet (it is then learnt); never one known to be another account. Null: none can be it. Of several not
+    /// known, each try of a switch (<paramref name="attempt"/>, from 1) takes the next (2026-11-10 11:37: no name read, the first avatar was pressed on every
+    /// try and the third account was never reached).
     /// </summary>
-    public static int? Choose(IReadOnlyList<string?> names, long want, IReadOnlyDictionary<string, long> profiles)
+    public static int? Choose(IReadOnlyList<string?> names, long want, IReadOnlyDictionary<string, long> profiles, int attempt = 1)
     {
         for (var i = 0; i < names.Count; i++) if (names[i] is { } n && profiles.TryGetValue(n, out var id) && id == want) return i;
-        for (var i = 0; i < names.Count; i++) if (names[i] is not { } n || !profiles.ContainsKey(n)) return i;
-        return null;
+        var open = Enumerable.Range(0, names.Count).Where(i => names[i] is not { } n || !profiles.ContainsKey(n)).ToList();
+        return open.Count == 0 ? null : open[(Math.Max(1, attempt) - 1) % open.Count];
     }
 
     /// <summary>The "Other Accounts" avatar's component (a styled component's class, seen 2026-11-06).</summary>

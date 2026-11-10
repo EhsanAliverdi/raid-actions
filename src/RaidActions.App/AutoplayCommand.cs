@@ -104,6 +104,17 @@ public static class AutoplayCommand
             // The bot plays the account the app shows (raid-extractor plan/multi-account.md): another account in the game is not played.
             if (RaidExtractor.OutputLayout.ActiveId(dir) is { } want && live.UserId() is { } inGame && inGame != want)
             {
+                // After a failed switch the game is started again on whichever profile Plarium Play is on (2026-11-10 11:40: KaelStormVex came up while the app
+                // was on BlackLord65, and the rotation stopped there): an account of the pool is taken as it is, its turn begun, and a bot started for it.
+                var pool = RaidExtractor.AccountPool.Load(dir);
+                if (args.Contains("--restart-first") && pool.Find(inGame) is not null)
+                {
+                    Print($"rotation: the game came up on account {inGame}, not {want}: that account plays this turn");
+                    RaidExtractor.AccountTurn.Begin(dir, inGame, pool.SliceOf(inGame), DateTime.UtcNow);
+                    RaidExtractor.OutputLayout.SetActive(dir, inGame);
+                    LiveAutoplayHost.Relaunch(dir, "autoplay" + (args.Contains("--no-yield") ? " --no-yield" : ""));
+                    return Cli.Ok;
+                }
                 var other = $"The game shows account {inGame}, but the app is on account {want}: switch the app's account (or the game's) first.";
                 Print(other);
                 host.WriteStatus(new AutoplayStatus(DateTime.UtcNow, Environment.ProcessId, dry, "error", other, null, [], [], []));

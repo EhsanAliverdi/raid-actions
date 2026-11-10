@@ -29,11 +29,15 @@ public static class SwitchAccountCommand
         for (var attempt = 1; attempt <= 3; attempt++)
         {
             CloseRaid(output);
-            if (SwitchInPlariumPlay(output, want, profiles, out var picked) is { } problem) { output.WriteLine(problem); return Cli.Failed; }
+            if (SwitchInPlariumPlay(output, want, profiles, attempt, out var picked) is { } problem) { output.WriteLine(problem); return Cli.Failed; }
             if (!await RestartGameCommand.StartAndWaitAsync(outDir, output, TimeSpan.FromMinutes(5))) return Cli.Failed;
             var now = InGame(outDir);
             output.WriteLine($"The game is on account {now?.ToString() ?? "(not read)"}.");
-            if (picked is not null && now is { } id) Learn(outDir, profiles, picked, id, output);
+            // The name on the profile button now, not the text read when the avatar was hovered (2026-11-10 11:36: a banner's "EVENT" appeared on the hover
+            // and was learnt as KaelStormVex's profile, its real name dropped).
+            var signedIn = Process.GetProcessesByName("PlariumPlay").FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero) is { } ppNow
+                ? PlariumPopup.CurrentProfile(ppNow.MainWindowHandle) : null;
+            if ((signedIn ?? picked) is { } name && now is { } id) Learn(outDir, profiles, name, id, output);
             if (now == want) return Cli.Ok;
         }
         output.WriteLine($"Account {want} was not reached.");
@@ -114,7 +118,7 @@ public static class SwitchAccountCommand
         Thread.Sleep(8000); // Plarium Play notices the game closed (it was 3 s; see SwitchInPlariumPlay)
     }
 
-    private static string? SwitchInPlariumPlay(TextWriter output, long want, IReadOnlyDictionary<string, long> profiles, out string? picked)
+    private static string? SwitchInPlariumPlay(TextWriter output, long want, IReadOnlyDictionary<string, long> profiles, int attempt, out string? picked)
     {
         picked = null;
         var pp = Process.GetProcessesByName("PlariumPlay").FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero);
@@ -200,7 +204,7 @@ public static class SwitchAccountCommand
                 {
                     var names = others.Select(o => o.Name).ToList();
                     output.WriteLine($"Plarium Play's other accounts: {string.Join(", ", names.Select(n => n is null ? "(name not read)" : profiles.TryGetValue(n, out var pid) ? $"{n} ({pid})" : $"{n} (not known yet)"))}.");
-                    if (PlariumPopup.Choose(names, want, profiles) is not { } index)
+                    if (PlariumPopup.Choose(names, want, profiles, attempt) is not { } index)
                         return $"None of Plarium Play's other accounts plays {want}: the account was not switched.";
                     if (PlariumPopup.Press(others[index].Button))
                     {

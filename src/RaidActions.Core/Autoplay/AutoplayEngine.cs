@@ -76,6 +76,9 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     /// <summary>A locked area is tried again after this.</summary>
     public static readonly TimeSpan LockedHold = TimeSpan.FromHours(6);
 
+    /// <summary>A read failing because the game's model is gone (it reloaded: logged out, e.g. the account opened on another device).</summary>
+    public static bool GameReloaded(string error) => error.Contains("AppModel", StringComparison.Ordinal) && error.Contains("implausible pointer 0x0", StringComparison.Ordinal);
+
     /// <summary>How the host's block reason starts when the account is open on another device (LivePlayGame.SessionTaken).</summary>
     public const string AnotherDevice = "the account is open on another device";
 
@@ -189,6 +192,11 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 // A full resource stops regenerating: its area first, whatever the order; but after three turns in a row another area gets one, or long runs with
                 // energy near its cap starve the rest (2026-11-02: only Energy played for 30 minutes).
                 if (!stepAside && enabled.FirstOrDefault(a => _decisions[a.Id].Act && a.Full(ctx)) is { } full) act = full;
+                // Every fourth turn the area that has waited longest (never played in this run first, in the order): each account's turn is a new bot of
+                // 30 minutes, and the areas at the end of the order never came (2026-11-10: BlackLord65's Doom Tower, 10 gold and 15 silver keys, wanted
+                // to play all day behind the arenas, Clan Boss, Faction Wars and full energy).
+                if (!stepAside && _turnNumber % 4 == 3 && enabled.Where(a => _decisions[a.Id].Act).OrderBy(a => _playedAt.GetValueOrDefault(a.Id)).FirstOrDefault() is { } waited)
+                    act = waited;
                 // An urgent one (a free arena refresh due with nobody to fight) before anything: what a chain of runs was broken for.
                 if (!stepAside && enabled.FirstOrDefault(a => _decisions[a.Id].Act && a.Urgent(ctx)) is { } urgent) act = urgent;
                 if (act is not null)
@@ -239,6 +247,12 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 {
                     errors++;
                     Remember(new AutoplayEvent(host.UtcNow, act.Id, "error", e.Message));
+                    // The game dropped its data mid-turn (its AppModel gone): it was logged out and came back by itself, with no "another device" box
+                    // (2026-11-10 15:38: Ehsan logged in on another device, the game here reloaded and the bot played on and took the account back). With
+                    // other accounts to play, this one's turn ends and the next account is played (Ehsan: "if I logged in from another device you should
+                    // move to the next account in rotation").
+                    if (!once && GameReloaded(e.Message) && host.RotateDue(host.UtcNow.AddDays(1)) is not null)
+                        return Stop($"rotation: {AnotherDevice} (the game reloaded mid-turn: {e.Message})");
                     // The same area failing again: it alone waits an hour, so one area that cannot be played never stops the others (2026-11-04).
                     _areaErrors[act.Id] = _areaErrors.GetValueOrDefault(act.Id) + 1;
                     if (_areaErrors[act.Id] >= AreaErrorsToHold && enabled.Count > 1)

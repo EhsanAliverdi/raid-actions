@@ -37,6 +37,13 @@ public class AnotherDeviceTests
     }
 
     [Fact]
+    public void A_game_that_reloaded_mid_turn_is_taken_for_another_device()
+    {
+        Assert.True(AutoplayEngine.GameReloaded("AppModel static field: implausible pointer 0x0"));
+        Assert.False(AutoplayEngine.GameReloaded("team-start: not on screen"));
+    }
+
+    [Fact]
     public void A_paused_account_is_skipped_and_its_own_turn_ends()
     {
         var pool = new AccountPool { Rotate = true, Accounts = [new() { Id = 1, PausedUntilUtc = Start.AddHours(1) }, new() { Id = 2 }, new() { Id = 3 }] };

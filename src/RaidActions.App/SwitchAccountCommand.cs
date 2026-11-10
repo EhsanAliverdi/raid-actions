@@ -185,6 +185,7 @@ public static class SwitchAccountCommand
             var (otherX, otherY) = (r.L + (int)(OtherX * scale), r.B - (int)(OtherFromBottom * scale));
             // Plarium Play still counts the game as running for a while after it closed (2026-11-04: both tries failed): its menu then shows "You cannot
             // log out ... while games are running" (a plain grey box) where the other account's avatar is. Opened, looked at, closed and tried again.
+            var empty = 0;
             for (var look = 0; look < 12; look++)
             {
                 if (Input.SessionGuard.WaitActive(TimeSpan.FromMinutes(3)) is { } lost) return $"The account was not switched: {lost}";
@@ -257,7 +258,17 @@ public static class SwitchAccountCommand
                     return null;
                 }
                 if (!PlainBox(otherX, otherY, (int)(14 * scale)))
-                    return "Plarium Play's menu is open, but no other account's avatar was found in it: the account was not switched.";
+                {
+                    // Seen several times (2026-11-10 10:37, 14:08, 14:42) with a retry 5 minutes later working: the menu closed and opened again first.
+                    if (++empty >= 3) return "Plarium Play's menu is open, but no other account's avatar was found in it (three looks): the account was not switched.";
+                    output.WriteLine("Plarium Play's menu shows no other account's avatar: closed and opened again...");
+                    keybd_event(0x1B, 0, 0, IntPtr.Zero);
+                    keybd_event(0x1B, 0, 2, IntPtr.Zero);
+                    Thread.Sleep(3000);
+                    SetForegroundWindow(h);
+                    Thread.Sleep(800);
+                    continue;
+                }
                 output.WriteLine("Plarium Play still counts the game as running; trying again in 10 s...");
                 keybd_event(0x1B, 0, 0, IntPtr.Zero); // Esc closes the menu
                 keybd_event(0x1B, 0, 2, IntPtr.Zero);

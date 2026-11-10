@@ -77,6 +77,7 @@ public sealed partial class LivePlayGame : ILiveArenaGame
                 await Click("live-reward", t => t.Path == r.Path, (s2, scan) => Top(s2) != LiveDialogView || !scan().Targets.Any(t => t.Kind == "live-reward" && t.Path == r.Path),
                     $"{r.Name} taken", ct, within: TimeSpan.FromSeconds(6));
                 clicked = true;
+                _liveRewardsTaken++;
                 log($"autoplay: Live Arena: took {r.Name}");
                 await Pause(1200, ct);
                 // The reward's window over the dialog: closed with its own close.
@@ -90,6 +91,17 @@ public sealed partial class LivePlayGame : ILiveArenaGame
         }
         return clicked;
     }
+
+    public async Task<int> CollectLiveArenaRewardsAsync(bool dryRun, CancellationToken ct)
+    {
+        if (!await OpenLiveArena(ct)) return 0;
+        _liveRewardsTaken = 0;
+        await CollectLiveRewards(dryRun, ct);
+        await HomeAsync(Action("from Live Arena's rewards"), ct);
+        return _liveRewardsTaken;
+    }
+
+    private int _liveRewardsTaken;
 
     public async Task<BattleOutcome> PlayLiveArenaAsync(LiveArenaSettings s, bool dryRun, CancellationToken ct)
     {

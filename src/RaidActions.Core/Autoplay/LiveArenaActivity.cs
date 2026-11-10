@@ -13,6 +13,9 @@ public interface ILiveArenaGame
 
     /// <summary>One match: Find Opponent, the draft turn by turn, Start, auto, the result. A dry run stops at Find Opponent.</summary>
     Task<BattleOutcome> PlayLiveArenaAsync(LiveArenaSettings s, bool dryRun, CancellationToken ct);
+
+    /// <summary>The dialog opened only for its ready rewards (quests, daily-wins chests), then home; how many were taken.</summary>
+    Task<int> CollectLiveArenaRewardsAsync(bool dryRun, CancellationToken ct);
 }
 
 /// <summary>Live Arena (Auto Play, plan/live-arena.md): while it is open and a token is there, one match a turn; checked again every half hour.</summary>
@@ -23,6 +26,9 @@ public sealed class LiveArenaActivity(ILiveArenaGame game) : IActivity
     public string Name => "Live Arena";
 
     private DateTime _checkAt = DateTime.MinValue;
+    // Open without a token: its rewards looked at, at most once an hour (2026-11-10: rewards were taken only before a match, so those of a window's last
+    // matches waited for the next window).
+    private DateTime _rewardsAt = DateTime.MinValue;
     private bool _dryShown;
     private int _battles, _wins, _losses;
     private string _last = "";
@@ -56,6 +62,11 @@ public sealed class LiveArenaActivity(ILiveArenaGame game) : IActivity
             {
                 _checkAt = ctx.Utc + wait;
                 _last = state.Active ? "open, no token" : "closed now";
+                if (state.Active && ctx.Utc >= _rewardsAt)
+                {
+                    _rewardsAt = ctx.Utc + TimeSpan.FromHours(1);
+                    if (await game.CollectLiveArenaRewardsAsync(ctx.DryRun, ct) is > 0 and var n) return $"took {n} Live Arena reward(s)";
+                }
                 return "";
             }
             await ctx.ThinkAsync(ct);

@@ -5,7 +5,7 @@
     "Re-check after a game or Unity update (probe views / probe dump); the reader refuses when the build differs.",
     "Each entry says how it was established. 'verified' = confirmed against something independent; 'unverified' = consistent so far."
   ],
-  "build": { "gameVersion": "11.85.5", "unityVersion": "6000.3.18f1" },
+  "build": { "gameVersion": "11.90.1", "unityVersion": "6000.3.18f1", "checked": "2026-11-10: same UnityPlayer 6000.3.18f1 (5ebeb53e4c07) as 11.85.5; screen read re-tested on 11.90.1" },
   "component": {
     "gameObject": { "offset": "0x20", "status": "verified", "how": "VillageHUD's native MonoBehaviour+0x20 = the GameObject whose component list holds that MonoBehaviour" },
     "managedSlot": { "offset": "0x18", "status": "verified", "how": "native+0x18 points at a slot holding the managed object (VillageHUD: slot -> the same managed DialogView)" }

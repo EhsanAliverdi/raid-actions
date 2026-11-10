@@ -1,6 +1,6 @@
 {
   "$comment": "Offsets ConfigGen cannot resolve (fields of generic bases), worked out by hand from the dump. Each must be verified in-game before it is trusted.",
-  "build": { "gameVersion": "11.85.5" },
+  "build": { "gameVersion": "11.90.1", "checked": "2026-11-10: Property base (OnChange 0x10, _oneTimeListeners 0x18), _changing 0x20 and the three _value fields unchanged in the 11.90.1 dump" },
   "fields": {
     "Client.MVVM.Base.ViewModel.Properties.IntProperty._value": {
       "offset": "0x24",

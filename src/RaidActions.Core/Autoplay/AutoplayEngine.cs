@@ -59,6 +59,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     private int _sameArea;
     private readonly Dictionary<string, int> _playedAt = [];
     private int _turnNumber;
+    private bool _fairOwed;
     private DateTime _resourcesAt = DateTime.MinValue;
 
     /// <summary>Quests as if read (autoplay --test-quest): to try an area's quest on the live game when no such quest is open.</summary>
@@ -88,6 +89,8 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     public static readonly TimeSpan AreaErrorHold = TimeSpan.FromHours(1);
 
     private readonly Dictionary<string, int> _areaErrors = [];
+
+    private string? _blockedSaid;
 
     /// <summary>The area the plan puts first (an open follow-up, then a daily quest due soon), among those that want to act; null: none.</summary>
     private IActivity? PlanFirst(PlannerSettings p, List<IActivity> enabled, DateTime now)
@@ -150,7 +153,10 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                     // and come back after the next account"): with other accounts to play, this account's turn ends now instead of waiting.
                     if (!once && blocked.StartsWith(AnotherDevice, StringComparison.Ordinal) && host.RotateDue(now.AddDays(1)) is not null)
                         return Stop("rotation: " + blocked);
-                    // Nothing can be clicked (Remote Desktop disconnected, PC locked): wait, look again every minute, carry on after.
+                    // Nothing can be clicked (Remote Desktop disconnected, PC locked): wait, look again every minute, carry on after. Logged once per reason
+                    // (2026-11-10 16:05-16:53: the bot waited 48 minutes and the log said nothing).
+                    if (blocked != _blockedSaid) Remember(new AutoplayEvent(now, "engine", "wait", "no input reaches the game: " + blocked));
+                    _blockedSaid = blocked;
                     await Idle("waiting", "no input reaches the game: " + blocked, now + TimeSpan.FromMinutes(1), ct, untilOnly: true);
                     continue;
                 }
@@ -195,10 +201,14 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 // Every fourth turn the area that has waited longest (never played in this run first, in the order): each account's turn is a new bot of
                 // 30 minutes, and the areas at the end of the order never came (2026-11-10: BlackLord65's Doom Tower, 10 gold and 15 silver keys, wanted
                 // to play all day behind the arenas, Clan Boss, Faction Wars and full energy).
-                if (!stepAside && _turnNumber % 4 == 3 && enabled.Where(a => _decisions[a.Id].Act).OrderBy(a => _playedAt.GetValueOrDefault(a.Id)).FirstOrDefault() is { } waited)
-                    act = waited;
+                // A fair turn taken by an urgent one is owed, not lost (2026-11-10: an arena refresh or full energy fell on every fourth turn and Doom
+                // Tower still never came).
+                if (_turnNumber % 4 == 3) _fairOwed = true;
+                var waited = !stepAside && _fairOwed ? enabled.Where(a => _decisions[a.Id].Act).OrderBy(a => _playedAt.GetValueOrDefault(a.Id)).FirstOrDefault() : null;
+                if (waited is not null) act = waited;
                 // An urgent one (a free arena refresh due with nobody to fight) before anything: what a chain of runs was broken for.
                 if (!stepAside && enabled.FirstOrDefault(a => _decisions[a.Id].Act && a.Urgent(ctx)) is { } urgent) act = urgent;
+                if (waited is not null && act == waited) _fairOwed = false;
                 if (act is not null)
                 {
                     _sameArea = act.Id == _lastArea ? _sameArea + 1 : 1;

@@ -289,8 +289,9 @@ public static partial class UiTargets
         // The Clan vs Clan tournament's end screen (2026-11-05: it stopped every area on BlackLord65): its full-screen Fade takes a click (OnClickBinding),
         // a tap outside its message and its one button; that button (what it does is not read) is never pressed.
         // The Classic Arena's weekly reward (2026-11-09: it stopped KaelStormVex's turn): the same, its Fade and a "tap to close" hint, no button.
-        if (t.View is "CvcOutroOverlay" or "ArenaWeeklyRewardOverlay")
-            targets.Add(new UiTarget("back", t.View == "CvcOutroOverlay" ? "clan vs clan end: tap outside" : "arena weekly reward: tap outside", null, t.View,
+        // A tournament's end ("the tournament is over", its place; 2026-11-10: it stopped BlackLord65's turn): the same Fade; its "Click to view" is never pressed.
+        if (t.View is "CvcOutroOverlay" or "ArenaWeeklyRewardOverlay" or "TournamentClosingOverlay")
+            targets.Add(new UiTarget("back", t.View switch { "CvcOutroOverlay" => "clan vs clan end: tap outside", "TournamentClosingOverlay" => "tournament end: tap outside", _ => "arena weekly reward: tap outside" }, null, t.View,
                 new ClientRect(t.ClientWidth * 0.04f, t.ClientHeight * 0.86f, t.ClientWidth * 0.08f, t.ClientHeight * 0.07f), true, true, true, false, t.View,
                 "a tap on the empty bottom-left corner (its Fade)", ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
         return targets.DistinctBy(t => (t.Kind, t.Id, t.Slot, t.Path, t.Rect)).ToList();

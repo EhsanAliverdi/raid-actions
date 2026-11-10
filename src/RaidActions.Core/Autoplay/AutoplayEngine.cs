@@ -60,6 +60,9 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     private readonly Dictionary<string, int> _playedAt = [];
     private int _turnNumber;
     private bool _fairOwed;
+    /// <summary>When each area last had a turn on this account, kept across bots (each account's 30 minutes is a new bot, so the turn numbers start over).</summary>
+    private Dictionary<string, DateTime> _lastPlayedUtc = [];
+    private const string PlayedKey = "engine:played";
     private DateTime _resourcesAt = DateTime.MinValue;
 
     /// <summary>Quests as if read (autoplay --test-quest): to try an area's quest on the live game when no such quest is open.</summary>
@@ -119,6 +122,9 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
             if (saved.TryGetValue(a.Id, out var state))
                 try { a.LoadState(state, host.UtcNow); }
                 catch (Exception e) when (e is System.Text.Json.JsonException or FormatException or InvalidOperationException) { }
+        if (saved.TryGetValue(PlayedKey, out var played))
+            try { _lastPlayedUtc = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, DateTime>>(played) ?? []; }
+            catch (System.Text.Json.JsonException) { }
         var errors = 0;
         var sessionEnd = host.UtcNow + Jitter(settings.Pacing.SessionMinutes);
         try
@@ -204,7 +210,9 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 // A fair turn taken by an urgent one is owed, not lost (2026-11-10: an arena refresh or full energy fell on every fourth turn and Doom
                 // Tower still never came).
                 if (_turnNumber % 4 == 3) _fairOwed = true;
-                var waited = !stepAside && _fairOwed ? enabled.Where(a => _decisions[a.Id].Act).OrderBy(a => _playedAt.GetValueOrDefault(a.Id)).FirstOrDefault() : null;
+                // Longest by the clock, across this account's bots (2026-11-10: with the turn numbers of one bot, the fair turns went to Clan Boss, Faction
+                // Wars and Cursed City in every 30 minutes, and Doom Tower, after them in the order, never came).
+                var waited = !stepAside && _fairOwed ? enabled.Where(a => _decisions[a.Id].Act).OrderBy(a => _lastPlayedUtc.GetValueOrDefault(a.Id)).FirstOrDefault() : null;
                 if (waited is not null) act = waited;
                 // An urgent one (a free arena refresh due with nobody to fight) before anything: what a chain of runs was broken for.
                 if (!stepAside && enabled.FirstOrDefault(a => _decisions[a.Id].Act && a.Urgent(ctx)) is { } urgent) act = urgent;
@@ -213,6 +221,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 {
                     _sameArea = act.Id == _lastArea ? _sameArea + 1 : 1;
                     _playedAt[act.Id] = ++_turnNumber;
+                    _lastPlayedUtc[act.Id] = now;
                     _lastArea = act.Id;
                 }
                 // Another account's turn (its slice used, or nothing due here for a while): this run ends, the next account's starts.
@@ -318,6 +327,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
         var states = new Dictionary<string, string>();
         foreach (var a in activities)
             if (a.SaveState() is { } s) states[a.Id] = s;
+        states[PlayedKey] = System.Text.Json.JsonSerializer.Serialize(_lastPlayedUtc);
         try { host.SaveActivityState(states); }
         catch (IOException) { }
     }

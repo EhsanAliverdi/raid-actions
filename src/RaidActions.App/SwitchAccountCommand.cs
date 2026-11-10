@@ -25,11 +25,15 @@ public static class SwitchAccountCommand
         // The profile signed in now is the account in the game: learnt (three accounts need to know which avatar is which; 2026-11-07).
         if (first is { } id0 && Process.GetProcessesByName("PlariumPlay").FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero) is { } pp0
             && PlariumPopup.CurrentProfile(pp0.MainWindowHandle) is { } current) Learn(outDir, profiles, current, id0, output);
+        // Where each avatar leads, by the account the menu is opened on and the avatar's place (2026-11-10 13:20: no name read on hover, and the avatars'
+        // order follows the account signed in, so "the next one" landed on the other two accounts three times).
+        var places = LoadPlaces(outDir);
+        var from = first;
         // Three tries: with three accounts a profile not known yet may be the wrong one (it is learnt, and the next try knows it).
         for (var attempt = 1; attempt <= 3; attempt++)
         {
             CloseRaid(output);
-            if (SwitchInPlariumPlay(output, want, profiles, attempt, out var picked) is { } problem) { output.WriteLine(problem); return Cli.Failed; }
+            if (SwitchInPlariumPlay(output, want, profiles, attempt, from, places, out var picked, out var place) is { } problem) { output.WriteLine(problem); return Cli.Failed; }
             if (!await RestartGameCommand.StartAndWaitAsync(outDir, output, TimeSpan.FromMinutes(5))) return Cli.Failed;
             var now = InGame(outDir);
             output.WriteLine($"The game is on account {now?.ToString() ?? "(not read)"}.");
@@ -38,7 +42,15 @@ public static class SwitchAccountCommand
             var signedIn = Process.GetProcessesByName("PlariumPlay").FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero) is { } ppNow
                 ? PlariumPopup.CurrentProfile(ppNow.MainWindowHandle) : null;
             if ((signedIn ?? picked) is { } name && now is { } id) Learn(outDir, profiles, name, id, output);
+            if (from is { } f && place is { } i && now is { } got && (!places.TryGetValue(PlaceKey(f, i), out var was) || was != got))
+            {
+                places[PlaceKey(f, i)] = got;
+                output.WriteLine($"Plarium Play: from account {f}, avatar {i + 1} plays account {got} (learnt).");
+                try { File.WriteAllText(PlacesPath(outDir), System.Text.Json.JsonSerializer.Serialize(places, new System.Text.Json.JsonSerializerOptions { WriteIndented = true })); }
+                catch (IOException e) { output.WriteLine($"Plarium Play's avatar places not saved: {e.Message}"); }
+            }
             if (now == want) return Cli.Ok;
+            from = now;
         }
         output.WriteLine($"Account {want} was not reached.");
         return Cli.Failed;
@@ -90,6 +102,16 @@ public static class SwitchAccountCommand
     /// <summary>Plarium Play's profile names and the player id each one plays (learnt on switches; output, never committed).</summary>
     private static string ProfilesPath(string outDir) => Path.Combine(outDir, "plarium-profiles.json");
 
+    private static string PlacesPath(string outDir) => Path.Combine(outDir, "plarium-avatar-places.json");
+
+    internal static string PlaceKey(long from, int index) => $"{from}:{index}";
+
+    private static Dictionary<string, long> LoadPlaces(string outDir)
+    {
+        try { return File.Exists(PlacesPath(outDir)) ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, long>>(File.ReadAllText(PlacesPath(outDir))) ?? [] : []; }
+        catch (Exception e) when (e is IOException or System.Text.Json.JsonException) { return []; }
+    }
+
     private static Dictionary<string, long> LoadProfiles(string outDir)
     {
         try { return File.Exists(ProfilesPath(outDir)) ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, long>>(File.ReadAllText(ProfilesPath(outDir))) ?? [] : []; }
@@ -118,9 +140,11 @@ public static class SwitchAccountCommand
         Thread.Sleep(8000); // Plarium Play notices the game closed (it was 3 s; see SwitchInPlariumPlay)
     }
 
-    private static string? SwitchInPlariumPlay(TextWriter output, long want, IReadOnlyDictionary<string, long> profiles, int attempt, out string? picked)
+    private static string? SwitchInPlariumPlay(TextWriter output, long want, IReadOnlyDictionary<string, long> profiles, int attempt, long? from,
+        IReadOnlyDictionary<string, long> places, out string? picked, out int? place)
     {
         picked = null;
+        place = null;
         var pp = Process.GetProcessesByName("PlariumPlay").FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero);
         if (pp is null) return "Plarium Play's window is not open.";
         // No click reaches a disconnected or locked session and every pixel reads blank (2026-11-06 05:31: Remote Desktop left mid-switch, and "the game is
@@ -204,11 +228,13 @@ public static class SwitchAccountCommand
                 {
                     var names = others.Select(o => o.Name).ToList();
                     output.WriteLine($"Plarium Play's other accounts: {string.Join(", ", names.Select(n => n is null ? "(name not read)" : profiles.TryGetValue(n, out var pid) ? $"{n} ({pid})" : $"{n} (not known yet)"))}.");
-                    if (PlariumPopup.Choose(names, want, profiles, attempt) is not { } index)
+                    Func<int, long?> ledTo = from is { } f ? i => places.TryGetValue(PlaceKey(f, i), out var a) ? a : null : _ => null;
+                    if ((PlariumPopup.ChooseByPlace(names, want, profiles, ledTo) ?? PlariumPopup.Choose(names, want, profiles, attempt)) is not { } index)
                         return $"None of Plarium Play's other accounts plays {want}: the account was not switched.";
                     if (PlariumPopup.Press(others[index].Button))
                     {
                         picked = names[index];
+                        place = index;
                         output.WriteLine($"Plarium Play: '{picked ?? "(name not read)"}' picked (its avatar button).");
                         Thread.Sleep(5000);
                         return null;

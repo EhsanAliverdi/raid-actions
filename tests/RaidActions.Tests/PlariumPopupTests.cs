@@ -54,5 +54,9 @@ public class PlariumPopupTests
         Assert.Equal(0, PlariumPopup.Choose([null, "Ehsan Ali"], 165078741, profiles));                     // a name not read counts as not known
         Assert.Equal(1, PlariumPopup.Choose([null, null], 165078741, profiles, attempt: 2));                // the next try takes the other one
         Assert.Equal(0, PlariumPopup.Choose([null, null], 165078741, profiles, attempt: 3));
+        // No name read: where each avatar led before from this account.
+        Assert.Equal(1, PlariumPopup.ChooseByPlace([null, null], 165001576, profiles, i => i == 1 ? 165001576 : null));
+        Assert.Equal(1, PlariumPopup.ChooseByPlace([null, null], 165001576, profiles, i => i == 0 ? 163404481 : null));    // the other one led elsewhere
+        Assert.Null(PlariumPopup.ChooseByPlace([null, null], 165001576, profiles, _ => null));                              // nothing known: Choose
     }
 }

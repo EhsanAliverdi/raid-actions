@@ -194,6 +194,19 @@ public static class PlariumPopup
         return open.Count == 0 ? null : open[(Math.Max(1, attempt) - 1) % open.Count];
     }
 
+    /// <summary>
+    /// With no name read, by where each avatar led before from the account signed in (<paramref name="ledTo"/>: avatar place to account, null when not
+    /// known): the one that led to the account wanted; else the first not known (the others led elsewhere). Null: leave it to <see cref="Choose"/>.
+    /// </summary>
+    public static int? ChooseByPlace(IReadOnlyList<string?> names, long want, IReadOnlyDictionary<string, long> profiles, Func<int, long?> ledTo)
+    {
+        for (var i = 0; i < names.Count; i++) if (names[i] is { } n && profiles.TryGetValue(n, out var id) && id == want) return i;
+        for (var i = 0; i < names.Count; i++) if (names[i] is null && ledTo(i) == want) return i;
+        if (!Enumerable.Range(0, names.Count).Any(i => ledTo(i) is not null)) return null;
+        for (var i = 0; i < names.Count; i++) if (ledTo(i) is null && (names[i] is not { } n || !profiles.ContainsKey(n))) return i;
+        return null;
+    }
+
     /// <summary>The "Other Accounts" avatar's component (a styled component's class, seen 2026-11-06).</summary>
     public static bool IsOtherAccount(string? className) =>
         (className ?? "").Split(' ', StringSplitOptions.RemoveEmptyEntries).Contains("sc-12k8j5c-6");

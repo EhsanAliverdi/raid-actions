@@ -276,9 +276,13 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     public async Task<int> CollectInboxTokensAsync(bool dryRun, CancellationToken ct) =>
         (int)await CollectInbox(PlayTargets.IsArenaTokens, "Token", "arena tokens", dryRun, ct);
 
+    /// <summary>The entries the last <see cref="CollectInbox"/> really took (one left at the game's over-the-cap warning is not counted).</summary>
+    private int _inboxTaken;
+
     /// <summary>Collects every inbox entry <paramref name="match"/> takes; what the account gained of <paramref name="resource"/>.</summary>
     private async Task<double> CollectInbox(Func<InboxEntry, bool> match, string resource, string what, bool dryRun, CancellationToken ct)
     {
+        _inboxTaken = 0;
         var before = (await game.Account.ReadAsync(ct)).Account.Resources.GetValueOrDefault(resource);
         await GoHomeAsync(ct);
         await Click("village-inbox", null, (s2, _) => Has(s2, PlayTargets.InboxView), "the inbox opens", ct);
@@ -322,6 +326,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 log($"autoplay: inbox: [{entry.Title}|{entry.Message}] would go over the cap (the game warns some would be lost): left in the inbox");
                 break;
             }
+            _inboxTaken++;
             if (Top(s3) is { } top && top != PlayTargets.InboxView && top.EndsWith("Overlay", StringComparison.Ordinal)) await Back(top, ct);
         }
         await GoHomeAsync(ct);

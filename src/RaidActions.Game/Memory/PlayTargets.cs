@@ -533,8 +533,14 @@ public static partial class PlayTargets
                     // Its rewards (Ehsan 2026-11-10: "you dont collect the rewards for live arena ... there are two types of quests, live arena quest and
                     // progress quest"): the quest panel's progress and daily rewards and each daily-wins chest show an active Available_h (a glow) while
                     // ready, OwnedState_h once taken (seen in the 2026-11-03 tree); the progress reward also puts its Collect button where Battle is.
+                    // The glow is not the button (2026-11-12: every reward read "not interactable" and none was ever taken): the click goes to the
+                    // nearest clickable element above it (BaseReward_h, Reward_h, the wins chest's Base).
                     foreach (var x in SelfAndBelow(i).Where(x => x.Name == "Available_h" && x.ActiveInHierarchy && x.Screen is { Width: > 0 }))
-                        targets.Add(Make("live-reward", $"live arena: reward ready ({x.Path.Split('/').Reverse().Skip(1).FirstOrDefault(p => p is "RegularQuest" or "DailyQuest" or "0" or "1" or "2" or "3" or "4") ?? "quest"})", x, x, null));
+                    {
+                        var button = SelfAndBelow(i).Where(n => n.Interactable is not null && x.Path.StartsWith(n.Path + "/", StringComparison.Ordinal))
+                            .OrderByDescending(n => n.Path.Length).FirstOrDefault();
+                        targets.Add(Make("live-reward", $"live arena: reward ready ({x.Path.Split('/').Reverse().Skip(1).FirstOrDefault(p => p is "RegularQuest" or "DailyQuest" or "0" or "1" or "2" or "3" or "4") ?? "quest"})", x, button ?? x, null));
+                    }
                     foreach (var x in SelfAndBelow(i).Where(x => x.Name == "CollectRegularRewardButton_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
                         targets.Add(Make("live-reward", "live arena: Collect (the progress reward)", x, x, null));
                     break;

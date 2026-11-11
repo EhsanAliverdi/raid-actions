@@ -81,6 +81,18 @@ public static class PlariumPopup
                     }
                 }
             }
+            // The whole window, named put-off buttons only (2026-11-11 15:39: the "Stay up to date" opt-in box's "Ask me later" was not among the page's
+            // buttons, and every switch failed). Never a plain "Close": the window's own title bar has one that closes Plarium Play.
+            foreach (AutomationElement b in root.FindAll(TreeScope.Descendants, new PropertyCondition(AutomationElement.ControlTypeProperty, ControlType.Button)))
+            {
+                var name = b.Current.Name.Trim();
+                if (!IsDismiss(name) || Regex.IsMatch(name, @"^(close|[x×✕✖╳])$", RegexOptions.IgnoreCase) || !b.Current.IsEnabled) continue;
+                if (b.TryGetCurrentPattern(InvokePattern.Pattern, out var p))
+                {
+                    ((InvokePattern)p).Invoke();
+                    return $"'{name}' (found in the whole window)";
+                }
+            }
             output.WriteLine($"Plarium Play's popup: no close button among its buttons: {string.Join(", ", seen)}.");
             return null;
         }

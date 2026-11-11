@@ -297,6 +297,11 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
         return due;
     }
 
+    // A turn held for a task in progress does not keep an account another device has taken (2026-11-11 21:02: BlackLord65 opened elsewhere, a Faction
+    // Wars gear task held the turn, and the bot waited instead of moving on; Ehsan: "both should move to the next account").
+    public bool CanRotate() => RaidExtractor.OutputLayout.GameId(dir) is { } current && RaidExtractor.AccountPool.Load(dir) is { Rotate: true } pool
+        && pool.Next(current, DateTime.UtcNow) is not null;
+
     private string? _heldNote;
 
     /// <summary>Why the turn goes on past its time (a task in progress, an open follow-up, within the planner's extra minutes); null: it ends.</summary>

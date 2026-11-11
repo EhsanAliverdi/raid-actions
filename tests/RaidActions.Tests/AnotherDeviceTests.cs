@@ -23,7 +23,8 @@ public class AnotherDeviceTests
         public string? InputBlocked() => blocked;
         public void WriteStatus(AutoplayStatus status) { }
         public void Event(AutoplayEvent e) { }
-        public string? RotateDue(DateTime? nextUsefulUtc) => others ? "nothing due" : null;
+        public string? RotateDue(DateTime? nextUsefulUtc) => null; // a turn held (a task in progress): the other device still moves it on
+        public bool CanRotate() => others;
     }
 
     [Fact]

@@ -26,6 +26,8 @@ public interface IAutoplayHost
 
     /// <summary>Why this account's turn ends now, to play another one (raid-extractor's account pool); null: it goes on. Asked between turns only.</summary>
     string? RotateDue(DateTime? nextUsefulUtc) => null;
+    /// <summary>Another account of the pool can be played now, whatever this turn's time or hold (the account taken by another device).</summary>
+    bool CanRotate() => false;
 
     /// <summary>What each area knew when the last bot on this account stopped (<see cref="IActivity.SaveState"/>), by area id; empty: nothing saved.</summary>
     IReadOnlyDictionary<string, string> LoadActivityState() => new Dictionary<string, string>();
@@ -159,7 +161,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 {
                     // The account is open on another device (Ehsan 2026-11-09: "if it is logged in from another device you switch account to the next
                     // and come back after the next account"): with other accounts to play, this account's turn ends now instead of waiting.
-                    if (!once && blocked.StartsWith(AnotherDevice, StringComparison.Ordinal) && host.RotateDue(now.AddDays(1)) is not null)
+                    if (!once && blocked.StartsWith(AnotherDevice, StringComparison.Ordinal) && host.CanRotate())
                         return Stop("rotation: " + blocked);
                     // Nothing can be clicked (Remote Desktop disconnected, PC locked): wait, look again every minute, carry on after. Logged once per reason
                     // (2026-11-10 16:05-16:53: the bot waited 48 minutes and the log said nothing).
@@ -280,7 +282,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                     // (2026-11-10 15:38: Ehsan logged in on another device, the game here reloaded and the bot played on and took the account back). With
                     // other accounts to play, this one's turn ends and the next account is played (Ehsan: "if I logged in from another device you should
                     // move to the next account in rotation").
-                    if (!once && GameReloaded(e.Message) && host.RotateDue(host.UtcNow.AddDays(1)) is not null)
+                    if (!once && GameReloaded(e.Message) && host.CanRotate())
                         return Stop($"rotation: {AnotherDevice} (the game reloaded mid-turn: {e.Message})");
                     // The same area failing again: it alone waits an hour, so one area that cannot be played never stops the others (2026-11-04).
                     _areaErrors[act.Id] = _areaErrors.GetValueOrDefault(act.Id) + 1;

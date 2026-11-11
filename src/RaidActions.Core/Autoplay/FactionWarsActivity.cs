@@ -15,7 +15,7 @@ public interface IFactionWarsGame : IGearDropGame
     Task<string> RemoveGearAsync(IReadOnlyList<int> ids, bool dryRun, CancellationToken ct);
 
     /// <summary>One battle of <paramref name="stage"/> in the crypt with the crypt's team (checked on the team screen); a dry run shows Start.</summary>
-    Task<BattleOutcome> FightCryptAsync(CryptPlan crypt, int stage, bool dryRun, CancellationToken ct);
+    Task<BattleOutcome> FightCryptAsync(CryptPlan crypt, int stage, bool dryRun, CancellationToken ct, bool superRaid = false);
 }
 
 /// <summary>
@@ -152,15 +152,22 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
             default:
             {
                 var c = step.Crypt!;
-                var stage = Stage(c, s);
+                var (stage, super) = Run(c, s) ?? (Stage(c, s), false);
                 // A quest asks for a Faction Wars boss (Ehsan 2026-10-31: "it should go to the highest boss I beat"): the highest boss stage
                 // already beaten (bosses are stages 7, 14, 21).
                 if (ctx.QuestLeft(QuestNeedKind.FactionWarsBoss) > 0 && c.HighestPassed >= 7)
                 {
-                    stage = c.HighestPassed / 7 * 7;
+                    (stage, super) = (c.HighestPassed / 7 * 7, false);
                     ctx.Event(AreaId, "quest", $"{c.Name}: a quest asks for a boss: stage {stage}");
                 }
-                var outcome = await game.FightCryptAsync(c, stage, ctx.DryRun, ct);
+                var outcome = await game.FightCryptAsync(c, stage, ctx.DryRun, ct, super);
+                if (outcome.Result == BattleResult.NotStarted && super && !ctx.DryRun)
+                {
+                    // The keys did not pay for a Super Raid (a cost not read right): normal runs for this crypt today.
+                    _noSuper.Add(c.Name);
+                    ctx.Event(AreaId, "keys", $"{c.Name} stage {stage}: no Super Raid ({outcome.Text}); normal runs from now on today");
+                    return "";
+                }
                 if (outcome.Result == BattleResult.NotStarted)
                 {
                     // A dry run's shown Start, or (real) not enough keys for the stage: the crypt is done for today either way.
@@ -184,7 +191,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
                     // stage, farm the highest beaten one; it can still lose, so each defeat steps down again until one is won).
                     _farmAt[c.Name] = Math.Max(1, Math.Min(stage - 1, Math.Max(1, c.HighestPassed)));
                 }
-                ctx.Event(AreaId, "battle", $"{outcome.Result} vs {c.Name} stage {stage}. {outcome.Text}");
+                ctx.Event(AreaId, "battle", $"{outcome.Result} vs {c.Name} stage {stage}{(super ? " (Super Raid)" : "")}. {outcome.Text}");
                 if (outcome.Result == BattleResult.Victory) await game.GearAfterAsync(ctx, AreaId, AreaId, ct);
                 return $"{outcome.Result}: {c.Name} stage {stage}";
             }
@@ -217,7 +224,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
     private Step? Next(FactionWarsSettings s, bool dryRun)
     {
         if (_day is null) return null;
-        var playable = _day.Open.Where(c => c.Keys > s.KeepKeys && c.Team.Count > 0 && !_dryShown.Contains(c.Name)
+        var playable = _day.Open.Where(c => c.Keys > s.KeepKeys && Run(c, s) is not null && c.Team.Count > 0 && !_dryShown.Contains(c.Name)
             && _defeatsInARow.GetValueOrDefault(c.Name) < 6).ToList();
         if (s.StripYesterdaysTeams && !_stripped && _day.Strip.Count > 0 && playable.Count > 0)
             return new("strip", null, $"freeing yesterday's gear: {_day.Strip.Count} champion(s) to the Reserve Vault");
@@ -225,13 +232,26 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
         {
             // Not geared yet, or its gear came off earlier and keys came back (they regenerate): gear it (again).
             if (s.GearTeam && (!_geared.Contains(c.Name) || _removed.Contains(c.Name))) return new("gear", c, $"{c.Name}: gearing the team");
-            return new("fight", c, $"{c.Name}: stage {Stage(c, s)} ({c.Keys} keys)");
+            return new("fight", c, $"{c.Name}: stage {Run(c, s)!.Value.Stage}{(Run(c, s)!.Value.SuperRaid ? " Super Raid" : "")} ({c.Keys} keys)");
         }
         if (s.RemoveGearAfter && !dryRun)
-            foreach (var c in _day.Open.Where(c => _geared.Contains(c.Name) && !_removed.Contains(c.Name) && (c.Keys <= s.KeepKeys || _dryShown.Contains(c.Name))))
+            foreach (var c in _day.Open.Where(c => _geared.Contains(c.Name) && !_removed.Contains(c.Name) && (c.Keys <= s.KeepKeys || Run(c, s) is null || _dryShown.Contains(c.Name))))
                 return new("remove", c, $"{c.Name}: keys used, removing the team's gear");
         return null;
     }
+
+    /// <summary>The next run with the keys there are (<see cref="CryptKeys"/>); null: no stage the keys pay for.</summary>
+    private (int Stage, bool SuperRaid)? Run(CryptPlan c, FactionWarsSettings s)
+    {
+        var newLevel = !_farmAt.ContainsKey(c.Name) && s.Stage != CryptStage.FarmHighest && c.HighestPassed < c.StageCount;
+        return CryptKeys.Next(c, c.Keys - Math.Max(0, s.KeepKeys), newLevel ? c.NextStage : Stage(c, s), newLevel,
+            s.SuperRaid && !_noSuper.Contains(c.Name) ? SuperRaidMultiplier : 1);
+    }
+
+    private readonly HashSet<string> _noSuper = [];
+
+    /// <summary>A Super Raid's keys: twice the stage's (the game's DoubleRun, as in Campaign and dungeons).</summary>
+    public const int SuperRaidMultiplier = 2;
 
     private int Stage(CryptPlan c, FactionWarsSettings s) =>
         _farmAt.TryGetValue(c.Name, out var farm) ? farm : s.Stage == CryptStage.FarmHighest ? Math.Max(1, c.HighestPassed) : c.NextStage;
@@ -242,7 +262,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
         if (today == _date) return;
         _date = today;
         _stripped = false;
-        _geared.Clear(); _removed.Clear(); _farmAt.Clear(); _dryShown.Clear(); _defeatsInARow.Clear();
+        _geared.Clear(); _removed.Clear(); _farmAt.Clear(); _noSuper.Clear(); _dryShown.Clear(); _defeatsInARow.Clear();
         _battles = _wins = _losses = 0;
         _day = null;
     }

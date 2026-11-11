@@ -48,7 +48,18 @@ public class FactionWarsActivityTests
         var (_, game, engine) = Make(stopAfter: TimeSpan.FromHours(2));
         game.Open.Add(new FakeFactionWarsGame.Crypt { Faction = "OgrynTribes", Keys = 4, HighestPassed = 8, Team = [1, 2, 3], WinsUpTo = 9 });
         await engine.RunAsync(once: false, Limit());
-        Assert.Equal(["fight OgrynTribes 9", "fight OgrynTribes 10", "fight OgrynTribes 9", "fight OgrynTribes 9"],
+        // Farming after the defeat is a Super Raid while the keys pay for one (Ehsan 2026-11-11).
+        Assert.Equal(["fight OgrynTribes 9", "fight OgrynTribes 10", "fight OgrynTribes 9 super"],
+            game.Calls.Where(c => c.StartsWith("fight", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task A_crypt_beaten_to_the_top_is_farmed_with_Super_Raids_and_the_last_key_goes_to_a_normal_run()
+    {
+        var (_, game, engine) = Make(stopAfter: TimeSpan.FromHours(2));
+        game.Open.Add(new FakeFactionWarsGame.Crypt { Faction = "OgrynTribes", Keys = 5, HighestPassed = 21, Team = [1, 2, 3], WinsUpTo = 21 });
+        await engine.RunAsync(once: false, Limit());
+        Assert.Equal(["fight OgrynTribes 21 super", "fight OgrynTribes 21 super", "fight OgrynTribes 21"],
             game.Calls.Where(c => c.StartsWith("fight", StringComparison.Ordinal)));
     }
 

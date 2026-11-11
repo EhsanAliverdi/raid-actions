@@ -103,7 +103,7 @@ public sealed partial class LivePlayGame : IFactionWarsGame
         }
     }
 
-    public async Task<BattleOutcome> FightCryptAsync(CryptPlan crypt, int stage, bool dryRun, CancellationToken ct)
+    public async Task<BattleOutcome> FightCryptAsync(CryptPlan crypt, int stage, bool dryRun, CancellationToken ct, bool superRaid = false)
     {
         var started = DateTime.UtcNow;
         await OpenCrypt(crypt, ct);
@@ -136,6 +136,14 @@ public sealed partial class LivePlayGame : IFactionWarsGame
             }
             (_, targets, _) = await Read(ct);
         }
+        // Super Raid or a normal run (CryptKeys: Ehsan 2026-11-11); the box not found on this screen: a normal run, logged (the box's names on the
+        // crypt's team screen are still to be seen live).
+        try { await SetSuperRaid(superRaid, PlayTargets.FwTeamView, ct); }
+        catch (PlayStopException e) when (e.Message.StartsWith("The Super Raid box is not found", StringComparison.Ordinal))
+        {
+            log($"autoplay: {crypt.Name}: {e.Message}; a normal run");
+        }
+        (_, targets, _) = await Read(ct);
         if (dryRun)
         {
             var start = targets.FirstOrDefault(t => t.Kind == "team-start" && t.View == PlayTargets.FwTeamView);

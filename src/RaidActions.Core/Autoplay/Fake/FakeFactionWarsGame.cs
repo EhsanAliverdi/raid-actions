@@ -45,7 +45,7 @@ public sealed class FakeFactionWarsGame(Func<DateTime> now) : IFactionWarsGame
         return Task.FromResult("removed");
     }
 
-    public async Task<BattleOutcome> FightCryptAsync(CryptPlan crypt, int stage, bool dryRun, CancellationToken ct)
+    public async Task<BattleOutcome> FightCryptAsync(CryptPlan crypt, int stage, bool dryRun, CancellationToken ct, bool superRaid = false)
     {
         var c = Open.Single(x => x.Faction == crypt.Faction);
         if (c.Keys < 1) throw new PlayStopException("no key");
@@ -54,9 +54,11 @@ public sealed class FakeFactionWarsGame(Func<DateTime> now) : IFactionWarsGame
             Calls.Add($"show-fight {c.Faction} {stage}");
             return new BattleOutcome(BattleResult.NotStarted, "Start shown");
         }
-        Calls.Add($"fight {c.Faction} {stage}");
+        var cost = crypt.Cost(stage) * (superRaid ? 2 : 1);
+        if (c.Keys < cost) return new BattleOutcome(BattleResult.NotStarted, "not enough keys for this stage (Start did nothing)");
+        Calls.Add($"fight {c.Faction} {stage}{(superRaid ? " super" : "")}");
         if (Delay is { } d) await d(BattleTime, ct);
-        c.Keys--;
+        c.Keys -= cost;
         var won = stage <= c.WinsUpTo;
         if (won) c.HighestPassed = Math.Max(c.HighestPassed, stage);
         return new BattleOutcome(won ? BattleResult.Victory : BattleResult.Defeat, "on auto");

@@ -1,4 +1,4 @@
-﻿{
+{
     "$comment":  [
                      "The game\u0027s UI state that raid-actions reads (read-only), in raid-extractor\u0027s config/names.json format.",
                      "scripts/gen-ui-offsets.ps1 runs raid-extractor\u0027s ConfigGen on it in a staging folder and writes config/ui-offsets.json.",
@@ -254,6 +254,7 @@
                   "Client.ViewModel.Contextes.AllianceEnemies.ScoreItem.AllianceEnemyScoreItemContext":  [ "IsSet", "UserName", "DamageDealt", "KeysSpent" ],
                   "Client.ViewModel.Contextes.GachaChest.AllianceEnemyRewardItem.AllianceEnemyRewardItemContext":  [ "_chestCondition" ],
                   "Client.ViewModel.Contextes.Bank.Offers.StaticCommon.StaticCommonOfferContext":  [ "_isFree" ],
+                  "Client.ViewModel.Contextes.ResourceRefillOverlayContext":  [ "_ownedResource", "_canPurchase" ],
                   "Client.ViewModel.Contextes.MarketItemContext":  [ "_itemType", "_price", "_rarityName" ],
                   "Client.ViewModel.Contextes.ResourceAvatarContext":  [ "_count", "_iconUrl" ],
                   "Client.ViewModel.Contextes.HeroesDevelopmentDialog.Items.HeroesDevelopmentItemContext":  [ "_HeroAvatar_k__BackingField", "_isSelected" ],

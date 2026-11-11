@@ -13,7 +13,34 @@ public sealed record EnergyAccount(IReadOnlyDictionary<string, double> Resources
 public sealed record RefillResult(bool Bought, int Gems, double Got, string Why);
 
 /// <summary>What Energy asks of the game (the live game: a fresh account read, the dungeon screens, the inbox, the refill window).</summary>
-public interface IEnergyGame
+/// <summary>
+/// The gear the battles drop (plan/gear-sell.md): after a battle in <paramref name="area"/> (null before one: the mark only moves on) the new pieces are
+/// noted when that area is switched on, and sold through the sell command's checks once <see cref="GearSellSettings.Every"/> wait; how many were sold.
+/// </summary>
+public interface IGearDropGame
+{
+    Task<int> GearAfterBattleAsync(string? area, GearSellSettings settings, bool dryRun, CancellationToken ct) => Task.FromResult(0);
+}
+
+/// <summary>The drops' note and sale from an area's turn (the option off: nothing read).</summary>
+public static class GearDropsHook
+{
+    public static async Task GearAfterAsync(this IGearDropGame game, PlayContext ctx, string areaId, string? area, CancellationToken ct)
+    {
+        var s = ctx.Settings.Energy.SellGear;
+        if (!s.Enabled) return;
+        try
+        {
+            if (await game.GearAfterBattleAsync(area, s, ctx.DryRun, ct) is > 0 and var n) ctx.Event(areaId, "sell", $"sold {n} drop(s)");
+        }
+        catch (PlayStopException e)
+        {
+            ctx.Event(areaId, "sell", $"the gear sale stopped: {e.Message}");
+        }
+    }
+}
+
+public interface IEnergyGame : IGearDropGame
 {
     Task<EnergyAccount> ReadAccountAsync(CancellationToken ct);
 
@@ -34,12 +61,6 @@ public interface IEnergyGame
 
     /// <summary>Opens up to <paramref name="count"/> Mystery shards, one at a time (never another shard kind); how many were opened.</summary>
     Task<int> SummonMysteryAsync(int count, bool dryRun, CancellationToken ct);
-
-    /// <summary>
-    /// Sells the gear Campaign dropped since the farm started (<see cref="GearSale"/>), once at least <see cref="GearSellSettings.Every"/>
-    /// pieces wait, through the sell command's checks; how many were sold (a dry run: 0, the sale shown).
-    /// </summary>
-    Task<int> SellCampaignGearAsync(GearSellSettings settings, bool dryRun, CancellationToken ct);
 
     /// <summary>
     /// Better gear for a row's own team from the inventory (unequipped pieces only: nobody else loses one); what was done ("nothing better ..." when
@@ -348,6 +369,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
 
     public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
     {
+        await game.GearAfterAsync(ctx, AreaId, null, ct); // gear that came from elsewhere since is not this area's drop
         var done = await OneStep(ctx, ct);
         var runs = 1;
         while (runs < MaxChain && !ctx.DryRun && (done.StartsWith("Victory", StringComparison.Ordinal) || done.StartsWith("Defeat", StringComparison.Ordinal)) && _account is { } account)
@@ -520,18 +542,18 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                     ctx.QuestNeeds = [.. ctx.QuestNeeds.Select(n => n.Kind == kind && n.Region == region && n.Tab != "Mission" ? n with { Remaining = n.Remaining - 1 } : n).Where(n => n.Remaining > 0)];
                     ctx.QuestsStale = true;
                 }
-                // Campaign drops sold when enough have come (the option; a failed sale stops only the sale, not the farm).
-                if (run.Target.Area == "Story" && s.SellGear.Enabled && outcome.Result == BattleResult.Victory)
+                // Drops sold when enough have come (the option and the area's switch; a failed sale stops only the sale, not the farm).
+                if (s.SellGear.Enabled && outcome.Result == BattleResult.Victory)
                 {
                     try
                     {
-                        var sold = await game.SellCampaignGearAsync(s.SellGear, ctx.DryRun, ct);
+                        var sold = await game.GearAfterBattleAsync(run.Target.Area, s.SellGear, ctx.DryRun, ct);
                         _sold += sold;
-                        if (sold > 0) ctx.Event(AreaId, "sell", $"sold {sold} Campaign drop(s)");
+                        if (sold > 0) ctx.Event(AreaId, "sell", $"sold {sold} drop(s)");
                     }
                     catch (PlayStopException e)
                     {
-                        ctx.Event(AreaId, "sell", $"the Campaign gear sale stopped: {e.Message}");
+                        ctx.Event(AreaId, "sell", $"the gear sale stopped: {e.Message}");
                     }
                 }
                 // What the run really took (the regeneration during it is under one energy for a short battle): learnt when not exported.

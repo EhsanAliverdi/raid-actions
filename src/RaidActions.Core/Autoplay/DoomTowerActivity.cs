@@ -6,7 +6,7 @@ namespace RaidActions.Autoplay;
 public sealed record DoomTowerMap(IReadOnlyList<DtStage> Stages, double Gold, double Silver);
 
 /// <summary>What Doom Tower asks of the game (the live game: village → Battle → Doom Tower → the map → a floor → team → Start).</summary>
-public interface IDoomTowerGame
+public interface IDoomTowerGame : IGearDropGame
 {
     /// <summary>The map opened (or kept open) and read, with the keys from the account.</summary>
     Task<DoomTowerMap> ReadDoomTowerAsync(CancellationToken ct);
@@ -130,12 +130,14 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
         }
         _last = $"{outcome.Result} {tower} tower floor. {outcome.Text}";
         ctx.Event(AreaId, "battle", _last);
+        if (outcome.Result == BattleResult.Victory) await game.GearAfterAsync(ctx, AreaId, AreaId, ct);
         _readAt = DateTime.MinValue;
         return $"{outcome.Result}: {tower} tower floor";
     }
 
     public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
     {
+        await game.GearAfterAsync(ctx, AreaId, null, ct);
         _map = await game.ReadDoomTowerAsync(ct);
         _readAt = ctx.Utc;
         var (stage, why) = Pick(ctx);
@@ -162,6 +164,7 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
             ctx.QuestNeeds = [.. ctx.QuestNeeds.Select(n => n.Kind == QuestNeedKind.DoomTower ? n with { Remaining = n.Remaining - DoomTowerRules.Cost(stage) } : n).Where(n => n.Remaining > 0)];
         _last = $"{outcome.Result} {name}. {outcome.Text}";
         ctx.Event(AreaId, "battle", _last);
+        if (outcome.Result == BattleResult.Victory) await game.GearAfterAsync(ctx, AreaId, AreaId, ct);
         _readAt = DateTime.MinValue; // keys and the map changed: read again next turn
         return $"{outcome.Result}: {name}";
     }

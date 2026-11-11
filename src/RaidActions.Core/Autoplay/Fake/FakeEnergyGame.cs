@@ -153,9 +153,9 @@ public sealed class FakeEnergyGame(Func<DateTime> now) : IEnergyGame
         return Task.FromResult("2 pieces");
     }
 
-    public Task<int> SellCampaignGearAsync(GearSellSettings settings, bool dryRun, CancellationToken ct)
+    public Task<int> GearAfterBattleAsync(string? area, GearSellSettings settings, bool dryRun, CancellationToken ct)
     {
-        if (Drops < settings.Every) return Task.FromResult(0);
+        if (area is null || !settings.Areas.On(area) || Drops < settings.Every) return Task.FromResult(0);
         Calls.Add(dryRun ? "show sell" : $"sell {Drops}");
         if (dryRun) return Task.FromResult(0);
         var n = Drops;

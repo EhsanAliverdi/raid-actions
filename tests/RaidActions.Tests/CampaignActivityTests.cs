@@ -143,7 +143,7 @@ public class CampaignActivityTests
         Assert.Contains(game.Calls, c => c.StartsWith("sell ", StringComparison.Ordinal));
         Assert.Contains(host.Events, e => e.Kind == "sell");
 
-        var (_, off, offEngine) = Make(On(Farm), TimeSpan.FromMinutes(30));
+        var (_, off, offEngine) = Make(On(Farm) with { SellGear = new GearSellSettings { Enabled = false } }, TimeSpan.FromMinutes(30));
         off.Energy = 130;
         off.DropsPerRun = 2;
         off.Champions = [Hero(Kael, 6, 60, "Rare", locked: true), .. Enumerable.Range(10, 8).Select(i => Hero(i, 1, 1))];

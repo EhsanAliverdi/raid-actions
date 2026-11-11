@@ -410,8 +410,6 @@ public sealed partial class LivePlayGame
         return opened;
     }
 
-    private string GearBaselineFile => Path.Combine(ExtractorOutput, "autoplay", "campaign-gear-baseline.json");
-
     /// <summary>
     /// A gear review of a campaign row's own team (Ehsan 2026-11-05: "every now and then review gear"): Prepare from the inventory only (unequipped pieces,
     /// nobody else loses one), as for Cursed City. A champion in a vault is left as it is (the row's team plays from the list).
@@ -430,24 +428,24 @@ public sealed partial class LivePlayGame
         return $"{pieces} piece{(pieces == 1 ? "" : "s")} for {string.Join(", ", picked.Select(m => m.Name))}" + (dryRun ? " (dry run)" : "");
     }
 
-    public async Task<int> SellCampaignGearAsync(GearSellSettings settings, bool dryRun, CancellationToken ct)
+    private string GearDropsFile => Path.Combine(ExtractorOutput, "autoplay", "gear-drops.json");
+
+    public async Task<int> GearAfterBattleAsync(string? area, GearSellSettings settings, bool dryRun, CancellationToken ct)
     {
+        if (!settings.Enabled) return 0;
         var (data, _, _, _) = await Account(ct);
-        // The farm's start: gear with a higher id dropped since (kept in a file so a restart does not sell older gear).
-        int baseline;
-        try { baseline = int.Parse(File.ReadAllText(GearBaselineFile).Trim(), CultureInfo.InvariantCulture); }
-        catch (Exception e) when (e is IOException or FormatException or UnauthorizedAccessException)
-        {
-            baseline = data.Artifacts.Count == 0 ? 0 : data.Artifacts.Max(a => a.Id);
-            Directory.CreateDirectory(Path.GetDirectoryName(GearBaselineFile)!);
-            File.WriteAllText(GearBaselineFile, baseline.ToString(CultureInfo.InvariantCulture));
-            log($"autoplay: Campaign gear from now on (artifact ids above {baseline}) may be sold");
-            return 0;
-        }
-        var pieces = GearSale.Pick(data.Artifacts, baseline, settings);
+        GearDrops drops;
+        try { drops = File.Exists(GearDropsFile) ? System.Text.Json.JsonSerializer.Deserialize<GearDrops>(File.ReadAllText(GearDropsFile), AutoplayJson.Options) ?? new() : new(); }
+        catch (Exception e) when (e is IOException or System.Text.Json.JsonException or UnauthorizedAccessException) { drops = new(); }
+        var first = drops.Mark < 0;
+        drops = drops.Note(area, data.Artifacts, settings);
+        Directory.CreateDirectory(Path.GetDirectoryName(GearDropsFile)!);
+        File.WriteAllText(GearDropsFile, System.Text.Json.JsonSerializer.Serialize(drops, AutoplayJson.Options));
+        if (first) { log($"autoplay: gear dropped from now on (artifact ids above {drops.Mark}) may be sold"); return 0; }
+        var pieces = GearSale.Pick(data.Artifacts, drops.Ids.ToHashSet(), settings);
         if (pieces.Count < settings.Every) return 0;
-        log($"autoplay: STEP selling {pieces.Count} Campaign drop(s): {string.Join(", ", pieces.Select(a => $"#{a.Id} {a.Rank}* {a.Rarity} {a.Slot}"))}");
-        var plan = RaidExtractor.Battle.SellPlan.Make(data, pieces.Select(a => (a, "Campaign drop (Auto Play)")), $"sell {pieces.Count} campaign drops");
+        log($"autoplay: STEP selling {pieces.Count} drop(s): {string.Join(", ", pieces.Select(a => $"#{a.Id} {a.Rank}* {a.Rarity} {a.Slot}"))}");
+        var plan = RaidExtractor.Battle.SellPlan.Make(data, pieces.Select(a => (a, "battle drop (Auto Play)")), $"sell {pieces.Count} drops");
         var (saved, path) = plan.SaveNew(ExtractorOutput, data);
         await RunCommand(["sell", path, "--confirm", saved.Code, .. (dryRun ? new[] { "--dry-run" } : [])], ct);
         return dryRun ? 0 : pieces.Count;

@@ -1700,6 +1700,26 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.ResourceRefillOverlayContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_ownedResource": {
+          "offset": "0x70",
+          "type": "BoolProperty",
+          "field": "_ownedResource",
+          "source": "field",
+          "status": "direct"
+        },
+        "_canPurchase": {
+          "offset": "0x78",
+          "type": "BoolProperty",
+          "field": "_canPurchase",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.MarketItemContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

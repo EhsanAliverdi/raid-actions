@@ -3,7 +3,7 @@ using RaidExtractor.Autoplay;
 namespace RaidActions.Autoplay;
 
 /// <summary>What Faction Wars asks of the game (the live game: a fresh account read, Manage team's gear commands, the crypt screens).</summary>
-public interface IFactionWarsGame
+public interface IFactionWarsGame : IGearDropGame
 {
     /// <summary>Today's plan from a fresh account read (<see cref="FactionWarsPlanner"/>): open crypts with keys, teams, who to strip.</summary>
     Task<FactionWarsDay> PlanDayAsync(CancellationToken ct);
@@ -90,6 +90,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
 
     public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
     {
+        await game.GearAfterAsync(ctx, AreaId, null, ct);
         NewDay(ctx);
         _day = await game.PlanDayAsync(ct);
         _dayAt = ctx.Utc;
@@ -184,6 +185,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
                     _farmAt[c.Name] = Math.Max(1, Math.Min(stage - 1, Math.Max(1, c.HighestPassed)));
                 }
                 ctx.Event(AreaId, "battle", $"{outcome.Result} vs {c.Name} stage {stage}. {outcome.Text}");
+                if (outcome.Result == BattleResult.Victory) await game.GearAfterAsync(ctx, AreaId, AreaId, ct);
                 return $"{outcome.Result}: {c.Name} stage {stage}";
             }
         }

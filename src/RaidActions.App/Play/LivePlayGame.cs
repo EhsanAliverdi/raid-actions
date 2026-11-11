@@ -197,12 +197,23 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         var shownTeam = teamRead.TeamIds ?? [];
         NoteTeam(ClassicArenaAreaId, shownTeam);
         var quest = variant != TeamVariant.Default;
+        List<int>? questTeam = null;
+        if (quest)
+        {
+            var (data0, _, _, _) = await Account(ct);
+            questTeam = TeamRules.Resolve(TeamsOf(ClassicArenaAreaId), variant, shownTeam, data0.Champions, fillEmpty: true).Team;
+            // No team of four affinities on this account (2026-11-11: KaelStormVex's only Void champions are in the Bathhouse): the fight is played with
+            // the arena team, so the arena goes on (it was an error that paused Classic Arena for an hour, twice a turn).
+            if (questTeam is null)
+            {
+                log($"autoplay: no {variant} team can be built on this account (an affinity has no champion outside the vault and the Bathhouse): the arena team fights");
+                quest = false;
+            }
+        }
         var restore = !quest ? SavedArenaTeam() : null;
         if (quest)
         {
-            var (data, _, _, _) = await Account(ct);
-            var team = TeamRules.Resolve(TeamsOf(ClassicArenaAreaId), variant, shownTeam, data.Champions, fillEmpty: true).Team
-                ?? throw new PlayStopException($"No {variant} team can be set: see the Teams card, or a geared champion is missing.");
+            var team = questTeam!;
             if (!dryRun && !File.Exists(ArenaTeamFile))
             {
                 Directory.CreateDirectory(Path.GetDirectoryName(ArenaTeamFile)!);

@@ -110,6 +110,9 @@ public static partial class PlayTargets
     private const string ArenaResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishArenaDialogContext";
     private const string LiveResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishLiveArenaDialogContext";
     private const string UserResource = "Client.ViewModel.Contextes.Generic.UserResources.UserResourceContext";
+    private const string MultiRefill = "Client.ViewModel.Contextes.ResourceRefillsOverlay.ResourceMultiRefillOverlayContext";
+    /// <summary>The refill window a resource's "+" opens (energy, Live Arena tokens: 2026-11-12): items in the inbox or an offer for gems.</summary>
+    public const string MultiRefillView = "ResourceMultiRefillOverlay";
     private const string InboxItem = "Client.ViewModel.Contextes.InboxDialog.Contexts.InboxItemContext";
     private const string ResourceEnum = "SharedModel.Meta.Account.ResourceTypeId";
     private const string FwRegionItem = "Client.ViewModel.Contextes.FractionWars.FractionWarsRegionItemContext";
@@ -213,7 +216,7 @@ public static partial class PlayTargets
         "mode-dungeon", "dungeon-region", "dungeon-stage", "dungeon-difficulty", "dungeon-dropdown", "super-raid",
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
-        "mode-clan", "clan-quickjoin", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-reward", "live-state", "live-phase", "live-slot", "live-confirm",
+        "mode-clan", "clan-quickjoin", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-reward", "resource-add", "refill-use", "live-state", "live-phase", "live-slot", "live-confirm",
         "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "menu-open", "menu-item", "reward-claim", "reward-tab", "event-card", "event-claimall", "event-close", "challenge-confirm", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "village-pass", "village-challenges", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
@@ -943,9 +946,25 @@ public static partial class PlayTargets
                 case UserResource:
                 {
                     var id = Try(() => (int?)g.Int(c.Address, UserResource, "_resource"), null, notes, "UserResourceContext._resource");
+                    // Its "+" (Ehsan 2026-11-12: "pressed + next to the 0/5 tokens and confirm ... the refill is the one I collected"): opens the refill window.
+                    var resName = id is { } rn ? g.EnumName(ResourceEnum, rn) : null;
+                    // Only tokens and energy: the Gem "+" opens the shop and Silver's an offer (never a target).
+                    if (resName is { } rk && (rk == "Energy" || rk.Contains("Token", StringComparison.Ordinal)))
+                    foreach (var x in SelfAndBelow(i).Where(x => x.Name.StartsWith("AddButton", StringComparison.Ordinal) && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                        targets.Add(Make("resource-add", $"{resName ?? "resource"}: +", x, x, resName));
                     hud.Add(new HudResource(id is { } r ? g.EnumName(ResourceEnum, r) ?? r.ToString(System.Globalization.CultureInfo.InvariantCulture) : null,
                         Try(() => StringValue(g, g.Ref(c.Address, UserResource, "_value")), null, notes, "UserResourceContext._value"),
                         Try(() => StringValue(g, g.Ref(c.Address, UserResource, "_incrementStatusText")), null, notes, "UserResourceContext._incrementStatusText")));
+                    break;
+                }
+                case MultiRefill:
+                {
+                    // Its Confirm only when the game has the inbox's items selected and has some (never the gem offer).
+                    var toggle = Try(() => IntValue(g, g.Ref(c.Address, MultiRefill, "_toggleState")), null, notes, "ResourceMultiRefillOverlayContext._toggleState");
+                    var inboxCount = Try(() => IntValue(g, g.Ref(c.Address, MultiRefill, "_inboxCount")), null, notes, "ResourceMultiRefillOverlayContext._inboxCount");
+                    if (toggle == 0 && inboxCount is > 0)
+                        foreach (var x in SelfAndBelow(i).Where(x => x.Name == "Default_h" && x.Path.Contains("/Buttons/", StringComparison.Ordinal) && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                            targets.Add(Make("refill-use", $"refill: use from the inbox ({inboxCount} there)", x, x, $"inbox {inboxCount}"));
                     break;
                 }
                 case InboxItem:

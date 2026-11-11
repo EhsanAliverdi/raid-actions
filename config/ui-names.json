@@ -255,6 +255,7 @@
                   "Client.ViewModel.Contextes.GachaChest.AllianceEnemyRewardItem.AllianceEnemyRewardItemContext":  [ "_chestCondition" ],
                   "Client.ViewModel.Contextes.Bank.Offers.StaticCommon.StaticCommonOfferContext":  [ "_isFree" ],
                   "Client.ViewModel.Contextes.ResourceRefillOverlayContext":  [ "_ownedResource", "_canPurchase" ],
+                  "Client.ViewModel.Contextes.ResourceRefillsOverlay.ResourceMultiRefillOverlayContext":  [ "_toggleState", "_inboxCount" ],
                   "Client.ViewModel.Contextes.MarketItemContext":  [ "_itemType", "_price", "_rarityName" ],
                   "Client.ViewModel.Contextes.ResourceAvatarContext":  [ "_count", "_iconUrl" ],
                   "Client.ViewModel.Contextes.HeroesDevelopmentDialog.Items.HeroesDevelopmentItemContext":  [ "_HeroAvatar_k__BackingField", "_isSelected" ],

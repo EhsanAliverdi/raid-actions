@@ -1720,6 +1720,26 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.ResourceRefillsOverlay.ResourceMultiRefillOverlayContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_toggleState": {
+          "offset": "0x70",
+          "type": "IntProperty",
+          "field": "_toggleState",
+          "source": "field",
+          "status": "direct"
+        },
+        "_inboxCount": {
+          "offset": "0x78",
+          "type": "IntProperty",
+          "field": "_inboxCount",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.MarketItemContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

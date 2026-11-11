@@ -103,6 +103,43 @@ public sealed partial class LivePlayGame : ILiveArenaGame
 
     private int _liveRewardsTaken;
 
+    public async Task<bool> RefillLiveArenaTokensAsync(bool dryRun, CancellationToken ct)
+    {
+        if (!await OpenLiveArena(ct)) return false;
+        var (_, targets, _) = await Read(ct);
+        if (targets.FirstOrDefault(t => t.Kind == "resource-add" && t.Note == "LiveArenaToken" && t.NotClickable is null) is not { } plus)
+        {
+            log("autoplay: Live Arena tokens: no \"+\" read on the screen");
+            await HomeAsync(Action("from Live Arena"), ct);
+            return false;
+        }
+        await Click("resource-add", t => t.Path == plus.Path, (s2, _) => Top(s2) is PlayTargets.MultiRefillView or PlayTargets.RefillView or PlayTargets.ShopView,
+            "the tokens' refill window opens", ct, within: TimeSpan.FromSeconds(6));
+        await Pause(800, ct);
+        var (s, after, _) = await Read(ct);
+        var use = after.FirstOrDefault(t => t.Kind == "refill-use" && t.NotClickable is null);
+        if (Top(s) != PlayTargets.MultiRefillView || use is null)
+        {
+            log($"autoplay: Live Arena tokens: none in the inbox ({Top(s)}): closed, nothing bought");
+            await Back(Top(s)!, ct);
+            await HomeAsync(Action("from Live Arena"), ct);
+            return false;
+        }
+        if (dryRun)
+        {
+            if (use.Rect is { } r) Shot($"autoplay: WOULD CLICK {use.Name} (dry run: NOT pressed)", r, always: true);
+            await Back(PlayTargets.MultiRefillView, ct);
+            await HomeAsync(Action("from Live Arena"), ct);
+            return false;
+        }
+        await Click("refill-use", t => t.Path == use.Path, (s2, _) => Top(s2) != PlayTargets.MultiRefillView, $"{use.Name} confirmed", ct, within: TimeSpan.FromSeconds(8));
+        log($"autoplay: Live Arena tokens: {use.Name} used");
+        await Pause(1200, ct);
+        // A reward window may follow: closed by its own close.
+        for (var k = 0; k < 3 && Top(await Settled(ct)) is { } top && top != LiveDialogView; k++) { await Back(top, ct); await Pause(800, ct); }
+        return true;
+    }
+
     public async Task<BattleOutcome> PlayLiveArenaAsync(LiveArenaSettings s, bool dryRun, CancellationToken ct)
     {
         var started = DateTime.UtcNow;
@@ -121,6 +158,7 @@ public sealed partial class LivePlayGame : ILiveArenaGame
         if (Top(after) is PlayTargets.RefillView or UiState.MessageBoxView)
         {
             await HomeAsync(Action("from the token offer"), ct);
+            if (await RefillLiveArenaTokensAsync(dryRun, ct)) return new BattleOutcome(BattleResult.NotStarted, "took Live Arena tokens from the inbox (the tokens' \"+\")");
             if (s.CollectInboxTokens && await CollectInbox(PlayTargets.IsLiveTokens, "LiveArenaToken", "Live Arena tokens", dryRun, ct) is var got and > 0)
                 return new BattleOutcome(BattleResult.NotStarted, $"took {got:0} Live Arena token(s) from the inbox");
             return new BattleOutcome(BattleResult.NotStarted, "out of Live Arena tokens (the game offered to buy some; closed, nothing bought; none in the inbox)");

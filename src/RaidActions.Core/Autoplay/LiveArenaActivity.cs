@@ -16,6 +16,12 @@ public interface ILiveArenaGame
 
     /// <summary>The dialog opened only for its ready rewards (quests, daily-wins chests), then home; how many were taken.</summary>
     Task<int> CollectLiveArenaRewardsAsync(bool dryRun, CancellationToken ct);
+
+    /// <summary>
+    /// Out of tokens (Ehsan 2026-11-12: "pressed + next to 0/5 token and confirm ... the refill is the one I collected"): the tokens' "+", and the
+    /// refill window's Confirm only with the inbox's items selected (never gems); true when tokens were taken.
+    /// </summary>
+    Task<bool> RefillLiveArenaTokensAsync(bool dryRun, CancellationToken ct) => Task.FromResult(false);
 }
 
 /// <summary>Live Arena (Auto Play, plan/live-arena.md): while it is open and a token is there, one match a turn; checked again every half hour.</summary>
@@ -65,7 +71,15 @@ public sealed class LiveArenaActivity(ILiveArenaGame game) : IActivity
                 if (state.Active && ctx.Utc >= _rewardsAt)
                 {
                     _rewardsAt = ctx.Utc + TimeSpan.FromHours(1);
-                    if (await game.CollectLiveArenaRewardsAsync(ctx.DryRun, ct) is > 0 and var n) return $"took {n} Live Arena reward(s)";
+                    var taken = await game.CollectLiveArenaRewardsAsync(ctx.DryRun, ct);
+                    // Tokens from the rewards (or already in the inbox) go in through the tokens' "+"; then a match is played at once.
+                    if (await game.RefillLiveArenaTokensAsync(ctx.DryRun, ct) && !ctx.DryRun)
+                    {
+                        ctx.Event(AreaId, "tokens", "Live Arena tokens taken from the inbox");
+                        _checkAt = ctx.Utc;
+                        return taken > 0 ? $"took {taken} Live Arena reward(s) and the tokens" : "took Live Arena tokens from the inbox";
+                    }
+                    if (taken > 0) return $"took {taken} Live Arena reward(s)";
                 }
                 return "";
             }
@@ -74,7 +88,8 @@ public sealed class LiveArenaActivity(ILiveArenaGame game) : IActivity
             if (outcome.Result is BattleResult.NotStarted or BattleResult.Retry)
             {
                 _dryShown = ctx.DryRun;
-                _checkAt = ctx.Utc + wait;
+                // Tokens just taken from the inbox: a match at once.
+                _checkAt = outcome.Text.StartsWith("took Live Arena tokens", StringComparison.Ordinal) ? ctx.Utc : ctx.Utc + wait;
                 // No token: one comes back about an hour later; restarts keep to it.
                 if (!ctx.DryRun && outcome.Text.StartsWith("out of Live Arena tokens", StringComparison.Ordinal)) ctx.Hold(AreaId, ctx.Utc + TimeSpan.FromHours(1), outcome.Text);
                 ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", outcome.Text);

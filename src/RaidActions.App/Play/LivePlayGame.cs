@@ -108,7 +108,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 await Click("mode-arena", null, (s2, _) => Has(s2, PlayTargets.ArenaMapView), "the arena map opens", ct);
                 continue;
             }
-            if (!NavigatingDriver.AtVillage(s)) { await HomeAsync(Action("to the village"), ct); continue; }
+            if (!NavigatingDriver.AtVillage(s)) { await TowardsBattleMenu(s, ct); continue; }
             await Click("village-battle", null, (s2, _) => Has(s2, PlayTargets.BattleMenuView) || Has(s2, PlayTargets.ArenaMapView), "the battle menu opens", ct);
         }
         throw new PlayStopException("Could not reach the Classic Arena in 8 steps.");
@@ -947,7 +947,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         }
     }
 
-    private async Task<List<string>> HomeAsync(UiAction a, CancellationToken ct)
+    private async Task<List<string>> HomeAsync(UiAction a, CancellationToken ct, string? stopAt = null)
     {
         await DismissLevelUp(ct);
         await CloseWebPages(ct);
@@ -963,8 +963,21 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             }
             if (Top(s) == result) await LeaveResult(ct, result);
         }
-        return await _nav.GoHome(a, ct);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var left = await _nav.GoHome(a, ct, stopAt);
+        // The travel measured (plan/navigation.md): screens closed on the way back and the seconds it took.
+        if (left.Count > 0) log($"{a.Text.Replace("autoplay: ", "autoplay: travel: ", StringComparison.Ordinal)}: {left.Count} screen(s) closed in {sw.Elapsed.TotalSeconds:0.0} s");
+        return left;
     }
+
+    /// <summary>
+    /// Towards an area under the Battle menu (Ehsan 2026-11-12: "as I can see you go to the village always before the next"): when the Battle menu is
+    /// under the screens open, only the screens above it are closed (no village and Battle again); otherwise the village.
+    /// </summary>
+    private async Task<List<string>> TowardsBattleMenu(UiState s, CancellationToken ct) =>
+        s.Active.Any(v => v.Name == PlayTargets.BattleMenuView) && !s.Active.Any(v => v.Name.StartsWith("BattleFinish", StringComparison.Ordinal))
+            ? await HomeAsync(Action("back to the Battle menu"), ct, PlayTargets.BattleMenuView)
+            : await HomeAsync(Action("to the village"), ct);
 
     private static UiAction Action(string text) => new(ActionKind.OpenChampion, 0, "autoplay: " + text);
 }

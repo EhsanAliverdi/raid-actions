@@ -213,7 +213,7 @@ public sealed partial class LivePlayGame : IFactionWarsGame
                 await Click("mode-fw", null, (s2, _) => Has(s2, PlayTargets.FwMapView), "the Faction Wars map opens", ct);
                 continue;
             }
-            if (!NavigatingDriver.AtVillage(s)) { await HomeAsync(Action("to the village"), ct); continue; }
+            if (!NavigatingDriver.AtVillage(s)) { await TowardsBattleMenu(s, ct); continue; }
             await Click("village-battle", null, (s2, _) => Has(s2, PlayTargets.BattleMenuView), "the battle menu opens", ct);
         }
         throw new PlayStopException($"Could not reach {crypt.Name}'s stages in 10 steps.");

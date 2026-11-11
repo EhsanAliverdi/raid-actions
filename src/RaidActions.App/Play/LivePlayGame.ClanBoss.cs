@@ -244,7 +244,7 @@ public sealed partial class LivePlayGame : IClanBossGame
                 await Pause(800, ct);
                 continue;
             }
-            if (!Input.NavigatingDriver.AtVillage(s)) { await HomeAsync(Action("to the village"), ct); continue; }
+            if (!Input.NavigatingDriver.AtVillage(s)) { await TowardsBattleMenu(s, ct); continue; }
             await Click("village-battle", null, (s2, _) => Has(s2, PlayTargets.BattleMenuView), "the battle menu opens", ct);
         }
         throw new PlayStopException($"{mapKind} was not reached in 10 steps. Screen dump: {DumpScreen("clan boss not reached")}");

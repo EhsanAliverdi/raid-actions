@@ -96,7 +96,7 @@ public sealed partial class LivePlayGame
                 await Pause(1000, ct);
                 continue;
             }
-            if (!Input.NavigatingDriver.AtVillage(s)) { await HomeAsync(Action("to the village"), ct); continue; }
+            if (!Input.NavigatingDriver.AtVillage(s)) { await TowardsBattleMenu(s, ct); continue; }
             await Click("village-battle", null, (s2, _) => Has(s2, PlayTargets.BattleMenuView), "the battle menu opens", ct);
         }
         throw new PlayStopException($"Could not open {region}'s stages in 12 steps. Screen dump: {DumpScreen("campaign not reached")}");

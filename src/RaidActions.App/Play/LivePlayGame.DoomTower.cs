@@ -204,7 +204,7 @@ public sealed partial class LivePlayGame : IDoomTowerGame
                 await Pause(1200, ct);
                 continue;
             }
-            if (!Input.NavigatingDriver.AtVillage(s)) { await HomeAsync(Action("to the village"), ct); continue; }
+            if (!Input.NavigatingDriver.AtVillage(s)) { await TowardsBattleMenu(s, ct); continue; }
             await Click("village-battle", null, (s2, _) => Has(s2, PlayTargets.BattleMenuView), "the battle menu opens", ct);
         }
         throw new PlayStopException($"The Doom Tower was not reached in 10 steps. Screen dump: {DumpScreen("doom tower not reached")}");

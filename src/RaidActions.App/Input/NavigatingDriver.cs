@@ -248,7 +248,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
     /// top view has no back/close element memory can identify, when one is ambiguous, or when a click does not change the screen.
     /// Returns the screens it left, in order.
     /// </summary>
-    public async Task<List<string>> GoHome(UiAction a, CancellationToken ct)
+    public async Task<List<string>> GoHome(UiAction a, CancellationToken ct, string? stopAt = null)
     {
         var left = new List<string>();
         string? lastPath = null;
@@ -257,6 +257,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             await NoBattle(ct, resultScreenOk: true);
             var s = await Settled(ct);
             if (AtVillage(s)) return left;
+            if (stopAt is not null && s.Top?.Name == stopAt) return left;
             var top = s.Top?.Name ?? throw new StopException("No view is on top.");
             var (_, targets) = await Read(ct);
             var mine = targets.Where(t => t.View == top).ToList();

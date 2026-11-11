@@ -149,8 +149,18 @@ public sealed partial class LivePlayGame : IDoomTowerGame
             await Back(teamView, ct);
             return new BattleOutcome(BattleResult.NotStarted, start?.NotClickable is null && start is not null ? "Start shown, not pressed" : $"Start not identified: {start?.Note ?? "no team-start target"}");
         }
-        await Click("team-start", t => t.View == teamView, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView,
-            "the battle starts", ct, within: TimeSpan.FromSeconds(25), shot: true);
+        try
+        {
+            await Click("team-start", t => t.View == teamView, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView,
+                "the battle starts", ct, within: TimeSpan.FromSeconds(25), shot: true);
+        }
+        catch (PlayStopException) when (game.ReadUi().Item1 is { } now && Top(now) == teamView)
+        {
+            // Start with no key left does nothing (2026-11-12 05:57-07:38, BlackLord65: the count read 1, Start showed its key, four tries, each an error
+            // that paused the tower): not an error; the tower waits for its keys.
+            await Back(teamView, ct);
+            return new BattleOutcome(BattleResult.NotStarted, "Start did nothing (no key left?)");
+        }
         var inBattle = await ReadState(ct);
         if (Top(inBattle) == PlayTargets.RefillView)
         {

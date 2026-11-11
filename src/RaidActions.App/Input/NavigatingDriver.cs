@@ -77,7 +77,14 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
         switch (a.Kind)
         {
             case ActionKind.CheckGameIdle:
-                await NoBattle(ct);
+                // A battle that is over but still shows its result screen is left by its way back (2026-11-11: a gear run started from Auto Play
+                // waited 30 minutes on a result screen nobody would close, then failed).
+                await NoBattle(ct, resultScreenOk: true);
+                if ((await ReadState(ct)).InBattle)
+                {
+                    var left = await GoHome(a, ct);
+                    log($"the battle's result screen was open: back to the village ({string.Join(" → ", left)})");
+                }
                 FitWindow();
                 return DriverResult.Success("no battle, window usable for clicks");
             case ActionKind.FocusGame:

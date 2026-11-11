@@ -85,6 +85,8 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
 
     /// <summary>How the host's block reason starts when the account is open on another device (LivePlayGame.SessionTaken).</summary>
     public const string AnotherDevice = "the account is open on another device";
+    /// <summary>The input layer's message when Windows keeps the game behind another window (MouseInput.EnsureForeground).</summary>
+    public const string NoFront = "Could not bring the game window to the front.";
 
     /// <summary>An area that failed this many turns in a row waits <see cref="AreaErrorHold"/>; the others go on.</summary>
     public const int AreaErrorsToHold = 2;
@@ -264,6 +266,14 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 }
                 catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
                 {
+                    // Windows would not let the game come to the front (someone working at the PC, 2026-11-11 17:22: three of these stopped Auto Play
+                    // for good): nothing is wrong with the area or the game, so it is not counted; the bot waits a minute and tries again.
+                    if (e.Message.Contains(NoFront, StringComparison.Ordinal))
+                    {
+                        Remember(new AutoplayEvent(host.UtcNow, "engine", "wait", "the game could not come to the front: trying again in a minute"));
+                        await Idle("waiting", "the game could not come to the front", host.UtcNow + TimeSpan.FromMinutes(1), ct, untilOnly: true);
+                        continue;
+                    }
                     errors++;
                     Remember(new AutoplayEvent(host.UtcNow, act.Id, "error", e.Message));
                     // The game dropped its data mid-turn (its AppModel gone): it was logged out and came back by itself, with no "another device" box

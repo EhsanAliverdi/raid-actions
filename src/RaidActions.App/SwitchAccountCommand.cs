@@ -23,7 +23,7 @@ public static class SwitchAccountCommand
         if (first == want) { output.WriteLine($"The game is on account {want} already."); return Cli.Ok; }
         var profiles = LoadProfiles(outDir);
         // The profile signed in now is the account in the game: learnt (three accounts need to know which avatar is which; 2026-11-07).
-        if (first is { } id0 && Process.GetProcessesByName("PlariumPlay").FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero) is { } pp0
+        if (first is { } id0 && PlariumWindow(output) is { } pp0
             && PlariumPopup.CurrentProfile(pp0.MainWindowHandle) is { } current) Learn(outDir, profiles, current, id0, output);
         // Where each avatar leads, by the account the menu is opened on and the avatar's place (2026-11-10 13:20: no name read on hover, and the avatars'
         // order follows the account signed in, so "the next one" landed on the other two accounts three times).
@@ -39,7 +39,7 @@ public static class SwitchAccountCommand
             output.WriteLine($"The game is on account {now?.ToString() ?? "(not read)"}.");
             // The name on the profile button now, not the text read when the avatar was hovered (2026-11-10 11:36: a banner's "EVENT" appeared on the hover
             // and was learnt as KaelStormVex's profile, its real name dropped).
-            var signedIn = Process.GetProcessesByName("PlariumPlay").FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero) is { } ppNow
+            var signedIn = PlariumWindow(output) is { } ppNow
                 ? PlariumPopup.CurrentProfile(ppNow.MainWindowHandle) : null;
             if ((signedIn ?? picked) is { } name && now is { } id) Learn(outDir, profiles, name, id, output);
             if (from is { } f && place is { } i && now is { } got && (!places.TryGetValue(PlaceKey(f, i), out var was) || was != got))
@@ -74,7 +74,7 @@ public static class SwitchAccountCommand
             return Cli.Refused;
         }
         var profiles = LoadProfiles(outDir);
-        var current = Process.GetProcessesByName("PlariumPlay").FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero) is { } pp
+        var current = PlariumWindow(output) is { } pp
             ? PlariumPopup.CurrentProfile(pp.MainWindowHandle) : null;
         long? knownId = current is not null && profiles.TryGetValue(current, out var id) ? id : null;
         if (knownId is { } k && k != want)
@@ -145,7 +145,7 @@ public static class SwitchAccountCommand
     {
         picked = null;
         place = null;
-        var pp = Process.GetProcessesByName("PlariumPlay").FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero);
+        var pp = PlariumWindow(output);
         if (pp is null) return "Plarium Play's window is not open.";
         // No click reaches a disconnected or locked session and every pixel reads blank (2026-11-06 05:31: Remote Desktop left mid-switch, and "the game is
         // still running" was read for two minutes): refused, and the next bot hands the session to the console and tries again.
@@ -162,12 +162,16 @@ public static class SwitchAccountCommand
             // 1080x720 window, the button under the screen's edge, and the switch failed). Moved to the top left and made the screen's size, then measured again.
             // Only its bottom left is used (the profile button and the menu that opens above it): a window taller than the screen (2026-11-05: 2160x1440 on a
             // 2324x1080 phone screen; it does not shrink below that) goes up until its bottom is on the screen, its title bar off the top.
+            // The screen less the taskbar (2026-11-11 18:40-19:58: Plarium Play maximized behind the PC's taskbar, the profile click landed on the taskbar's
+            // search box, and every switch failed for over an hour as "the game is still running").
             var (screenW, screenH) = (GetSystemMetrics(0), GetSystemMetrics(1));
+            if (SystemParametersInfo(0x30 /* SPI_GETWORKAREA */, 0, out var work, 0) && work.B > 0 && work.R > 0) (screenW, screenH) = (work.R, work.B);
             // A maximized window hangs its invisible frame over the screen's edges (2026-11-05: 1936x1056 at -8,-8 on a 1920x1080 console): that much is on it.
             var frame = (int)(16 * GetDpiForWindow(h) / 96.0);
             bool Off(Rect w) => w.L < -frame || w.B > screenH + frame || w.R > screenW + frame;
             if (Off(r))
             {
+                if (IsZoomed(h)) { ShowWindow(h, 9 /* SW_RESTORE */); Thread.Sleep(800); }
                 var (w0, h0) = (Math.Min(r.R - r.L, screenW), Math.Min(r.B - r.T, screenH));
                 MoveWindow(h, 0, 0, w0, h0, true);
                 Thread.Sleep(800);
@@ -376,6 +380,24 @@ public static class SwitchAccountCommand
         mouse_event(4, 0, 0, 0, IntPtr.Zero);
     }
 
+    /// <summary>
+    /// Plarium Play's own window. Its "Game Mentor" window (2026-11-11 18:40-20:10: opened for a new account, it became the process's main window, and every
+    /// switch clicked into it and failed as "the game is still running") is closed first: only its title bar's close, nothing in it.
+    /// </summary>
+    internal static Process? PlariumWindow(TextWriter? output = null)
+    {
+        var all = Process.GetProcessesByName("PlariumPlay");
+        foreach (var p in all.Where(p => p.MainWindowHandle != IntPtr.Zero && p.MainWindowTitle == "Game Mentor"))
+        {
+            PostMessage(p.MainWindowHandle, 0x10 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero);
+            output?.WriteLine("Plarium Play's Game Mentor window was in front of it: closed.");
+            Thread.Sleep(1500);
+        }
+        foreach (var p in all) p.Refresh();
+        return all.FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero && p.MainWindowTitle == "Plarium Play") ?? all.FirstOrDefault(p => p.MainWindowHandle != IntPtr.Zero);
+    }
+
+    [DllImport("user32.dll")] private static extern bool PostMessage(IntPtr h, uint msg, IntPtr w, IntPtr l);
     [StructLayout(LayoutKind.Sequential)] private struct Rect { public int L, T, R, B; }
     [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr h, out Rect r);
     [DllImport("user32.dll")] private static extern int GetSystemMetrics(int index);
@@ -383,6 +405,8 @@ public static class SwitchAccountCommand
     [DllImport("user32.dll")] private static extern uint GetDpiForWindow(IntPtr h);
     [DllImport("user32.dll")] private static extern bool SetForegroundWindow(IntPtr h);
     [DllImport("user32.dll")] private static extern bool IsIconic(IntPtr h);
+    [DllImport("user32.dll")] private static extern bool IsZoomed(IntPtr h);
+    [DllImport("user32.dll")] private static extern bool SystemParametersInfo(uint action, uint param, out Rect rect, uint winIni);
     [DllImport("user32.dll")] private static extern bool ShowWindow(IntPtr h, int c);
     [DllImport("user32.dll")] private static extern bool SetCursorPos(int x, int y);
     [DllImport("user32.dll")] private static extern IntPtr GetDC(IntPtr h);

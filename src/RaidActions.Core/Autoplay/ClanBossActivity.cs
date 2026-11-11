@@ -328,6 +328,9 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
         {
             _dryShown = ctx.DryRun;
             ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", $"{difficulty}: {outcome.Text}");
+            // A difficulty the account has not unlocked: done for today, and the plan's next row is played on the next turn (2026-11-11: the referral
+            // accounts never fought, every turn stopped at a locked Brutal).
+            if (!ctx.DryRun && outcome.Text.Contains("locked", StringComparison.Ordinal)) { _topChest.Add(difficulty); return ""; }
             _retryAt = ctx.Utc + TimeSpan.FromHours(1); // not at once: it would hold the areas after it
             return "";
         }

@@ -159,7 +159,7 @@ public sealed partial class LivePlayGame : IFactionWarsGame
         }
         // Super Raid or a normal run (CryptKeys: Ehsan 2026-11-11); the box not found on this screen: a normal run, logged (the box's names on the
         // crypt's team screen are still to be seen live).
-        try { await SetSuperRaid(superRaid, PlayTargets.FwTeamView, ct); }
+        try { superRaid = await SetSuperRaid(superRaid, PlayTargets.FwTeamView, ct); }
         catch (PlayStopException e) when (e.Message.StartsWith("The Super Raid box is not found", StringComparison.Ordinal))
         {
             log($"autoplay: {crypt.Name}: {e.Message}; a normal run");

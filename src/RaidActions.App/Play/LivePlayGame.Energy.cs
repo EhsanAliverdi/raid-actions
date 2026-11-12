@@ -382,7 +382,8 @@ public sealed partial class LivePlayGame : IEnergyGame
     }
 
     /// <summary>The team screen's Super Raid box set as the row says (none shown: fine only when the row does not want it).</summary>
-    private async Task SetSuperRaid(bool wanted, string teamView, CancellationToken ct)
+    /// <summary>Super Raid on or off; true when the box is on for this run.</summary>
+    private async Task<bool> SetSuperRaid(bool wanted, string teamView, CancellationToken ct)
     {
         // The box's state settles after the team screen opens (2026-10-30, Campaign: read "on", then "unavailable"): read after a pause.
         await Pause(1200, ct);
@@ -390,16 +391,16 @@ public sealed partial class LivePlayGame : IEnergyGame
         var box = targets.FirstOrDefault(t => t.Kind == "super-raid" && t.View == teamView);
         if (box is null)
         {
-            if (!wanted) return;
+            if (!wanted) return false;
             throw new PlayStopException($"The Super Raid box is not found on the team screen. Screen dump: {DumpScreen("super raid")}");
         }
-        if (box.Note == (wanted ? "on" : "off")) return;
+        if (box.Note == (wanted ? "on" : "off")) return wanted;
         if (box.Note is not ("on" or "off"))
         {
             // Not offered now (seen 2026-10-31 on Campaign and Dragon's Lair: "unavailable", Super Raid seems to come and go with events):
             // a normal run instead of no run at all.
             if (wanted) log($"autoplay: Super Raid is {box.Note} here now: a normal run");
-            return;
+            return false;
         }
         log($"autoplay: STEP Super Raid {(wanted ? "on" : "off")}");
         // The box did not follow a click once (2026-11-01): one more try; left on or off, the run still goes (it costs and pays double).
@@ -409,13 +410,13 @@ public sealed partial class LivePlayGame : IEnergyGame
             {
                 await Click("super-raid", t => t.Path == box.Path, (_, scan) => scan().Targets.Any(t => t.Kind == "super-raid" && t.Path == box.Path && t.Note == (wanted ? "on" : "off")),
                     $"Super Raid {(wanted ? "on" : "off")}", ct, within: TimeSpan.FromSeconds(4));
-                return;
+                return wanted;
             }
             catch (PlayStopException e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal))
             {
                 var now = (await Read(ct)).Targets.FirstOrDefault(t => t.Kind == "super-raid" && t.Path == box.Path)?.Note;
-                if (now == (wanted ? "on" : "off")) return;
-                if (attempt >= 2) { log($"autoplay: Super Raid stays {now}: the run goes on"); return; }
+                if (now == (wanted ? "on" : "off")) return wanted;
+                if (attempt >= 2) { log($"autoplay: Super Raid stays {now}: the run goes on"); return now == "on"; }
                 await Pause(1000, ct);
             }
         }

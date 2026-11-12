@@ -645,6 +645,12 @@ public sealed partial class LivePlayGame : ICursedCityGame
             {
                 // Built off view: learn how far a notch moves it, then scroll it to the middle of the shown part in one go.
                 if (lastX is { } x0 && lastNotches != 0 && Math.Abs(off.Center.X - x0) > 2) pxPerNotch = (off.Center.X - x0) / lastNotches;
+                // The wheel did not move it (the compact list, 2026-11-12 12:51: Hellhound built at x 1268, never scrolled in): drag from now on.
+                else if (lastX is { } x1 && lastNotches != 0 && !drag)
+                {
+                    drag = true;
+                    log("autoplay: the champion list does not follow the wheel: dragging it");
+                }
                 lastX = off.Center.X;
                 notches = pxPerNotch is { } ppn ? (int)Math.Clamp(Math.Round((viewX - off.Center.X) / ppn), -25, 25) : -3;
                 if (notches == 0) notches = viewX > off.Center.X ? 1 : -1;

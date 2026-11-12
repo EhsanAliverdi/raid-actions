@@ -125,6 +125,7 @@ public static partial class PlayTargets
     // The PvE team screen's Super Raid box (seen live 2026-10-30: "Checkbox" under the 'MultiRun' block, no Toggle; its tick fades, so
     // its state is read from MultiRunContext._active, which the team context keeps as MultiRun).
     private const string PveTeam = "Client.ViewModel.Contextes.HeroesSelectionDialog.HeroesSelectionPveDialogContext";
+    private const string FwTeamCtx = "Client.ViewModel.Contextes.HeroesSelectionDialog.HeroesSelectionFractionWarsDialogContext";
     private const string MultiRunCtx = "Client.ViewModel.Contextes.MultiRun.MultiRunContext";
     private const string StageCtx = "Client.ViewModel.Contextes.RegionDialog.StageContext";
     private const string FwResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishFractionWarsDialogContext";
@@ -999,7 +1000,9 @@ public static partial class PlayTargets
         }
 
         // The Super Raid box: on or off from the team context's MultiRunContext; "locked" or "unavailable" when it cannot be ticked.
-        if (PlayTargets.IsTeamView(t.View) && nodes.FirstOrDefault(x => x.Context?.Class == PveTeam) is { } pveTeam)
+        // The crypt's team screen's context derives from the PvE one (HeroesSelectionFractionWarsDialogContext : HeroesSelectionPveDialogContext; its
+        // MultiRun at the same place): its box read the same way (2026-11-12 16:33: "the Super Raid box is not found" on the High Elves crypt).
+        if (PlayTargets.IsTeamView(t.View) && nodes.FirstOrDefault(x => x.Context?.Class is PveTeam or FwTeamCtx) is { } pveTeam)
         {
             var mr = Try(() => g.Ref(pveTeam.Context!.Address, PveTeam, "MultiRun"), 0UL, notes, "HeroesSelectionPveDialogContext.MultiRun");
             if (mr != 0)

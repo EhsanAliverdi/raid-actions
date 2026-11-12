@@ -103,6 +103,9 @@ public sealed partial class LivePlayGame : IFactionWarsGame
         }
     }
 
+    /// <summary>In a crypt battle's text when it ran as a normal battle (the Super Raid box not there or not set).</summary>
+    public const string NormalRunMark = ", normal run";
+
     public async Task<BattleOutcome> FightCryptAsync(CryptPlan crypt, int stage, bool dryRun, CancellationToken ct, bool superRaid = false)
     {
         var started = DateTime.UtcNow;
@@ -160,6 +163,7 @@ public sealed partial class LivePlayGame : IFactionWarsGame
         catch (PlayStopException e) when (e.Message.StartsWith("The Super Raid box is not found", StringComparison.Ordinal))
         {
             log($"autoplay: {crypt.Name}: {e.Message}; a normal run");
+            superRaid = false;
         }
         (_, targets, _) = await Read(ct);
         if (dryRun)
@@ -193,7 +197,7 @@ public sealed partial class LivePlayGame : IFactionWarsGame
         var pve = result?.Pve;
         var outcome = pve?.ResultType switch { 1 => BattleResult.Victory, 2 => BattleResult.Defeat, 3 => BattleResult.Draw, _ => BattleResult.Unknown };
         RecordTry(outcome);
-        return new BattleOutcome(outcome, $"{took.TotalSeconds:0} s" + (pve?.Stars is { } st && outcome == BattleResult.Victory ? $", {st} star{(st == 1 ? "" : "s")}" : ""));
+        return new BattleOutcome(outcome, $"{took.TotalSeconds:0} s" + (superRaid ? "" : NormalRunMark) + (pve?.Stars is { } st && outcome == BattleResult.Victory ? $", {st} star{(st == 1 ? "" : "s")}" : ""));
     }
 
     /// <summary>The crypt's stage list on top: from wherever the game is (village → Battle → Faction Wars → the crypt).</summary>

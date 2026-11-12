@@ -272,10 +272,15 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                     // for good): nothing is wrong with the area or the game, so it is not counted; the bot waits a minute and tries again.
                     // A battle running in the background (the game's background battles, e.g. Doom Tower's auto-climb, 2026-11-12 22:56): a Start shows
                     // its status window instead of a battle. Not an error: the area waits 15 minutes; the background battle is never stopped by the bot.
-                    if (e.Message.Contains("BackgroundBattleStatusOverlay", StringComparison.Ordinal))
+                    // Its rewards' list when it is over (BackgroundBattleRewardListOverlay, 2026-11-13 01:14): closed on the way home, the area again in 2 minutes.
+                    if (e.Message.Contains("BackgroundBattle", StringComparison.Ordinal))
                     {
-                        ctx.Hold(act.Id, host.UtcNow + TimeSpan.FromMinutes(15), "a background battle is running (the game's status window came up): tried again in 15 minutes");
-                        Remember(new AutoplayEvent(host.UtcNow, act.Id, "wait", "a background battle is running: tried again in 15 minutes"));
+                        var over = e.Message.Contains("BackgroundBattleRewardListOverlay", StringComparison.Ordinal);
+                        var wait = over ? TimeSpan.FromMinutes(2) : TimeSpan.FromMinutes(15);
+                        ctx.Hold(act.Id, host.UtcNow + wait, over ? "a background battle's rewards came up: closed, tried again in 2 minutes"
+                            : "a background battle is running (the game's status window came up): tried again in 15 minutes");
+                        Remember(new AutoplayEvent(host.UtcNow, act.Id, "wait", over ? "a background battle's rewards came up: tried again in 2 minutes"
+                            : "a background battle is running: tried again in 15 minutes"));
                         try { await game.GoHomeAsync(ct); }
                         catch (Exception home) when (home is not OperationCanceledException || !ct.IsCancellationRequested)
                         {

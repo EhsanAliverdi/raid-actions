@@ -72,7 +72,7 @@ public class ChoresActivityTests
 
     private static (PlayContext Ctx, Game Game, ChoresActivity Chores) Make(params QuestNeed[] needs)
     {
-        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Chores = new ChoresSettings { Enabled = true } } };
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Chores = new ChoresSettings { Enabled = true, Cleanup = new GearCleanupSettings { Enabled = false } } } };
         var game = new Game();
         return (new PlayContext(host.Settings, new FakeArenaGame(() => host.UtcNow), host, false, host.Events.Add) { QuestNeeds = [.. needs] }, game, new ChoresActivity(game));
     }
@@ -82,7 +82,7 @@ public class ChoresActivityTests
     {
         var (off, _, offChores) = Make();
         Assert.NotEqual("clan", offChores.Decide(off).Why);     // off by default
-        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Chores = new ChoresSettings { Enabled = true, AutoJoinClan = true } } };
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Chores = new ChoresSettings { Enabled = true, AutoJoinClan = true, Cleanup = new GearCleanupSettings { Enabled = false } } } };
         var game = new Game();
         var ctx = new PlayContext(host.Settings, new FakeArenaGame(() => host.UtcNow), host, false, host.Events.Add);
         var chores = new ChoresActivity(game);
@@ -108,5 +108,19 @@ public class ChoresActivityTests
         await Assert.ThrowsAsync<PlayStopException>(() => chores.RunTurnAsync(ctx, CancellationToken.None));
         await chores.RunTurnAsync(ctx, CancellationToken.None);
         Assert.Equal(["market quest=True", "level"], game.Calls);
+    }
+
+    [Fact]
+    public async Task The_gear_clean_up_comes_first_once_a_day()
+    {
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Chores = new ChoresSettings { Enabled = true } } };
+        var game = new Game();
+        var chores = new ChoresActivity(game);
+        var ctx = new PlayContext(host.Settings, new FakeArenaGame(() => host.UtcNow), host, false, host.Events.Add);
+        Assert.True(chores.Full(ctx));
+        Assert.Equal("cleanup", chores.Decide(ctx).Why);
+        await chores.RunTurnAsync(ctx, CancellationToken.None);
+        Assert.NotEqual("cleanup", chores.Decide(ctx).Why);
+        Assert.False(chores.Full(ctx));
     }
 }

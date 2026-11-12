@@ -71,7 +71,11 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
     public bool IsEnabled(AutoplaySettings settings) => settings.Chores.Enabled;
 
     /// <summary>A mastery request from the app goes first: someone is waiting for it.</summary>
-    public bool Full(PlayContext ctx) => game.MasteryRequested();
+    public bool Full(PlayContext ctx) => game.MasteryRequested() || CleanupDue(ctx);
+
+    /// <summary>The clean-up first at the start of a run (Ehsan 2026-11-12: "at the start, after the game synced, you know if anything is to sell").</summary>
+    private bool CleanupDue(PlayContext ctx) => ctx.Settings.Chores is { Enabled: true, Cleanup.Enabled: true } c
+        && (c.Cleanup.EveryRun ? !_cleanedThisRun : _cleanupDay != DateOnly.FromDateTime(ctx.Utc)) && Open(ctx, "cleanup");
 
     private bool Open(PlayContext ctx, string job) => !_paused.TryGetValue(job, out var until) || ctx.Utc >= until;
 
@@ -80,13 +84,13 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
     {
         var s = ctx.Settings.Chores;
         if (game.MasteryRequested()) return "masteries";
+        if (CleanupDue(ctx)) return "cleanup";
         if (ctx.QuestLeft(QuestNeedKind.Market) > 0 && Open(ctx, "market")) return "market";
         if (s.TavernLevelUps && ctx.QuestLeft(QuestNeedKind.LevelUp) > 0 && Open(ctx, "level")) return "level";
         if (s.ArtifactUpgrades && ctx.QuestLeft(QuestNeedKind.ArtifactAttempts) > 0 && Open(ctx, "attempts")) return "attempts";
         if (s.ArtifactUpgrades && ctx.QuestLeft(QuestNeedKind.ArtifactLevel) > 0 && Open(ctx, "piece")) return "piece";
         if (s.AutoJoinClan && ctx.Utc >= _clanAt && Open(ctx, "clan")) return "clan";
         if (s.ClanCheckIn && _checkInDay != DateOnly.FromDateTime(ctx.Utc) && Open(ctx, "checkin")) return "checkin";
-        if (s.Cleanup.Enabled && (s.Cleanup.EveryRun ? !_cleanedThisRun : _cleanupDay != DateOnly.FromDateTime(ctx.Utc)) && Open(ctx, "cleanup")) return "cleanup";
         if (s.InboxExpiringTokens && ctx.Utc >= _inboxAt && Open(ctx, "inbox")) return "inbox";
         if (s.PassRewards && ctx.Utc >= _passAt && Open(ctx, "pass")) return "pass";
         if (s.SparringPit && ctx.Utc >= _pitAt && Open(ctx, "pit")) return "pit";

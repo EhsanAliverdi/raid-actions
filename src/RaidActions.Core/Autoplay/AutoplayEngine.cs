@@ -270,6 +270,19 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 {
                     // Windows would not let the game come to the front (someone working at the PC, 2026-11-11 17:22: three of these stopped Auto Play
                     // for good): nothing is wrong with the area or the game, so it is not counted; the bot waits a minute and tries again.
+                    // A battle running in the background (the game's background battles, e.g. Doom Tower's auto-climb, 2026-11-12 22:56): a Start shows
+                    // its status window instead of a battle. Not an error: the area waits 15 minutes; the background battle is never stopped by the bot.
+                    if (e.Message.Contains("BackgroundBattleStatusOverlay", StringComparison.Ordinal))
+                    {
+                        ctx.Hold(act.Id, host.UtcNow + TimeSpan.FromMinutes(15), "a background battle is running (the game's status window came up): tried again in 15 minutes");
+                        Remember(new AutoplayEvent(host.UtcNow, act.Id, "wait", "a background battle is running: tried again in 15 minutes"));
+                        try { await game.GoHomeAsync(ct); }
+                        catch (Exception home) when (home is not OperationCanceledException || !ct.IsCancellationRequested)
+                        {
+                            Remember(new AutoplayEvent(host.UtcNow, "engine", "error", "going home failed: " + home.Message));
+                        }
+                        continue;
+                    }
                     if (e.Message.Contains(NoFront, StringComparison.Ordinal))
                     {
                         Remember(new AutoplayEvent(host.UtcNow, "engine", "wait", "the game could not come to the front: trying again in a minute"));

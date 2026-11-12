@@ -136,7 +136,9 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         }
         var teamView = Top(after) ?? "";
         if (!PlayTargets.IsTeamView(teamView)) await Refuse(after, $"Doom Tower {name}", ct);
-        if (!await ApplyDefaultTeam("doom-tower", teamView, ct, name)) return new BattleOutcome(BattleResult.NotStarted, "the Teams card's team was refused here (or every team tried lost here)");
+        // The page's team for this difficulty and kind (Ehsan 2026-11-13: floors and bosses, Normal and Hard), else the area's.
+        var towerKey = $"doom-tower:{(name.StartsWith("Hard", StringComparison.Ordinal) ? "Hard" : "Normal")}:{(name.Contains("boss", StringComparison.Ordinal) ? "bosses" : "floors")}";
+        if (!await ApplyDefaultTeam("doom-tower", teamView, ct, name, key: towerKey)) return new BattleOutcome(BattleResult.NotStarted, "the Teams card's team was refused here (or every team tried lost here)");
         if (((await Read(ct)).Play.TeamIds ?? []).Count == 0)
         {
             await Back(teamView, ct);

@@ -89,13 +89,26 @@ public sealed partial class LivePlayGame : IEnergyGame
         var teamView = Top(after) ?? "";
         if (!PlayTargets.IsTeamView(teamView)) await Refuse(after, where, ct);
 
+        // The place's own team on a "whichever is open today" row (Iron Twins, the Keeps), and "the bot picks the best" (Content teams, vaults included;
+        // Ehsan 2026-11-13); the team shown noted per place for the page's "last used in the game".
+        NoteTeam($"energy:{run.Region}", (await Read(ct)).Play.TeamIds ?? []);
+        var placeChoice = run.Target.RegionTeams.GetValueOrDefault(run.Region);
+        if (placeChoice is { Mode: TeamMode.Current }) run = run with { Team = null };
+        else if (placeChoice is { Mode: TeamMode.Saved, Ids.Count: > 0 }) run = run with { Team = placeChoice.Ids };
+        else if (placeChoice is { Mode: TeamMode.BotChooses } || run.Target is { BotTeam: true, Food: false, Team.Count: 0 })
+        {
+            var (bd, bgd, _, _) = await Account(ct);
+            var pick = BotTeams.Pick(bd, bgd, extractorRoot, BotTeams.ContentArea(run.Target.Area, run.Region, run.AtDifficulty ?? run.Target.Difficulty), EnergyPlaces.Slots(run.Target.Area));
+            if (pick.Count > 0) run = run with { Team = pick };
+        }
         if (run.Team is { Count: > 0 } planned)
         {
             // A row's own team without the champions it cannot have (Ehsan 2026-11-04: helpers moved to the reserve vault, and the bot searched the list
             // for them a minute at a time): in a vault, gone from the account, or refused by a team screen this run.
             var champs = (await Account(ct)).Data.Champions.ToDictionary(c => c.Id);
             // Food the planner took from a vault ("Food from the vaults too") stays: the team list shows the vaults for it. The row's own team never comes from one.
-            var gone = planned.Where(id => !champs.TryGetValue(id, out var c) || c.InVault && run.Target.Team.Contains(id) || c.InBathhouse || _notPickable.Contains(id)).ToList();
+            // Vault champions are picked too (the list's vault filters are ticked; Ehsan 2026-11-13: "it can bring champions out of the vaults").
+            var gone = planned.Where(id => !champs.TryGetValue(id, out var c) || c.InBathhouse || _notPickable.Contains(id)).ToList();
             if (gone.Count > 0) log($"autoplay: left out of the team (in a vault, gone, or refused here): {string.Join(", ", gone.Select(Who))}");
             // A food row never plays without its own farmer (2026-11-08: BlackLord65's Kael not found once in the list, then every Brutal and Hard stage
             // was played with four food, lost, and the farm judge left them all). The refusal is forgotten so the next turn looks for him again.
@@ -136,7 +149,8 @@ public sealed partial class LivePlayGame : IEnergyGame
                         && FoodPlanner.IsFood(c, foodRules with { UseVault = true }, farmerIds))?.Id;
             }
             // The row's first farmer leads (slot 1: his leader skill; Ehsan 2026-11-08: "Kael should be leader, why was he on position 4").
-            var leader = run.Target.Food && run.Target.Team.FirstOrDefault(team.Contains) is var f and not 0 ? f : (int?)null;
+            // Every chosen team: its slot 1 leads (Ehsan 2026-11-13); the food row's farmer first.
+            var leader = (run.Target.Food ? run.Target.Team : planned).FirstOrDefault(team.Contains) is var f and not 0 ? f : (int?)null;
             if (leader is { } l) team = [l, .. team.Where(id => id != l)];
             if (!await SetRunTeam(team, teamView, ct, standIn: StandIn, leader: leader))
                 return new BattleOutcome(BattleResult.Retry, $"not pickable here, left out from now on: {string.Join(", ", _notPickable.Select(Who))}");

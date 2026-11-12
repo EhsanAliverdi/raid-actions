@@ -164,24 +164,32 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     }
 
     /// <summary>A team screen open: what it shows noted, and the area's default set when the page says so. False: the game refused a champion.</summary>
-    private async Task<bool> ApplyDefaultTeam(string area, string teamView, CancellationToken ct, string? stage = null)
+    /// <param name="key">The team's own key on the page (Ehsan 2026-11-13: Doom Tower's floors per difficulty, "doom-tower:Hard:floors"); its choice
+    /// first, else the area's. The team shown is noted under both.</param>
+    /// <param name="contentArea">The Content teams fight the bot's pick is built for; the area's when null.</param>
+    private async Task<bool> ApplyDefaultTeam(string area, string teamView, CancellationToken ct, string? stage = null, string? key = null, string? contentArea = null)
     {
         _trying = null;
-        // The bot chooses here and the stage is known (Doom Tower, Faction Wars): the team that won here, else the next one not lost here.
-        if (stage is not null && TeamsOf(area)?.Default is { Mode: TeamMode.BotChooses })
+        var teams = (key is null ? null : TeamsOf(key)) ?? TeamsOf(area);
+        contentArea ??= BotTeams.ContentArea(area);
+        // The bot chooses here and the stage is known (Doom Tower, Faction Wars): the team that won here, else the next one not lost here; the Content
+        // teams pick first (vault champions included; Ehsan 2026-11-13).
+        if (stage is not null && teams?.Default is { Mode: TeamMode.BotChooses })
         {
             var (_, _, p0) = await Read(ct);
-            var (d0, _, _, _) = await Account(ct);
-            var key = $"{area}|{stage}";
-            var tried = LoadTries().GetValueOrDefault(key) ?? [];
+            var (d0, gd0, _, _) = await Account(ct);
+            var tryKey = $"{area}|{stage}";
+            var tried = LoadTries().GetValueOrDefault(tryKey) ?? [];
             var size = p0.TeamSlots is > 0 and var n ? n : 5;
-            if (TeamTries.Pick(TeamTries.Variants(d0.Champions, size), tried) is not { } choice)
+            var variants = new List<List<int>> { BotTeams.Pick(d0, gd0, extractorRoot, contentArea, size) }.Where(v => v.Count > 0)
+                .Concat(TeamTries.Variants(d0.Champions, size)).ToList();
+            if (TeamTries.Pick(variants, tried) is not { } choice)
             {
                 log($"autoplay: {area}: every team tried at {stage} lost: waiting");
                 await Back(teamView, ct);
                 return false;
             }
-            _trying = (key, choice);
+            _trying = (tryKey, choice);
             log($"autoplay: STEP {area} {stage}: the bot's team {string.Join(", ", choice.Select(i => $"#{i}"))} ({tried.Count(t => !t.Won)} lost here so far)");
             if (choice.ToHashSet().SetEquals(p0.TeamIds ?? [])) return true;
             return await SetRunTeam(choice, teamView, ct);
@@ -189,10 +197,18 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         var (_, _, play) = await Read(ct);
         var shown = play.TeamIds ?? [];
         NoteTeam(area, shown);
-        var (data, _, _, _) = await Account(ct);
+        if (key is not null) NoteTeam(key, shown);
+        var (data, gd, _, _) = await Account(ct);
+        // The bot's pick (Content teams, vaults included) for a team set to "the bot picks the best".
+        if (teams?.Default is { Mode: TeamMode.BotChooses } && BotTeams.Pick(data, gd, extractorRoot, contentArea, play.TeamSlots is > 0 and var slots ? slots : Math.Max(4, shown.Count)) is { Count: > 0 } best)
+        {
+            if (best.ToHashSet().SetEquals(shown)) return true;
+            log($"autoplay: STEP {area}: the bot's pick {string.Join(", ", best.Select(Who))}");
+            return await SetRunTeam(best, teamView, ct, leader: area == "tag-arena" ? null : best[0]);
+        }
         // An empty team screen with no team saved for it (Ehsan 2026-11-09: "when there is no team setup for an account for specific area, robot can
         // choose the team"): the strongest geared champions, as many as the screen's slots.
-        var pick = TeamRules.Resolve(TeamsOf(area), TeamVariant.Default, shown, data.Champions, slots: play.TeamSlots ?? 0, fillEmpty: play.TeamSlots is > 0);
+        var pick = TeamRules.Resolve(teams, TeamVariant.Default, shown, data.Champions, slots: play.TeamSlots ?? 0, fillEmpty: play.TeamSlots is > 0);
         if (shown.Count == 0 && pick.Team is { Count: > 0 } chosen)
             log($"autoplay: {area}: no team on its screen and none saved: the bot chooses the {chosen.Count} strongest geared champions ({play.TeamSlots} slots)");
         if (pick.DontPlay)
@@ -203,7 +219,8 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         }
         if (pick.Team is not { } team || team.ToHashSet().SetEquals(shown)) return true;
         log($"autoplay: STEP {area}: the default team from the Teams card");
-        return await SetRunTeam(team, teamView, ct);
+        // Slot 1 leads (its aura; Ehsan 2026-11-13: "it is important who sits in slot 1"); Tag Team's three teams keep their order.
+        return await SetRunTeam(team, teamView, ct, leader: area == "tag-arena" || teams?.Default.Mode != TeamMode.Saved ? null : team[0]);
     }
 
     /// <summary>The team screen set to this team (the arena's own screen); Cursed City's remembered team is left as it was.</summary>

@@ -36,7 +36,9 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
     private int _battles, _wins, _losses;
     private string _last = "";
 
-    private static bool BotChooses(PlayContext ctx) => ctx.Settings.Teams.GetValueOrDefault(AreaId)?.Default is { Mode: TeamMode.BotChooses };
+    /// <summary>A Doom Tower team set to "the bot picks" (the area's, or one of its difficulty/kind teams): a loss tries the next team.</summary>
+    private static bool BotChooses(PlayContext ctx) => ctx.Settings.Teams.Where(kv => kv.Key == AreaId || kv.Key.StartsWith(AreaId + ":", StringComparison.Ordinal))
+        .Any(kv => kv.Value.Default is { Mode: TeamMode.BotChooses });
 
     public bool IsEnabled(AutoplaySettings settings) => settings.DoomTower.Enabled;
 

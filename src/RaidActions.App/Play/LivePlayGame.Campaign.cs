@@ -428,6 +428,18 @@ public sealed partial class LivePlayGame
         return $"{pieces} piece{(pieces == 1 ? "" : "s")} for {string.Join(", ", picked.Select(m => m.Name))}" + (dryRun ? " (dry run)" : "");
     }
 
+    public async Task<int> CleanupGearAsync(GearCleanupSettings s, bool dryRun, CancellationToken ct)
+    {
+        var (data, _, _, _) = await Account(ct);
+        var pieces = GearSale.Cleanup(data.Artifacts, s);
+        if (pieces.Count == 0) { log("autoplay: gear clean-up: nothing matches the rules"); return 0; }
+        log($"autoplay: STEP gear clean-up: {pieces.Count} piece(s): {string.Join(", ", pieces.Take(30).Select(a => $"#{a.Id} {a.Rank}* {a.Rarity} {a.Slot} +{a.Level}"))}{(pieces.Count > 30 ? ", ..." : "")}");
+        var plan = RaidExtractor.Battle.SellPlan.Make(data, pieces.Select(a => (a, "gear clean-up (Auto Play)")), $"gear clean-up: {pieces.Count} pieces");
+        var (saved, path) = plan.SaveNew(ExtractorOutput, data);
+        await RunCommand(["sell", path, "--confirm", saved.Code, .. (dryRun ? new[] { "--dry-run" } : [])], ct);
+        return dryRun ? 0 : pieces.Count;
+    }
+
     private string GearDropsFile => Path.Combine(ExtractorOutput, "autoplay", "gear-drops.json");
 
     public async Task<int> GearAfterBattleAsync(string? area, GearSellSettings settings, bool dryRun, CancellationToken ct)

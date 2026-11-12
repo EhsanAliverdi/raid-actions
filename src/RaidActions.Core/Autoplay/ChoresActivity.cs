@@ -35,6 +35,12 @@ public interface IChoresGame
     /// </summary>
     Task<string> JoinClanAsync(bool dryRun, CancellationToken ct) => Task.FromResult("not supported");
 
+    /// <summary>The gear clean-up: the pieces <see cref="GearSale.Cleanup"/> picks sold through the sell command; how many (a dry run: 0, the sale shown).</summary>
+    Task<int> CleanupGearAsync(GearCleanupSettings s, bool dryRun, CancellationToken ct) => Task.FromResult(0);
+
+    /// <summary>The clan's Members page: Check in, and the stars' activity chests; what was done ("not supported" until the screen is explored).</summary>
+    Task<string> ClanCheckInAsync(bool dryRun, CancellationToken ct) => Task.FromResult("not supported");
+
     /// <summary>One piece upgraded (the choice from the gear advice); null when nothing is worth upgrading.</summary>
     /// <param name="minLevel">A quest's level.</param>
     /// <param name="attempts">A quest counting attempts: the next level only.</param>
@@ -79,6 +85,8 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         if (s.ArtifactUpgrades && ctx.QuestLeft(QuestNeedKind.ArtifactAttempts) > 0 && Open(ctx, "attempts")) return "attempts";
         if (s.ArtifactUpgrades && ctx.QuestLeft(QuestNeedKind.ArtifactLevel) > 0 && Open(ctx, "piece")) return "piece";
         if (s.AutoJoinClan && ctx.Utc >= _clanAt && Open(ctx, "clan")) return "clan";
+        if (s.ClanCheckIn && _checkInDay != DateOnly.FromDateTime(ctx.Utc) && Open(ctx, "checkin")) return "checkin";
+        if (s.Cleanup.Enabled && (s.Cleanup.EveryRun ? !_cleanedThisRun : _cleanupDay != DateOnly.FromDateTime(ctx.Utc)) && Open(ctx, "cleanup")) return "cleanup";
         if (s.InboxExpiringTokens && ctx.Utc >= _inboxAt && Open(ctx, "inbox")) return "inbox";
         if (s.PassRewards && ctx.Utc >= _passAt && Open(ctx, "pass")) return "pass";
         if (s.SparringPit && ctx.Utc >= _pitAt && Open(ctx, "pit")) return "pit";
@@ -88,15 +96,20 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         return null;
     }
 
-    private sealed record Saved(DateTime Market, DateTime Upgrade, DateTime Free, DateTime Inbox, DateTime Pass, DateTime Pit, Dictionary<string, DateTime> Paused, DateTime Clan = default);
+    private sealed record Saved(DateTime Market, DateTime Upgrade, DateTime Free, DateTime Inbox, DateTime Pass, DateTime Pit, Dictionary<string, DateTime> Paused, DateTime Clan = default,
+        DateOnly? CheckIn = null, DateOnly? Cleanup = null);
+
+    private DateOnly? _checkInDay, _cleanupDay;
+    private bool _cleanedThisRun;
 
     // The checks' next times kept for the next bot on the account (2026-11-06: each rotation restarted the bot and every reward page was opened again).
-    public string? SaveState() => System.Text.Json.JsonSerializer.Serialize(new Saved(_marketAt, _upgradeAt, _freeAt, _inboxAt, _passAt, _pitAt, new(_paused), _clanAt), AutoplayJson.Options);
+    public string? SaveState() => System.Text.Json.JsonSerializer.Serialize(new Saved(_marketAt, _upgradeAt, _freeAt, _inboxAt, _passAt, _pitAt, new(_paused), _clanAt, _checkInDay, _cleanupDay), AutoplayJson.Options);
 
     public void LoadState(string json, DateTime utc)
     {
         if (System.Text.Json.JsonSerializer.Deserialize<Saved>(json, AutoplayJson.Options) is not { } s) return;
         (_marketAt, _upgradeAt, _freeAt, _inboxAt, _passAt, _pitAt, _clanAt) = (s.Market, s.Upgrade, s.Free, s.Inbox, s.Pass, s.Pit, s.Clan);
+        (_checkInDay, _cleanupDay) = (s.CheckIn, s.Cleanup);
         foreach (var (k, v) in s.Paused) _paused[k] = v;
     }
 
@@ -123,6 +136,18 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
                     _clanAt = ctx.Utc + TimeSpan.FromHours(6);
                     var joined = await game.JoinClanAsync(ctx.DryRun, ct);
                     return joined.StartsWith("already", StringComparison.Ordinal) ? "" : Report(ctx, "clan", joined);
+                case "checkin":
+                {
+                    _checkInDay = DateOnly.FromDateTime(ctx.Utc);
+                    var done = await game.ClanCheckInAsync(ctx.DryRun, ct);
+                    return done == "not supported" ? "" : Report(ctx, "checkin", done);
+                }
+                case "cleanup":
+                {
+                    (_cleanupDay, _cleanedThisRun) = (DateOnly.FromDateTime(ctx.Utc), true);
+                    var sold = await game.CleanupGearAsync(s.Cleanup, ctx.DryRun, ct);
+                    return sold > 0 ? Report(ctx, "cleanup", $"gear clean-up: sold {sold} piece(s)") : Report(ctx, "cleanup", ctx.DryRun ? "gear clean-up shown (dry run)" : "gear clean-up: nothing to sell");
+                }
                 case "inbox":
                     _inboxAt = ctx.Utc + TimeSpan.FromMinutes(Math.Max(30, s.InboxEveryMinutes));
                     var tokens = await game.CollectExpiringTokensAsync(ctx.DryRun, ct);

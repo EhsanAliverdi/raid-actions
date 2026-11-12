@@ -247,7 +247,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             Targets = ctx.Settings.Rules.AllEnergyToFood
                 ? [.. s.Targets.Where(t => !_dryShown.Contains(t.Id) && (t.Region.StartsWith("Region", StringComparison.Ordinal) || t.Region.Contains("IronTwins", StringComparison.Ordinal)))]
                 : [.. QuestRows(ctx).Where(t => !_dryShown.Contains(t.Id)).Select(t => Smart(ctx, t, w)),
-                    .. s.Targets.Where(t => !_dryShown.Contains(t.Id) && ctx.Held(PushKey(t)) is null).Select(t => Smart(ctx, BestFarm(ctx, t, w), w))],
+                    .. s.Targets.Where(t => !_dryShown.Contains(t.Id) && ctx.Held(PushKey(t)) is null).Select(t => Smart(ctx, BestFarm(ctx, StepDown(ctx, t), w), w))],
             Food = s.Food with
             {
                 RankUp = s.Food.RankUp && ctx.Utc >= _rankUpBlockedUntil,
@@ -255,6 +255,21 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             },
         };
     }
+
+    /// <summary>A food farm row stepped down after losses (<see cref="DownKey"/>): the lower chapter it farms until the reset.</summary>
+    private static EnergyTarget StepDown(PlayContext ctx, EnergyTarget t) =>
+        ctx.Held(DownKey(t))?.Why is { } why && System.Text.RegularExpressions.Regex.Match(why, @"^Region\d+") is { Success: true } m ? t with { Region = m.Value } : t;
+
+    /// <summary>
+    /// A food farm row lost 3 times in a row: the same stage 3 chapters lower (12-3, 9-3, 6-3, 3-3: the short stages), with the same farmer and food, until the
+    /// reset (Ehsan 2026-11-13: "after several losses move back to 9-3 and still farm it with 3 foods", not a stronger champion in a food slot). Null: no
+    /// lower chapter.
+    /// </summary>
+    public static string? LowerFarm(string region) =>
+        System.Text.RegularExpressions.Regex.Match(region, @"^Region(\d+)$") is { Success: true } m && int.Parse(m.Groups[1].Value) - 3 is var lower and >= 1
+            ? $"Region{lower}" : null;
+
+    private static string DownKey(EnergyTarget t) => $"{AreaId}:down:{t.Id}";
 
     /// <summary>A best-farm row (<see cref="EnergyTarget.BestFarm"/>) with the stage the judge picks now; a new pick is told once.</summary>
     private EnergyTarget BestFarm(PlayContext ctx, EnergyTarget t, EnergyWorld w)
@@ -538,7 +553,14 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 // A farm row that keeps losing wastes the energy (2026-11-12 17:37-18:05, killer8465: 9 defeats in 11 at 12-3 Hard): three in a row and the
                 // row waits until the reset; the rows below play.
                 _defeatsInRow[run.Target.Id] = outcome.Result == BattleResult.Defeat ? _defeatsInRow.GetValueOrDefault(run.Target.Id) + 1 : 0;
-                if (!run.Target.Progress && _defeatsInRow[run.Target.Id] >= 3)
+                if (!run.Target.Progress && _defeatsInRow[run.Target.Id] >= 3 && run.Target is { Food: true, BestFarm: false, Area: "Story" } && LowerFarm(run.Region) is { } lower)
+                {
+                    _defeatsInRow[run.Target.Id] = 0;
+                    var lowerName = EnergyPlaces.StageName("Story", lower, run.Number);
+                    ctx.Hold(DownKey(run.Target), ClanBossRules.NextReset(ctx.Utc), $"{lower}: {where} was lost 3 times in a row: {run.AtDifficulty ?? run.Target.Difficulty} {lowerName} farmed until the reset");
+                    ctx.Event(AreaId, "farm", $"{where}: lost 3 times in a row; farming {run.AtDifficulty ?? run.Target.Difficulty} {lowerName} with the same team until the reset");
+                }
+                else if (!run.Target.Progress && _defeatsInRow[run.Target.Id] >= 3)
                 {
                     _defeatsInRow[run.Target.Id] = 0;
                     ctx.Hold(PushKey(run.Target), ClanBossRules.NextReset(ctx.Utc), $"{where} was lost 3 times in a row: the row waits until the reset (a team too weak for it)");

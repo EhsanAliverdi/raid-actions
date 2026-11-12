@@ -251,4 +251,13 @@ public class EnergyActivityTests
         Assert.Equal(1, status.Counters["Refills"]);
         Assert.Equal(1, status.Counters["Wins"]);
     }
+
+    [Fact]
+    public void A_farm_row_losing_steps_down_three_chapters_on_the_short_stages()
+    {
+        Assert.Equal("Region9", EnergyActivity.LowerFarm("Region12"));
+        Assert.Equal("Region3", EnergyActivity.LowerFarm("Region6"));
+        Assert.Null(EnergyActivity.LowerFarm("Region3"));
+        Assert.Null(EnergyActivity.LowerFarm("DragonsLair"));
+    }
 }

@@ -252,6 +252,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
     {
         var left = new List<string>();
         string? lastPath = null;
+        var repeats = 0;
         for (var hop = 0; hop < 12; hop++)
         {
             await NoBattle(ct, resultScreenOk: true);
@@ -285,7 +286,10 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             }
             var (target, problem) = UiTargets.Resolve(mine, kind);
             if (target is null) throw new StopException($"{top}: {problem} Nothing pressed.");
-            if (target.Path == lastPath) throw new StopException($"{top}: {target.Name} was clicked and is still there; stopped.");
+            // An offers overlay showing several offers (DoubleOffersOverlay, 2026-11-13): each close shows the next one, so its close twice more.
+            if (target.Path == lastPath && (!top.Contains("Offers", StringComparison.Ordinal) || ++repeats > 2))
+                throw new StopException($"{top}: {target.Name} was clicked and is still there; stopped.");
+            if (target.Path != lastPath) repeats = 0;
             lastPath = target.Path;
             var where = top == UiState.ChampionScreenView && s.ChampionScreen?.Champion is { } c ? $"{top} (champion #{c})" : top;
             try

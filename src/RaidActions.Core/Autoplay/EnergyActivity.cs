@@ -245,9 +245,9 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         return s with
         {
             Targets = ctx.Settings.Rules.AllEnergyToFood
-                ? [.. s.Targets.Where(t => !_dryShown.Contains(t.Id) && (t.Region.StartsWith("Region", StringComparison.Ordinal) || t.Region.Contains("IronTwins", StringComparison.Ordinal)))]
+                ? [.. EnergyGroups.Playable(s).Where(t => !_dryShown.Contains(t.Id) && (t.Region.StartsWith("Region", StringComparison.Ordinal) || t.Region.Contains("IronTwins", StringComparison.Ordinal)))]
                 : [.. QuestRows(ctx).Where(t => !_dryShown.Contains(t.Id)).Select(t => Smart(ctx, t, w)),
-                    .. s.Targets.Where(t => !_dryShown.Contains(t.Id) && ctx.Held(PushKey(t)) is null).Select(t => Smart(ctx, BestFarm(ctx, StepDown(ctx, t), w), w))],
+                    .. EnergyGroups.Playable(s).Where(t => !_dryShown.Contains(t.Id) && ctx.Held(PushKey(t)) is null).Select(t => Smart(ctx, BestFarm(ctx, StepDown(ctx, t), w), w))],
             Food = s.Food with
             {
                 RankUp = s.Food.RankUp && ctx.Utc >= _rankUpBlockedUntil,
@@ -358,7 +358,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     {
         NewDay(ctx);
         var s = ctx.Settings.Energy;
-        if (!s.Targets.Any(t => t.Enabled)) return Decision.Off("no place in the list is switched on");
+        if (!EnergyGroups.Playable(s).Any(t => t.Enabled)) return Decision.Off("no place in the list is switched on");
         if (_account is null) return Decision.Now("reading the account");
         if (QuestSummon(ctx) > 0) return Decision.Now("a quest asks for a summon: Mystery shards");
         var expectedWorld = World(ctx, _account, expected: true);

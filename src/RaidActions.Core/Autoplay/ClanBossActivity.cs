@@ -205,6 +205,7 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
     private readonly Dictionary<string, long> _knownTop = [];
     private DateOnly? _day;
     private DateOnly? _refillDay;
+    private int _lockedSteps;
 
     private void NewDay(PlayContext ctx)
     {
@@ -263,7 +264,13 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
         return Decision.Wait(_readAt + Recheck, $"no key to spend ({_account.Keys:0.##}, keeping {Cb(ctx).KeepKeys})");
     }
 
-    public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
+    public Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
+    {
+        _lockedSteps = 0;
+        return Turn(ctx, ct);
+    }
+
+    private async Task<string> Turn(PlayContext ctx, CancellationToken ct)
     {
         _account = await game.ReadClanBossAsync(ct);
         _readAt = ctx.Utc;
@@ -347,7 +354,12 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
             ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", $"{difficulty}: {outcome.Text}");
             // A difficulty the account has not unlocked: done for today, and the plan's next row is played on the next turn (2026-11-11: the referral
             // accounts never fought, every turn stopped at a locked Brutal).
-            if (!ctx.DryRun && outcome.Text.Contains("locked", StringComparison.Ordinal)) { _topChest.Add(difficulty); return ""; }
+            if (!ctx.DryRun && outcome.Text.Contains("locked", StringComparison.Ordinal))
+            {
+                _topChest.Add(difficulty);
+                // The next row in the same visit (the list is open; 2026-11-12: with push each locked difficulty cost a turn of its own).
+                return ++_lockedSteps <= ClanBossRules.Difficulties.Count ? await Turn(ctx, ct) : "";
+            }
             _retryAt = ctx.Utc + TimeSpan.FromHours(1); // not at once: it would hold the areas after it
             return "";
         }

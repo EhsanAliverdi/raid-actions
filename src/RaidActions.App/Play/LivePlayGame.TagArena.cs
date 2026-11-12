@@ -17,8 +17,13 @@ public sealed partial class LivePlayGame : ITagArenaGame
         return data.Account.Resources.GetValueOrDefault("Arena3x3Token");
     }
 
-    public async Task<int> CollectInboxTagTokensAsync(bool dryRun, CancellationToken ct) =>
-        (int)await CollectInbox(PlayTargets.IsTagTokens, "Arena3x3Token", "Tag Team tokens", dryRun, ct);
+    public async Task<int> CollectInboxTagTokensAsync(bool dryRun, CancellationToken ct)
+    {
+        await OpenTagArenaAsync(ct);
+        if (await RefillByPlus("Arena3x3Token", "Tag Team tokens", dryRun, ct) is > 0 and var got) return got;
+        if (!AutoplaySettings.Load(ExtractorOutput).Energy.RefillFor("Arena3x3Token").UseInbox) return 0;
+        return (int)await CollectInbox(PlayTargets.IsTagTokens, "Arena3x3Token", "Tag Team tokens", dryRun, ct);
+    }
 
     public async Task<ArenaBoard> OpenTagArenaAsync(CancellationToken ct)
     {

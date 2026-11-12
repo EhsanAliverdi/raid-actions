@@ -284,8 +284,14 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         return await Board(ct);
     }
 
-    public async Task<int> CollectInboxTokensAsync(bool dryRun, CancellationToken ct) =>
-        (int)await CollectInbox(PlayTargets.IsArenaTokens, "Token", "arena tokens", dryRun, ct);
+    public async Task<int> CollectInboxTokensAsync(bool dryRun, CancellationToken ct)
+    {
+        // The tokens' "+" first (the refill window takes them from the inbox), then the inbox itself.
+        await OpenClassicArenaAsync(ct);
+        if (await RefillByPlus("Token", "Classic Arena tokens", dryRun, ct) is > 0 and var got) return got;
+        if (!AutoplaySettings.Load(ExtractorOutput).Energy.RefillFor("Token").UseInbox) return 0;
+        return (int)await CollectInbox(PlayTargets.IsArenaTokens, "Token", "arena tokens", dryRun, ct);
+    }
 
     /// <summary>The entries the last <see cref="CollectInbox"/> really took (one left at the game's over-the-cap warning is not counted).</summary>
     private int _inboxTaken;

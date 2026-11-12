@@ -22,6 +22,9 @@ public interface IClanBossGame
     /// <summary>One key spent on the difficulty with the team the game shows (Quick Battle when asked); a dry run shows Start only.</summary>
     Task<BattleOutcome> FightClanBossAsync(string difficulty, bool quick, bool dryRun, CancellationToken ct);
 
+    /// <summary>No key left: the keys' "+" on the Clan Boss screen, the inbox's keys only (never gems); how many came.</summary>
+    Task<int> RefillClanBossKeysAsync(bool dryRun, CancellationToken ct) => Task.FromResult(0);
+
     /// <summary>The difficulty's standing today (its list and chest list opened, nothing spent); null when it cannot be read.</summary>
     Task<ClanStanding?> ReadClanStandingAsync(string difficulty, CancellationToken ct) => Task.FromResult<ClanStanding?>(null);
 
@@ -201,6 +204,7 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
     /// <summary>Each difficulty's top chest as last read, kept over restarts (2026-11-01: the read failed once, and the value was only in memory).</summary>
     private readonly Dictionary<string, long> _knownTop = [];
     private DateOnly? _day;
+    private DateOnly? _refillDay;
 
     private void NewDay(PlayContext ctx)
     {
@@ -261,6 +265,16 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
         _account = await game.ReadClanBossAsync(ct);
         _readAt = ctx.Utc;
         NewDay(ctx);
+        // No key while the day's plan still wants one: the inbox's keys (once a day; the switch on the Auto Play page).
+        if (!HasKey(ctx) && _refillDay != ClanBossRules.Day(ctx.Utc) && ClanBossRules.Next(ctx.Settings.ClanBoss, _account.BestDamage, _today, _topChest) is not null)
+        {
+            _refillDay = ClanBossRules.Day(ctx.Utc);
+            if (await game.RefillClanBossKeysAsync(ctx.DryRun, ct) is > 0 and var got)
+            {
+                ctx.Event(AreaId, "keys", $"took {got} Clan Boss key(s) from the inbox");
+                _account = await game.ReadClanBossAsync(ct);
+            }
+        }
         if (!HasKey(ctx)) return "";
         var s = ctx.Settings.ClanBoss;
         // The boss's real reset moves (Ehsan 2026-11-02): in the hours before the usual one, the game saying the first row has no key today is the new boss.

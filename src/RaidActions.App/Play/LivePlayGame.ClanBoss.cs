@@ -213,6 +213,12 @@ public sealed partial class LivePlayGame : IClanBossGame
     }
 
     /// <summary>An alliance boss's difficulty list on top (the map item <paramref name="mapKind"/>), from wherever the game is.</summary>
+    public async Task<int> RefillClanBossKeysAsync(bool dryRun, CancellationToken ct)
+    {
+        await OpenAllianceEnemy("clan-demonlord", PlayTargets.ClanResultView, ct);
+        return await RefillByPlus("AllianceBossKey", "Clan Boss keys", dryRun, ct);
+    }
+
     private async Task OpenAllianceEnemy(string mapKind, string resultView, CancellationToken ct)
     {
         _nav.FitWindow();

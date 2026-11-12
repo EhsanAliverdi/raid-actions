@@ -702,7 +702,15 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     {
         var (_, targets, _) = await Read(ct);
         var kind = targets.Any(t => t.View == view && t.Kind == "dialog-close" && t.NotClickable is null) ? "dialog-close" : "back";
-        await Click(kind, null, (s2, _) => Top(s2) != view, $"{view} closes", ct, view: view);
+        try { await Click(kind, null, (s2, _) => Top(s2) != view, $"{view} closes", ct, view: view); }
+        catch (PlayStopException e) when (e.Message.Contains("outside the client area", StringComparison.Ordinal))
+        {
+            // Its close is off the window: the game's back key instead (Esc closes the screen on top, nothing else).
+            if (Game.Window.GameWindow.Find().Window is not { } w || Input.MouseInput.SendEscape(w) is { } why) throw;
+            log($"autoplay: {view}: its close is off the window ({e.Message}): Esc sent");
+            await Pause(1200, ct);
+            if (Top(await ReadState(ct)) == view) throw;
+        }
     }
 
     /// <summary>A screen that is not the one the click should open: a purchase/refill is closed, anything else is left; the turn stops.</summary>

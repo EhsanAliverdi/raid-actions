@@ -79,6 +79,20 @@ public static class MouseInput
         return GetForegroundWindow() == game;
     }
 
+    /// <summary>
+    /// The game's own "back" key (Esc) to the game in front: only for a screen whose close button is off the window (2026-11-11/12: the summoned champion's
+    /// card, its close at y -95 on a 1298x732 window). The reason it was not sent, or null.
+    /// </summary>
+    public static string? SendEscape(GameWindowInfo w)
+    {
+        if (EnsureForeground(w) is { } why) return why;
+        keybd_event(0x1B, 0, 0, IntPtr.Zero);
+        Thread.Sleep(60);
+        keybd_event(0x1B, 0, KeyUp, IntPtr.Zero);
+        LastSentUtc = DateTime.UtcNow;
+        return null;
+    }
+
     private static bool AfterAltTap(IntPtr game)
     {
         keybd_event(VkMenu, 0, 0, IntPtr.Zero);

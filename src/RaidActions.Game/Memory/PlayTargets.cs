@@ -880,7 +880,9 @@ public static partial class PlayTargets
                     var rarity = Try(() => StringValue(g, g.Ref(item, MarketItem, "_rarityName")), null, notes, "MarketItemContext._rarityName");
                     var amount = Silver(count);
                     var silver = icon?.Contains("Silver", StringComparison.OrdinalIgnoreCase) == true;
-                    targets.Add(Make("market-item", $"market: {rarity} type {type}", n, button, $"type {type}, price {amount}{(silver ? ", silver" : $", icon {icon}")}", id: int.TryParse(n.Name, out var slot) ? slot : -1));
+                    // Type 1 is the Mystery shard (bought for 5,000 silver, 2026-11-13: the reward was +1 Mystery shard); its rarity name is empty.
+                    var what = type == 1 ? "Mystery shard" : $"{rarity} type {type}";
+                    targets.Add(Make("market-item", $"market: {what}", n, button, $"type {type}, price {amount}{(silver ? ", silver" : $", icon {icon}")}", id: int.TryParse(n.Name, out var slot) ? slot : -1));
                     break;
                 }
                 case TavernItem:

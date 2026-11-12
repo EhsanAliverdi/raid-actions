@@ -299,6 +299,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
 
     /// <summary>Wins and losses per stage today (place/region/difficulty/number): a stage won every time is farmed with Super Raid.</summary>
     private readonly Dictionary<string, (int Won, int Lost)> _stageResults = [];
+    private readonly Dictionary<string, int> _defeatsInRow = [];
 
     private static string StageKey(string area, string region, string difficulty, int number) => $"{area}/{region}/{difficulty}/{number}";
 
@@ -534,6 +535,15 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 ctx.Event(AreaId, "battle", $"{outcome.Result} {where} [row {run.Target.Id}]. {outcome.Text}");
                 if (outcome.Result == BattleResult.Defeat && run.Target.Progress)
                     ctx.Hold(PushKey(run.Target), ctx.Utc + TimeSpan.FromMinutes(45), $"{where} was lost: the rows below play, tried again in 45 minutes");
+                // A farm row that keeps losing wastes the energy (2026-11-12 17:37-18:05, killer8465: 9 defeats in 11 at 12-3 Hard): three in a row and the
+                // row waits until the reset; the rows below play.
+                _defeatsInRow[run.Target.Id] = outcome.Result == BattleResult.Defeat ? _defeatsInRow.GetValueOrDefault(run.Target.Id) + 1 : 0;
+                if (!run.Target.Progress && _defeatsInRow[run.Target.Id] >= 3)
+                {
+                    _defeatsInRow[run.Target.Id] = 0;
+                    ctx.Hold(PushKey(run.Target), ClanBossRules.NextReset(ctx.Utc), $"{where} was lost 3 times in a row: the row waits until the reset (a team too weak for it)");
+                    ctx.Event(AreaId, "hold", $"{where}: lost 3 times in a row; the row waits until the reset");
+                }
                 if (outcome.Result != BattleResult.Victory && run.Target.Id.StartsWith("quest-", StringComparison.Ordinal))
                     _questRowLosses[run.Target.Id] = _questRowLosses.GetValueOrDefault(run.Target.Id) + 1;
                 // A win of a mission's row: its missions' progress as read now, against the last win's; the same twice and the row stops.

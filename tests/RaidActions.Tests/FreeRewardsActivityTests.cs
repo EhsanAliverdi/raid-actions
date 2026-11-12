@@ -31,7 +31,7 @@ public class FreeRewardsActivityTests
 
         public DateTime FirstQuestAt { get; private set; } = DateTime.MaxValue;
 
-        public Task<QuestPass> QuestPassAsync(bool claim, bool dryRun, CancellationToken ct)
+        public Task<QuestPass> QuestPassAsync(bool claim, bool dryRun, CancellationToken ct, bool claimMissions = true)
         {
             if (FirstQuestAt == DateTime.MaxValue) FirstQuestAt = DateTime.UtcNow;
             QuestCalls++;

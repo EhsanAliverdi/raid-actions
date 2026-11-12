@@ -11,7 +11,7 @@ public interface IFreeRewardsGame
     /// The quests window: every tab read (the quests, their progress) and, when <paramref name="claim"/>, its Claim all pressed where the
     /// game says a reward waits. How many tabs were claimed, and the quests read.
     /// </summary>
-    Task<QuestPass> QuestPassAsync(bool claim, bool dryRun, CancellationToken ct);
+    Task<QuestPass> QuestPassAsync(bool claim, bool dryRun, CancellationToken ct, bool claimMissions = true);
 }
 
 /// <summary>
@@ -97,7 +97,7 @@ public sealed class FreeRewardsActivity(IFreeRewardsGame game) : IActivity
             try
             {
                 var claim = s.Quests && ctx.Settings.Quests.ClaimRewards;
-                var pass = await game.QuestPassAsync(claim, ctx.DryRun, ct);
+                var pass = await game.QuestPassAsync(claim, ctx.DryRun, ct, ctx.Settings.Quests.ClaimMissions);
                 if (pass.Claimed > 0 && !ctx.DryRun)
                 {
                     ctx.Event(AreaId, "quests", $"claimed the quest rewards of {pass.Claimed} tab(s)");

@@ -45,7 +45,7 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
         return got;
     }
 
-    public async Task<QuestPass> QuestPassAsync(bool claim, bool dryRun, CancellationToken ct)
+    public async Task<QuestPass> QuestPassAsync(bool claim, bool dryRun, CancellationToken ct, bool claimMissions = true)
     {
         var read = new Dictionary<(string, int, string), QuestRead>();
         _nav.FitWindow();
@@ -119,7 +119,7 @@ public sealed partial class LivePlayGame : IFreeRewardsGame
                     foreach (var q in mp.Quests ?? []) read[(q.Tab, q.Id, q.Text)] = q;
                     var done = mt.FirstOrDefault(t => t.Kind == "mission-item" && t.Note == "state 2" && t.NotClickable is null);
                     if (i == 0) log($"autoplay: missions: {string.Join("; ", mt.Where(t => t.Kind == "mission-item").Select(t => $"{t.Name} [{t.Note}] {t.NotClickable}"))}. Screen dump: {DumpScreen("missions")}");
-                    if (!claim || done is null) break;
+                    if (!claim || !claimMissions || done is null) break;
                     if (dryRun)
                     {
                         if (done.Rect is { } r) Shot($"autoplay: WOULD CLICK {done.Name} (dry run: NOT pressed)", r, always: true);

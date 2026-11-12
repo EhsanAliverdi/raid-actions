@@ -104,6 +104,9 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         DateOnly? CheckIn = null, DateOnly? Cleanup = null);
 
     private DateOnly? _checkInDay, _cleanupDay;
+
+    /// <summary>The clean-up's pieces per sale (the live game's batch).</summary>
+    public const int CleanupBatch = 100;
     private bool _cleanedThisRun;
 
     // The checks' next times kept for the next bot on the account (2026-11-06: each rotation restarted the bot and every reward page was opened again).
@@ -148,8 +151,11 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
                 }
                 case "cleanup":
                 {
-                    (_cleanupDay, _cleanedThisRun) = (DateOnly.FromDateTime(ctx.Utc), true);
+                    // Marked done only once it went through: a stopped sale is tried again after the job's pause.
                     var sold = await game.CleanupGearAsync(s.Cleanup, ctx.DryRun, ct);
+                    (_cleanupDay, _cleanedThisRun) = (DateOnly.FromDateTime(ctx.Utc), true);
+                    // A full batch: more may be left; the next batch in 20 minutes, not tomorrow.
+                    if (sold >= CleanupBatch) { (_cleanupDay, _cleanedThisRun) = (null, false); _paused["cleanup"] = ctx.Utc + TimeSpan.FromMinutes(20); }
                     return sold > 0 ? Report(ctx, "cleanup", $"gear clean-up: sold {sold} piece(s)") : Report(ctx, "cleanup", ctx.DryRun ? "gear clean-up shown (dry run)" : "gear clean-up: nothing to sell");
                 }
                 case "inbox":

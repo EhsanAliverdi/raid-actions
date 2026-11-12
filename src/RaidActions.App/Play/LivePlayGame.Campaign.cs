@@ -428,11 +428,17 @@ public sealed partial class LivePlayGame
         return $"{pieces} piece{(pieces == 1 ? "" : "s")} for {string.Join(", ", picked.Select(m => m.Name))}" + (dryRun ? " (dry run)" : "");
     }
 
+    /// <summary>The clean-up's pieces per sale.</summary>
+    public const int CleanupBatch = 100;
+
     public async Task<int> CleanupGearAsync(GearCleanupSettings s, bool dryRun, CancellationToken ct)
     {
         var (data, _, _, _) = await Account(ct);
-        var pieces = GearSale.Cleanup(data.Artifacts, s);
-        if (pieces.Count == 0) { log("autoplay: gear clean-up: nothing matches the rules"); return 0; }
+        var all = GearSale.Cleanup(data.Artifacts, s);
+        if (all.Count == 0) { log("autoplay: gear clean-up: nothing matches the rules"); return 0; }
+        // At most a batch per sale (2026-11-12: 447 pieces at a click each; the chore comes back while pieces remain).
+        var pieces = all.Take(CleanupBatch).ToList();
+        if (all.Count > pieces.Count) log($"autoplay: gear clean-up: {all.Count} pieces match; {pieces.Count} now, the rest in the next batches");
         log($"autoplay: STEP gear clean-up: {pieces.Count} piece(s): {string.Join(", ", pieces.Take(30).Select(a => $"#{a.Id} {a.Rank}* {a.Rarity} {a.Slot} +{a.Level}"))}{(pieces.Count > 30 ? ", ..." : "")}");
         var plan = RaidExtractor.Battle.SellPlan.Make(data, pieces.Select(a => (a, "gear clean-up (Auto Play)")), $"gear clean-up: {pieces.Count} pieces");
         var (saved, path) = plan.SaveNew(ExtractorOutput, data);

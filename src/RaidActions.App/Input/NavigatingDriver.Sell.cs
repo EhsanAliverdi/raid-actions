@@ -276,8 +276,23 @@ public sealed partial class NavigatingDriver
         if (item.HasOwner != false) throw new StopException($"#{id}: memory does not show it unequipped ({(item.HasOwner is null ? "unread" : "worn")}); not ticked.");
         if (item.SellMarked == true) throw new StopException($"#{id} is already ticked for sale.");
         var sofar = ticked.ToList();
-        await Click(a, "inventory-item", id, null, (s2, _) => s2.Sell is { } x && x.Is([.. sofar, id]), $"#{id} ticked (and only the pieces so far)", ct,
-            before: s2 => s2.Sell is { } x && x.Is(sofar) ? null : $"the ticked pieces changed before #{id} ({s2.Sell})");
+        // A click the game did not take (2026-11-12 12:30, the gear clean-up's 22nd piece: the list stayed as it was) is sent once more; anything else stops.
+        for (var attempt = 1; ; attempt++)
+        {
+            try
+            {
+                await Click(a, "inventory-item", id, null, (s2, _) => s2.Sell is { } x && x.Is([.. sofar, id]), $"#{id} ticked (and only the pieces so far)", ct,
+                    before: s2 => s2.Sell is { } x && x.Is(sofar) ? null : $"the ticked pieces changed before #{id} ({s2.Sell})");
+                break;
+            }
+            catch (StopException e) when (attempt == 1 && e.Message.StartsWith("After clicking", StringComparison.Ordinal))
+            {
+                var (s3, _) = await Read(ct);
+                if (s3.Sell is not { } now || !now.Is(sofar)) throw;
+                log($"sell {ListName(slot)}: #{id} not taken by the game: clicked once more");
+                await Task.Delay(600, ct);
+            }
+        }
         ticked.Add(id);
         log($"sell {ListName(slot)}: #{id} ticked ({ticked.Count} of {total})");
     }

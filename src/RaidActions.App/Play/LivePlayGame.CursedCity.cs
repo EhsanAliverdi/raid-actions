@@ -546,6 +546,10 @@ public sealed partial class LivePlayGame : ICursedCityGame
         var emptied = 0;
         var down = true;
         string? lastShown = null;
+        // The compact list (3 rows that scroll sideways, 2026-11-12: "MyHeroesCompact_h" on a 1298x732 window) does not follow the wheel: once the wheel
+        // moves nothing, the list is dragged instead (Ehsan: "you kept scrolling to the left and stuck there ... you end up not selecting any food").
+        var drag = false;
+        var wheelTried = false;
         var looking = 0;
         // Scrolling to a champion the list has built off view: pixels per wheel notch (signed) learnt from the first scroll, then one
         // scroll of the right size (not a search; Ehsan 2026-10-30: "you are scrolling too much").
@@ -649,7 +653,13 @@ public sealed partial class LivePlayGame : ICursedCityGame
             {
                 // Not built: big steps one way, turning around at an end of the list (the same champions shown twice).
                 var now = string.Join(",", (play.Picks ?? []).Where(p => p.Pick is { FullyVisible: true }).Select(p => p.HeroId));
-                if (now == lastShown)
+                if (now == lastShown && wheelTried && !drag)
+                {
+                    // The wheel moved nothing: drag from now on, the same way (not an end of the list).
+                    drag = true;
+                    log("autoplay: the champion list does not follow the wheel: dragging it");
+                }
+                else if (now == lastShown)
                 {
                     down = !down;
                     // Both ends of the list seen (Ehsan 2026-11-06: "it tried 100 times to scroll left and right"): not in it; one sweep, never more.
@@ -660,7 +670,21 @@ public sealed partial class LivePlayGame : ICursedCityGame
                 notches = down ? -8 : 8;
             }
             lastNotches = notches;
-            if (MouseInput.Wheel(w, viewX, shown.Average(r => r.Center.Y), notches) is { } notSent) throw new PlayStopException("Not scrolled: " + notSent);
+            var viewY = shown.Average(r => r.Center.Y);
+            if (drag)
+            {
+                // A drag of the shown part's width (or the built champion's distance), toward where the list goes on; the list follows the cursor.
+                var span = shown.Max(r => r.X + r.Width) - shown.Min(r => r.X);
+                var dx = pick?.Pick?.Rect is { } at ? Math.Clamp(viewX - at.Center.X, -span * 0.8f, span * 0.8f) : (down ? -1 : 1) * span * 0.7f;
+                var x1 = Math.Clamp(viewX - dx / 2, 40, w.Client.Width - 40);
+                if (MouseInput.Drag(w, x1, viewY, Math.Clamp(x1 + dx, 20, w.Client.Width - 20), viewY) is { } notDragged) throw new PlayStopException("Not dragged: " + notDragged);
+                lastX = null;
+                pxPerNotch = null;
+                await Task.Delay(600, ct);
+                continue;
+            }
+            wheelTried = true;
+            if (MouseInput.Wheel(w, viewX, viewY, notches) is { } notSent) throw new PlayStopException("Not scrolled: " + notSent);
             await Task.Delay(350, ct);
         }
         // A champion the list never showed (scrolled both ways): not on offer for this level; the level is planned again without it.

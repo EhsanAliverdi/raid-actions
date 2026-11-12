@@ -751,6 +751,14 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
                 (s, why) = game.ReadUi();
             }
             if (s is null) throw new StopException("UI state unavailable: " + why);
+            // A finished battle's result screen on top (2026-11-12 15:42: a gear clean-up sale waited behind a Campaign defeat screen): left by its way
+            // back, then the wait goes on (the battle itself is never touched).
+            if (!resultScreenOk && !s.BattleRunning && s.Top?.Name is { } top && top.StartsWith("BattleFinish", StringComparison.Ordinal))
+            {
+                log($"{top}: the battle is over: leaving its result screen");
+                await GoHome(new UiAction(ActionKind.OpenChampion, 0, "leave the result screen"), ct);
+                continue;
+            }
             var running = resultScreenOk ? s.BattleRunning : s.InBattle;
             if (!running && !s.UiBlocked) return;
             if (DateTime.Now > until) throw new StopException("A battle (or its result screen) stayed open for 30 minutes.");

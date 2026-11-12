@@ -242,6 +242,11 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
         foreach (var e in events.Where(e => e.Area == AreaId && e.Kind == "standing"))
             if (System.Text.RegularExpressions.Regex.Match(e.Text, @"^(\w+):.*top chest ([\d,]+)") is { Success: true } m)
                 _knownTop[m.Groups[1].Value] = long.Parse(m.Groups[2].Value.Replace(",", ""), System.Globalization.CultureInfo.InvariantCulture);
+        // Today's locked difficulties and the ones past their top chest, kept across the rotation's restarts (2026-11-12: four locked rows checked
+        // again on every turn, 25 s each time).
+        foreach (var e in events.Where(e => e.Area == AreaId && ClanBossRules.Day(e.Utc) == day
+            && (e.Kind == "skip" && e.Text.Contains("is locked in the game", StringComparison.Ordinal) || e.Kind == "full")))
+            if (ClanBossRules.Difficulties.FirstOrDefault(d => e.Text.StartsWith(d + ":", StringComparison.Ordinal)) is { } locked) _topChest.Add(locked);
         foreach (var e in events.Where(e => e.Area == AreaId && e.Kind == "battle" && ClanBossRules.Day(e.Utc) == day))
         {
             _battles++;

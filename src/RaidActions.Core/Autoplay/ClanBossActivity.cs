@@ -231,6 +231,9 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
 
     public bool IsEnabled(AutoplaySettings settings) => settings.ClanBoss.Enabled;
 
+    /// <summary>The Clan Boss settings with push applied (the hardest difficulty unlocked first).</summary>
+    private static ClanBossSettings Cb(PlayContext ctx) => ClanBossRules.WithPush(ctx.Settings.ClanBoss, ctx.Settings.Push);
+
     public void Restore(IEnumerable<AutoplayEvent> events, DateTime utc)
     {
         var day = ClanBossRules.Day(utc);
@@ -246,18 +249,18 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
         }
     }
 
-    private bool HasKey(PlayContext ctx) => _account is { } a && Math.Floor(a.Keys) >= 1 + Math.Max(0, ctx.Settings.ClanBoss.KeepKeys);
+    private bool HasKey(PlayContext ctx) => _account is { } a && Math.Floor(a.Keys) >= 1 + Math.Max(0, Cb(ctx).KeepKeys);
 
     public Decision Decide(PlayContext ctx)
     {
         NewDay(ctx);
         if (_dryShown) return Decision.Off("shown in this dry run");
         if (ctx.Utc < _retryAt) return Decision.Wait(_retryAt, "could not start: tried again later");
-        if (_account is not null && ClanBossRules.Next(ctx.Settings.ClanBoss, _account.BestDamage, _today, _topChest) is null)
+        if (_account is not null && ClanBossRules.Next(Cb(ctx), _account.BestDamage, _today, _topChest) is null)
             return Decision.Wait(ClanBossRules.NextReset(ctx.Utc), "the key plan is done for today");
         if (_account is null || ctx.Utc - _readAt >= Recheck) return Decision.Now("reading the keys");
-        if (HasKey(ctx)) return Decision.Now($"{Math.Floor(_account.Keys)} key(s): {ClanBossRules.Next(ctx.Settings.ClanBoss, _account.BestDamage, _today, _topChest)}");
-        return Decision.Wait(_readAt + Recheck, $"no key to spend ({_account.Keys:0.##}, keeping {ctx.Settings.ClanBoss.KeepKeys})");
+        if (HasKey(ctx)) return Decision.Now($"{Math.Floor(_account.Keys)} key(s): {ClanBossRules.Next(Cb(ctx), _account.BestDamage, _today, _topChest)}");
+        return Decision.Wait(_readAt + Recheck, $"no key to spend ({_account.Keys:0.##}, keeping {Cb(ctx).KeepKeys})");
     }
 
     public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
@@ -266,7 +269,7 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
         _readAt = ctx.Utc;
         NewDay(ctx);
         // No key while the day's plan still wants one: the inbox's keys (once a day; the switch on the Auto Play page).
-        if (!HasKey(ctx) && _refillDay != ClanBossRules.Day(ctx.Utc) && ClanBossRules.Next(ctx.Settings.ClanBoss, _account.BestDamage, _today, _topChest) is not null)
+        if (!HasKey(ctx) && _refillDay != ClanBossRules.Day(ctx.Utc) && ClanBossRules.Next(Cb(ctx), _account.BestDamage, _today, _topChest) is not null)
         {
             _refillDay = ClanBossRules.Day(ctx.Utc);
             if (await game.RefillClanBossKeysAsync(ctx.DryRun, ct) is > 0 and var got)
@@ -276,7 +279,7 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
             }
         }
         if (!HasKey(ctx)) return "";
-        var s = ctx.Settings.ClanBoss;
+        var s = Cb(ctx);
         // The boss's real reset moves (Ehsan 2026-11-02): in the hours before the usual one, the game saying the first row has no key today is the new boss.
         if (ClanBossRules.NextReset(ctx.Utc) - ctx.Utc <= ResetWindow && s.Plan.FirstOrDefault()?.Difficulty is { } first && _today.GetValueOrDefault(first) > 0
             && await game.ReadClanStandingAsync(first, ct) is { KeysSpent: 0, Damage: 0 })
@@ -359,7 +362,7 @@ public sealed class ClanBossActivity(IClanBossGame game) : IActivity
 
     public AreaStatus Status(PlayContext ctx, Decision decision)
     {
-        var s = ctx.Settings.ClanBoss;
+        var s = Cb(ctx);
         var state = !s.Enabled ? AreaState.Off : decision.Act ? AreaState.Playing : decision.UntilUtc is null ? AreaState.Done : AreaState.Waiting;
         var counters = new Dictionary<string, int> { ["Battles"] = _battles };
         if (_account is { } a) counters["Keys"] = (int)Math.Floor(a.Keys);

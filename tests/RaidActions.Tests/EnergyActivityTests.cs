@@ -112,7 +112,8 @@ public class EnergyActivityTests
         await engine.RunAsync(once: false, Limit());
         Assert.DoesNotContain(host.Events, e => e.Kind == "chain");
         var first = host.Events.First(e => e.Kind == "turn" && e.Area == EnergyActivity.AreaId);
-        Assert.Matches(@"\((7|[89]|\d\d) runs from the result screen\)", first.Text);   // all the energy in one go (300: five Super Raids at 48, two at 24)
+        // All the energy in one go (300 at 48 a Super Raid: six; since 2026-11-12 a stage won every time is farmed with Super Raid whenever it can be paid).
+        Assert.Matches(@"\(([6-9]|\d\d) runs from the result screen\)", first.Text);
     }
 
     /// <summary>An arena at its token cap that wants a look (2026-11-06: it broke every Campaign chain, and Energy, full too and first, played on).</summary>

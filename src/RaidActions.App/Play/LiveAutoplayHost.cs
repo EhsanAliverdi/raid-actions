@@ -312,7 +312,11 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
         IReadOnlyList<TaskRow> open;
         try { open = book.OpenTasks(); }
         catch (Microsoft.Data.Sqlite.SqliteException) { return null; }
-        var task = open.FirstOrDefault(t => t.State == TodoState.InProgress && t.Kind != "quest") ?? open.FirstOrDefault(t => t.FollowUpDue(now));
+        // Only today's work holds a turn (2026-11-12 10:44-10:53: yesterday's Faction Wars gear task, never closed, kept BlackLord65 with nothing to do;
+        // Ehsan: "why wait? just schedule the next visit").
+        bool Recent(TaskRow t) => (t.UpdatedUtc ?? t.CreatedUtc) is { } at && now - at < TimeSpan.FromHours(6);
+        var task = open.FirstOrDefault(t => t.State == TodoState.InProgress && t.Kind != "quest" && Recent(t) && (t.DeadlineUtc is not { } d || d > now))
+            ?? open.FirstOrDefault(t => t.FollowUpDue(now) && Recent(t));
         return task is null ? null : $"{task.Title}: up to {extra} min more";
     }
 

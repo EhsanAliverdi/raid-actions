@@ -297,6 +297,11 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     /// <summary>A climbing row's rest after a defeat (2026-11-03: 12-1 lost with a 35 Kael; the energy goes to the farm row meanwhile).</summary>
     private static string PushKey(EnergyTarget t) => $"{AreaId}:push:{t.Id}";
 
+    /// <summary>Wins and losses per stage today (place/region/difficulty/number): a stage won every time is farmed with Super Raid.</summary>
+    private readonly Dictionary<string, (int Won, int Lost)> _stageResults = [];
+
+    private static string StageKey(string area, string region, string difficulty, int number) => $"{area}/{region}/{difficulty}/{number}";
+
     /// <summary>What each quest row counts, for Super Raid (drops or clears); a row not here is the list's own.</summary>
     private readonly Dictionary<string, SuperRaidRules.Need> _rowNeed = [];
 
@@ -307,11 +312,18 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     private EnergyTarget Smart(PlayContext ctx, EnergyTarget t, EnergyWorld w)
     {
         var r = ctx.Settings.Rules;
+        // A new level: never a Super Raid (Ehsan 2026-11-12: "if you are trying a new level never use super raid").
+        if (r.SmartSuperRaid && t.Progress) return t with { SuperRaid = false };
         if (r.SmartSuperRaid && t.Food && _account?.Champions is { } champions) return SmartFood(ctx, t, w, champions);
         if (!r.SmartSuperRaid || t.Area != "Dungeon" || t.Food || t.Progress) return t;
         var need = _rowNeed.TryGetValue(t.Id, out var n) ? n : SuperRaidRules.Need.Farm;
         if ((t.Stage ?? EnergyPlanner.HighestBeaten(t, w.Progress)) is not { } number) return t;
         var (resource, cost, known, _) = EnergyPlanner.Cost(t with { SuperRaid = false }, number, w);
+        var (won, lost) = _stageResults.GetValueOrDefault(StageKey(t.Area, t.Region, t.Difficulty, number));
+        // Keys (Iron Twins) and stages won every time: Super Raid whenever it can be paid (a quest that counts clears still never).
+        if (need != SuperRaidRules.Need.Clears && (known || resource != "Energy")
+            && SuperRaidRules.Smart(false, resource, w.Resources.GetValueOrDefault(resource), cost, w.SuperRaidMultiplier, won, lost) is { } decided)
+            return t with { SuperRaid = decided };
         if (resource != "Energy" || !known) return t;
         var energy = w.Resources.GetValueOrDefault("Energy");
         var cap = ctx.LastResources?.EnergyCap ?? 124;
@@ -516,6 +528,9 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 }
                 _runsToday[run.Target.Id] = _runsToday.GetValueOrDefault(run.Target.Id) + 1;
                 if (outcome.Result == BattleResult.Victory) _wins++; else _losses++;
+                var sk = StageKey(run.Target.Area, run.Region, run.AtDifficulty ?? run.Target.Difficulty, run.Number);
+                var (sw, sl) = _stageResults.GetValueOrDefault(sk);
+                _stageResults[sk] = outcome.Result == BattleResult.Victory ? (sw + 1, sl) : (sw, sl + 1);
                 ctx.Event(AreaId, "battle", $"{outcome.Result} {where} [row {run.Target.Id}]. {outcome.Text}");
                 if (outcome.Result == BattleResult.Defeat && run.Target.Progress)
                     ctx.Hold(PushKey(run.Target), ctx.Utc + TimeSpan.FromMinutes(45), $"{where} was lost: the rows below play, tried again in 45 minutes");

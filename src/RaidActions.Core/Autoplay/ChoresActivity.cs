@@ -75,7 +75,10 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
 
     /// <summary>The clean-up first at the start of a run (Ehsan 2026-11-12: "at the start, after the game synced, you know if anything is to sell").</summary>
     private bool CleanupDue(PlayContext ctx) => ctx.Settings.Chores is { Enabled: true, Cleanup.Enabled: true } c
-        && (c.Cleanup.EveryRun ? !_cleanedThisRun : _cleanupDay != DateOnly.FromDateTime(ctx.Utc)) && Open(ctx, "cleanup");
+        && (c.Cleanup.EveryRun ? !_cleanedThisRun : _cleanupDay != CleanupToday(ctx)) && Open(ctx, "cleanup");
+
+    /// <summary>The clean-up's day is Ehsan's own (local) day, not the game's UTC day (2026-11-13: at UTC+11 the UTC day only starts at 11:00).</summary>
+    private static DateOnly CleanupToday(PlayContext ctx) => DateOnly.FromDateTime(DateTime.SpecifyKind(ctx.Utc, DateTimeKind.Utc).ToLocalTime());
 
     private bool Open(PlayContext ctx, string job) => !_paused.TryGetValue(job, out var until) || ctx.Utc >= until;
 
@@ -153,7 +156,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
                 {
                     // Marked done only once it went through: a stopped sale is tried again after the job's pause.
                     var sold = await game.CleanupGearAsync(s.Cleanup, ctx.DryRun, ct);
-                    (_cleanupDay, _cleanedThisRun) = (DateOnly.FromDateTime(ctx.Utc), true);
+                    (_cleanupDay, _cleanedThisRun) = (CleanupToday(ctx), true);
                     // A full batch: more may be left; the next batch in 20 minutes, not tomorrow.
                     if (sold >= CleanupBatch) { (_cleanupDay, _cleanedThisRun) = (null, false); _paused["cleanup"] = ctx.Utc + TimeSpan.FromMinutes(20); }
                     return sold > 0 ? Report(ctx, "cleanup", $"gear clean-up: sold {sold} piece(s)") : Report(ctx, "cleanup", ctx.DryRun ? "gear clean-up shown (dry run)" : "gear clean-up: nothing to sell");

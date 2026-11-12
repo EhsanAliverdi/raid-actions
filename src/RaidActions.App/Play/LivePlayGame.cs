@@ -139,9 +139,53 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     /// <summary>The page's teams for this area, read fresh so a change acts at once.</summary>
     private AreaTeams? TeamsOf(string area) => AutoplaySettings.Load(ExtractorOutput).Teams.GetValueOrDefault(area);
 
-    /// <summary>A team screen open: what it shows noted, and the area's default set when the page says so. False: the game refused a champion.</summary>
-    private async Task<bool> ApplyDefaultTeam(string area, string teamView, CancellationToken ct)
+    private string TeamTriesFile => Path.Combine(ExtractorOutput, "autoplay", "team-tries.json");
+
+    private Dictionary<string, List<TeamTry>> LoadTries()
     {
+        try { return File.Exists(TeamTriesFile) ? System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, List<TeamTry>>>(File.ReadAllText(TeamTriesFile), AutoplayJson.Options) ?? [] : []; }
+        catch (Exception e) when (e is IOException or System.Text.Json.JsonException or UnauthorizedAccessException) { return []; }
+    }
+
+    /// <summary>The team tried at the stage now (set by <see cref="ApplyDefaultTeam"/> when the bot chose it), recorded with the battle's result.</summary>
+    private (string Key, List<int> Ids)? _trying;
+
+    private void RecordTry(BattleResult result)
+    {
+        if (_trying is not { } t || result is not (BattleResult.Victory or BattleResult.Defeat)) return;
+        _trying = null;
+        var all = LoadTries();
+        var list = all.TryGetValue(t.Key, out var l) ? l : all[t.Key] = [];
+        list.Add(new TeamTry(t.Ids, result == BattleResult.Victory, DateTime.UtcNow));
+        if (list.Count > 40) list.RemoveRange(0, list.Count - 40);
+        try { Directory.CreateDirectory(Path.GetDirectoryName(TeamTriesFile)!); File.WriteAllText(TeamTriesFile, System.Text.Json.JsonSerializer.Serialize(all, AutoplayJson.Options)); }
+        catch (IOException) { }
+        log($"autoplay: team {string.Join(", ", t.Ids.Select(i => $"#{i}"))} {(result == BattleResult.Victory ? "won" : "lost")} at {t.Key}");
+    }
+
+    /// <summary>A team screen open: what it shows noted, and the area's default set when the page says so. False: the game refused a champion.</summary>
+    private async Task<bool> ApplyDefaultTeam(string area, string teamView, CancellationToken ct, string? stage = null)
+    {
+        _trying = null;
+        // The bot chooses here and the stage is known (Doom Tower, Faction Wars): the team that won here, else the next one not lost here.
+        if (stage is not null && TeamsOf(area)?.Default is { Mode: TeamMode.BotChooses })
+        {
+            var (_, _, p0) = await Read(ct);
+            var (d0, _, _, _) = await Account(ct);
+            var key = $"{area}|{stage}";
+            var tried = LoadTries().GetValueOrDefault(key) ?? [];
+            var size = p0.TeamSlots is > 0 and var n ? n : 5;
+            if (TeamTries.Pick(TeamTries.Variants(d0.Champions, size), tried) is not { } choice)
+            {
+                log($"autoplay: {area}: every team tried at {stage} lost: waiting");
+                await Back(teamView, ct);
+                return false;
+            }
+            _trying = (key, choice);
+            log($"autoplay: STEP {area} {stage}: the bot's team {string.Join(", ", choice.Select(i => $"#{i}"))} ({tried.Count(t => !t.Won)} lost here so far)");
+            if (choice.ToHashSet().SetEquals(p0.TeamIds ?? [])) return true;
+            return await SetRunTeam(choice, teamView, ct);
+        }
         var (_, _, play) = await Read(ct);
         var shown = play.TeamIds ?? [];
         NoteTeam(area, shown);

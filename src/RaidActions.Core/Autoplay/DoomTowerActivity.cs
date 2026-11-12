@@ -36,6 +36,8 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
     private int _battles, _wins, _losses;
     private string _last = "";
 
+    private static bool BotChooses(PlayContext ctx) => ctx.Settings.Teams.GetValueOrDefault(AreaId)?.Default is { Mode: TeamMode.BotChooses };
+
     public bool IsEnabled(AutoplaySettings settings) => settings.DoomTower.Enabled;
 
     private static bool SilverQuest(PlayContext ctx) => ctx.QuestLeft(QuestNeedKind.DoomTower) > 0;
@@ -125,8 +127,10 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
         else
         {
             _losses++;
-            // The same team would lose again (Ehsan 2026-11-03: "it tries with exactly the same champions and loses on wave one").
-            Rest(ctx.Utc + TimeSpan.FromDays(1), $"the {tower} floor was lost: tried again in a day");
+            // The same team would lose again (Ehsan 2026-11-03: "it tries with exactly the same champions and loses on wave one"); when the bot
+            // chooses the team (Teams card), the next team is tried soon instead (a loss costs no key: Ehsan 2026-11-12).
+            if (BotChooses(ctx)) Rest(ctx.Utc + TimeSpan.FromMinutes(2), $"the {tower} floor was lost: the next team in a moment");
+            else Rest(ctx.Utc + TimeSpan.FromDays(1), $"the {tower} floor was lost: tried again in a day");
         }
         _last = $"{outcome.Result} {tower} tower floor. {outcome.Text}";
         ctx.Event(AreaId, "battle", _last);
@@ -155,7 +159,7 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
         if (outcome.Result == BattleResult.Victory) _wins++;
         else if (outcome.Result == BattleResult.Defeat) _losses++;
         // A lost room or boss is not tried again today (the planner only picks beaten ones, so a loss means the team is not set).
-        if (outcome.Result == BattleResult.Defeat)
+        if (outcome.Result == BattleResult.Defeat && !BotChooses(ctx))
         {
             _skip.Add(stage.Id);
             ctx.Hold($"{AreaId}:stage:{stage.Id}", ClanBossRules.NextReset(ctx.Utc), $"{name} was lost");

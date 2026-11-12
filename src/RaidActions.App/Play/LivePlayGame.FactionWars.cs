@@ -124,11 +124,29 @@ public sealed partial class LivePlayGame : IFactionWarsGame
         var (_, targets, team) = await Read(ct);
         var shown = team.TeamIds ?? [];
         if (shown.Count == 0) log($"autoplay: the team slots were not read; screen dump: {DumpScreen("team slots not read")}");
-        if (shown.Count > 0 && !shown.ToHashSet().SetEquals(crypt.Team))
+        _trying = null;
+        // The bot chooses (Teams card, Ehsan 2026-11-12: "with a loss you don't waste a key"): the crypt team first, then the faction's other teams,
+        // never one that lost at this stage.
+        var wanted = crypt.Team;
+        if (TeamsOf("faction-wars")?.Default is { Mode: TeamMode.BotChooses })
+        {
+            var (fd, _, _, _) = await Account(ct);
+            var key = $"faction-wars|{crypt.Name} stage {stage}";
+            var tried = LoadTries().GetValueOrDefault(key) ?? [];
+            var variants = new List<List<int>> { crypt.Team }.Concat(TeamTries.Variants(fd.Champions.Where(c => c.Faction == crypt.Faction).ToList(), Math.Max(1, crypt.Team.Count))).ToList();
+            if (TeamTries.Pick(variants, tried) is not { } choice)
+            {
+                await Back(PlayTargets.FwTeamView, ct);
+                return new BattleOutcome(BattleResult.NotStarted, $"every {crypt.Name} team tried at stage {stage} lost");
+            }
+            (wanted, _trying) = (choice, (key, choice));
+            log($"autoplay: STEP {crypt.Name} stage {stage}: the bot's team {string.Join(", ", choice.Select(Who))} ({tried.Count(t => !t.Won)} lost here so far)");
+        }
+        if (shown.Count > 0 && !shown.ToHashSet().SetEquals(wanted))
         {
             // Another team in the slots (2026-10-30: the last one played by hand): the crypt team is set here (Cursed City's routine).
             log($"autoplay: STEP setting {crypt.Name}'s crypt team: {string.Join(", ", crypt.TeamNames)}");
-            try { await SetTeam(crypt.Team, ct, PlayTargets.FwTeamView); }
+            try { await SetTeam(wanted, ct, PlayTargets.FwTeamView); }
             catch (LockedHeroException e)
             {
                 await Back(PlayTargets.FwTeamView, ct);
@@ -174,6 +192,7 @@ public sealed partial class LivePlayGame : IFactionWarsGame
         var took = DateTime.UtcNow - started;
         var pve = result?.Pve;
         var outcome = pve?.ResultType switch { 1 => BattleResult.Victory, 2 => BattleResult.Defeat, 3 => BattleResult.Draw, _ => BattleResult.Unknown };
+        RecordTry(outcome);
         return new BattleOutcome(outcome, $"{took.TotalSeconds:0} s" + (pve?.Stars is { } st && outcome == BattleResult.Victory ? $", {st} star{(st == 1 ? "" : "s")}" : ""));
     }
 

@@ -189,7 +189,9 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
                     _defeatsInARow[c.Name] = _defeatsInARow.GetValueOrDefault(c.Name) + 1;
                     // A defeat (it costs no key, seen 2026-10-29): one stage lower for the rest of the day (Ehsan: after a defeat at the next
                     // stage, farm the highest beaten one; it can still lose, so each defeat steps down again until one is won).
-                    _farmAt[c.Name] = Math.Max(1, Math.Min(stage - 1, Math.Max(1, c.HighestPassed)));
+                    // The bot choosing the team (Teams card): the same stage again with the next team (a loss costs no key; Ehsan 2026-11-12).
+                    if (!(ctx.Settings.Teams.GetValueOrDefault("faction-wars")?.Default is { Mode: TeamMode.BotChooses }))
+                        _farmAt[c.Name] = Math.Max(1, Math.Min(stage - 1, Math.Max(1, c.HighestPassed)));
                 }
                 ctx.Event(AreaId, "battle", $"{outcome.Result} vs {c.Name} stage {stage}{(super ? " (Super Raid)" : "")}. {outcome.Text}");
                 if (outcome.Result == BattleResult.Victory) await game.GearAfterAsync(ctx, AreaId, AreaId, ct);

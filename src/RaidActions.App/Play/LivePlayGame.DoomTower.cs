@@ -134,7 +134,7 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         }
         var teamView = Top(after) ?? "";
         if (!PlayTargets.IsTeamView(teamView)) await Refuse(after, $"Doom Tower {name}", ct);
-        if (!await ApplyDefaultTeam("doom-tower", teamView, ct)) return new BattleOutcome(BattleResult.NotStarted, "the Teams card's team was refused here");
+        if (!await ApplyDefaultTeam("doom-tower", teamView, ct, name)) return new BattleOutcome(BattleResult.NotStarted, "the Teams card's team was refused here (or every team tried lost here)");
         if (((await Read(ct)).Play.TeamIds ?? []).Count == 0)
         {
             await Back(teamView, ct);
@@ -173,6 +173,7 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         var result = await WaitBattle(ct, PlayTargets.DtResultView);
         await LeaveResult(ct, PlayTargets.DtResultView);
         var outcome = result?.Pve?.ResultType switch { 1 => BattleResult.Victory, 2 => BattleResult.Defeat, 3 => BattleResult.Draw, _ => BattleResult.Unknown };
+        RecordTry(outcome);
         return new BattleOutcome(outcome, $"{(DateTime.UtcNow - started).TotalSeconds:0} s");
     }
 

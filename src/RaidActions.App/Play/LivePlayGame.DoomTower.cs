@@ -116,7 +116,9 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         var opened = Top(await ReadState(ct));
         if (!(opened is not null && (PlayTargets.IsTeamView(opened) || opened is PlayTargets.RefillView or UiState.MessageBoxView)))
         {
-            await SelectTowerDifficulty("Normal", ct);
+            // Only putting the tower back on Normal (it often is already; 2026-11-12 22:47 its list did not open and the turn counted an error).
+            try { await SelectTowerDifficulty("Normal", ct); }
+            catch (PlayStopException e) { log($"autoplay: the tower left as it is ({e.Message})"); }
             return new BattleOutcome(BattleResult.NotStarted, $"the floor did not open ({opened})");
         }
         return await PlayTowerTeam($"{tower} floor", started, dryRun, ct);

@@ -89,7 +89,7 @@ public sealed class LiveArenaActivity(ILiveArenaGame game) : IActivity
             {
                 _dryShown = ctx.DryRun;
                 // Tokens just taken from the inbox: a match at once.
-                _checkAt = outcome.Text.StartsWith("took Live Arena tokens", StringComparison.Ordinal) ? ctx.Utc : ctx.Utc + wait;
+                _checkAt = outcome.Text.StartsWith("took ", StringComparison.Ordinal) && outcome.Text.Contains("Live Arena token", StringComparison.Ordinal) ? ctx.Utc : ctx.Utc + wait;
                 // No token: one comes back about an hour later; restarts keep to it.
                 if (!ctx.DryRun && outcome.Text.StartsWith("out of Live Arena tokens", StringComparison.Ordinal)) ctx.Hold(AreaId, ctx.Utc + TimeSpan.FromHours(1), outcome.Text);
                 ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", outcome.Text);

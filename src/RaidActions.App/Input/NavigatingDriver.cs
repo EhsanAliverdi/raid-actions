@@ -288,8 +288,23 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             if (target.Path == lastPath) throw new StopException($"{top}: {target.Name} was clicked and is still there; stopped.");
             lastPath = target.Path;
             var where = top == UiState.ChampionScreenView && s.ChampionScreen?.Champion is { } c ? $"{top} (champion #{c})" : top;
-            await Click(a, kind, null, null, (s2, t2) => s2.Top?.Name != top || !t2.Any(t => t.Path == target.Path && t.NotClickable is null),
-                $"{target.Name} takes the screen back", ct, view: top);
+            try
+            {
+                await Click(a, kind, null, null, (s2, t2) => s2.Top?.Name != top || !t2.Any(t => t.Path == target.Path && t.NotClickable is null),
+                    $"{target.Name} takes the screen back", ct, view: top);
+            }
+            catch (StopException e) when (e.Message.Contains("outside the client area", StringComparison.Ordinal))
+            {
+                // Its close is off the window (the summoned champion's card, 2026-11-12): the game's back key (Esc), then checked.
+                if (Game.Window.GameWindow.Find().Window is not { } w || MouseInput.SendEscape(w) is not null) throw;
+                log($"{top}: its close is off the window: Esc sent");
+                await Task.Delay(1200, ct);
+                var (after, _) = await Read(ct);
+                if (after.Top?.Name == top) throw;
+                left.Add($"{where} via Esc");
+                lastPath = null;
+                continue;
+            }
             left.Add($"{where} via {target.Name}");
         }
         throw new StopException($"Not at the village after 12 back/close clicks ({string.Join(" → ", left)}).");

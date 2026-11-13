@@ -527,6 +527,8 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         var speedTries = 0;
         while (DateTime.UtcNow < until)
         {
+            // The account taken by another device mid-battle (2026-11-13 15:40: the bot waited 20 minutes behind the box): this account's turn ends.
+            if (SessionTaken() is { } taken) throw new PlayStopException(taken);
             await Task.Delay(500, ct);
             var s = await ReadState(ct);
             // A tutorial step or a level-up in the middle of a battle (a new account's 1-7, 2026-11-03) holds it until it is answered.

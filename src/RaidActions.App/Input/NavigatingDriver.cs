@@ -763,6 +763,10 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
                 await GoHome(new UiAction(ActionKind.OpenChampion, 0, "leave the result screen"), ct);
                 continue;
             }
+            // The game's "logged into from another device" box over the battle: nothing will end; the turn ends (Re-log in is never pressed).
+            if (s.Top?.Name == UiState.MessageBoxView && $"{s.MessageBox?.Title} {s.MessageBox?.Message}" is var box
+                && (box.Contains("another device", StringComparison.OrdinalIgnoreCase) || box.Contains("AnotherUserSession", StringComparison.OrdinalIgnoreCase)))
+                throw new StopException("the account is open on another device; waiting (Re-log in is never pressed: it would log you out there)");
             var running = resultScreenOk ? s.BattleRunning : s.InBattle;
             if (!running && !s.UiBlocked) return;
             if (DateTime.Now > until) throw new StopException("A battle (or its result screen) stayed open for 30 minutes.");

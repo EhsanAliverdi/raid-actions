@@ -183,6 +183,15 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             var size = p0.TeamSlots is > 0 and var n ? n : 5;
             // At most three teams (Ehsan 2026-11-13): the needs team, the same with other fillers, the general pick; every one lost: the stage waits.
             var variants = BotTeams.Tries(d0, gd0, extractorRoot, contentArea, size);
+            // Three losses in a day at a stage and it waits, whatever team would come next (2026-11-14: the Dark Fae lost four times in a day as the
+            // teams changed with the gear).
+            var lostToday = tried.Count(t => !t.Won && DateTime.UtcNow - t.Utc < TimeSpan.FromHours(24));
+            if (lostToday >= 3 && !(tried.LastOrDefault(t => t.Won) is { } w && !tried.Any(t => !t.Won && t.Utc > w.Utc)))
+            {
+                log($"autoplay: {area}: {lostToday} teams lost at {stage} in the last 24 hours: waiting");
+                await Back(teamView, ct);
+                return false;
+            }
             if (TeamTries.Pick(variants, tried) is not { } choice)
             {
                 log($"autoplay: {area}: every team tried at {stage} lost: waiting");

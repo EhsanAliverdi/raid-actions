@@ -69,7 +69,10 @@ public sealed partial class LivePlayGame : IDoomTowerGame
             await Click("dt-final-boss", null, (s2, _) => s2.Top?.Name is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView),
                 $"{name} opens", ct, within: TimeSpan.FromSeconds(10));
         }
-        return await PlayTowerTeam(name, started, dryRun, ct);
+        // The boss on this floor (output/gamedata/doomtower.json, read from the game's stage data): its own team on the page, when set.
+        var boss = RaidExtractor.GdTowerBoss.Load(Path.Combine(extractorRoot, "output", "gamedata")).GetValueOrDefault(stage.Id)?.Name;
+        if (boss is not null) log($"autoplay: Doom Tower {name}: {boss}");
+        return await PlayTowerTeam(name, started, dryRun, ct, boss);
     }
 
     private bool _towerOnHard;
@@ -125,7 +128,7 @@ public sealed partial class LivePlayGame : IDoomTowerGame
     }
 
     /// <summary>From the stage's team screen to the result.</summary>
-    private async Task<BattleOutcome> PlayTowerTeam(string name, DateTime started, bool dryRun, CancellationToken ct)
+    private async Task<BattleOutcome> PlayTowerTeam(string name, DateTime started, bool dryRun, CancellationToken ct, string? boss = null)
     {
         await Pause(800, ct);
         var after = await Settled(ct);
@@ -137,8 +140,12 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         var teamView = Top(after) ?? "";
         if (!PlayTargets.IsTeamView(teamView)) await Refuse(after, $"Doom Tower {name}", ct);
         // The page's team for this difficulty and kind (Ehsan 2026-11-13: floors and bosses, Normal and Hard), else the area's.
-        var towerKey = $"doom-tower:{(name.StartsWith("Hard", StringComparison.Ordinal) ? "Hard" : "Normal")}:{(name.Contains("boss", StringComparison.Ordinal) ? "bosses" : "floors")}";
-        if (!await ApplyDefaultTeam("doom-tower", teamView, ct, name, key: towerKey)) return new BattleOutcome(BattleResult.NotStarted, "the Teams card's team was refused here (or every team tried lost here)");
+        var difficulty = name.StartsWith("Hard", StringComparison.Ordinal) ? "Hard" : "Normal";
+        var towerKey = $"doom-tower:{difficulty}:{(name.Contains("boss", StringComparison.Ordinal) ? "bosses" : "floors")}";
+        // A boss's own team first (Ehsan 2026-11-13: "a team for each boss"), else the difficulty's bosses team, else the tower's.
+        if (boss is not null && TeamsOf($"doom-tower:{difficulty}:boss:{boss}") is not null) towerKey = $"doom-tower:{difficulty}:boss:{boss}";
+        var bossArea = boss is null ? "dt-floors" : "dt-" + new string([.. boss.ToLowerInvariant().Where(char.IsLetter)]).Replace("celestial", "", StringComparison.Ordinal);
+        if (!await ApplyDefaultTeam("doom-tower", teamView, ct, name, key: towerKey, contentArea: bossArea)) return new BattleOutcome(BattleResult.NotStarted, "the Teams card's team was refused here (or every team tried lost here)");
         if (((await Read(ct)).Play.TeamIds ?? []).Count == 0)
         {
             await Back(teamView, ct);

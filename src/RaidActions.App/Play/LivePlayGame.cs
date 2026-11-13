@@ -200,11 +200,37 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         if (key is not null) NoteTeam(key, shown);
         var (data, gd, _, _) = await Account(ct);
         // The bot's pick (Content teams, vaults included) for a team set to "the bot picks the best".
-        if (teams?.Default is { Mode: TeamMode.BotChooses } && BotTeams.Pick(data, gd, extractorRoot, contentArea, play.TeamSlots is > 0 and var slots ? slots : Math.Max(4, shown.Count)) is { Count: > 0 } best)
+        var pickSize = play.TeamSlots is > 0 and var slots ? slots : Math.Max(4, shown.Count);
+        if (teams?.Default is { Mode: TeamMode.BotChooses } && BotTeams.Pick(data, gd, extractorRoot, contentArea, pickSize) is { Count: > 0 } best)
         {
-            if (best.ToHashSet().SetEquals(shown)) return true;
-            log($"autoplay: STEP {area}: the bot's pick {string.Join(", ", best.Select(Who))}");
-            return await SetRunTeam(best, teamView, ct, leader: area == "tag-arena" ? null : best[0]);
+            // A champion this screen will not take (2026-11-13 23:56, BlackLord65's Hydra: Dorothy, used there already, and the whole pick refused): left out
+            // and the bot picks again without it, up to five times.
+            var refused = new HashSet<int>();
+            for (var attempt = 0; ; attempt++)
+            {
+                if (best.ToHashSet().SetEquals(shown)) return true;
+                log($"autoplay: STEP {area}: the bot's pick {string.Join(", ", best.Select(Who))}");
+                try
+                {
+                    await SetTeam(best, ct, teamView, true, null, area == "tag-arena" ? null : best[0]);
+                    return true;
+                }
+                catch (LockedHeroException e) when (attempt < 4)
+                {
+                    refused.Add(e.HeroId);
+                    foreach (var (id, _) in e.Shown) refused.Add(id);
+                    log($"autoplay: {area}: not taken here: {string.Join(", ", refused.Select(Who))}; the bot picks again without them");
+                    var left = data with { Champions = [.. data.Champions.Where(c => !refused.Contains(c.Id))] };
+                    if (BotTeams.Pick(left, gd, extractorRoot, contentArea, pickSize) is not { Count: > 0 } next) { await Back(teamView, ct); return false; }
+                    best = next;
+                    shown = (await Read(ct)).Play.TeamIds ?? [];
+                }
+                catch (LockedHeroException)
+                {
+                    await Back(teamView, ct);
+                    return false;
+                }
+            }
         }
         // An empty team screen with no team saved for it (Ehsan 2026-11-09: "when there is no team setup for an account for specific area, robot can
         // choose the team"): the strongest geared champions, as many as the screen's slots.

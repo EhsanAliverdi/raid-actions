@@ -122,6 +122,8 @@ public sealed partial class LivePlayGame : IFactionWarsGame
     /// <summary>In a crypt battle's text when it ran as a normal battle (the Super Raid box not there or not set).</summary>
     public const string NormalRunMark = ", normal run";
 
+    private bool _cryptAgain;
+
     public async Task<BattleOutcome> FightCryptAsync(CryptPlan crypt, int stage, bool dryRun, CancellationToken ct, bool superRaid = false)
     {
         var started = DateTime.UtcNow;
@@ -168,6 +170,26 @@ public sealed partial class LivePlayGame : IFactionWarsGame
             }
             (wanted, _trying) = (choice, (key, choice));
             log($"autoplay: STEP {crypt.Name} stage {stage}: the bot's team {string.Join(", ", choice.Select(Who))} ({tried.Count(t => !t.Won)} lost here so far)");
+        }
+        // A member in a vault (2026-11-13 23:58, BlackLord65: Umetogi, Chani, Vagabond, Odachi in the reserve vault, no gear: the crypt's team screen does
+        // not list them, and the stage-10 battle before was played ungeared): out of the vault (and geared when the faction's picker says so), then again.
+        var (vd, _, _, _) = await Account(ct);
+        var inVault = wanted.Where(id => vd.Champions.FirstOrDefault(c => c.Id == id) is { InVault: true } or { InBathhouse: true }).ToList();
+        if (inVault.Count > 0 && !_cryptAgain && !dryRun)
+        {
+            log($"autoplay: STEP {crypt.Name}: {string.Join(", ", inVault.Select(Who))} in a vault: taken out first");
+            await Back(PlayTargets.FwTeamView, ct);
+            var prepared = await PrepareTeam($"Faction Wars: {crypt.Name} ({string.Join("+", wanted)})", "faction-wars", "factionwars", Math.Max(5, wanted.Count),
+                FactionChoice(crypt.Faction), dryRun, ct, team: wanted, faction: crypt.Faction);
+            if (prepared.Length == 0)
+            {
+                await RunCommand(["vault-withdraw", .. inVault.Select(i => i.ToString(System.Globalization.CultureInfo.InvariantCulture))], ct);
+                await HomeAsync(Action("after the vault"), ct);
+            }
+            else log($"autoplay: {crypt.Name}: team prepared: {prepared}");
+            _cryptAgain = true;
+            try { return await FightCryptAsync(crypt, stage, dryRun, ct, superRaid); }
+            finally { _cryptAgain = false; }
         }
         if (shown.Count > 0 && !shown.ToHashSet().SetEquals(wanted))
         {

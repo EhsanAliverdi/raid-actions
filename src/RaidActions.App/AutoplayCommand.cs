@@ -179,7 +179,11 @@ public static class AutoplayCommand
             var why = await engine.RunAsync(once, abort.Token);
             Print($"Stopped after {engine.Turns} turn(s): {why}");
             // The account's turn is over: the game on the next one, and a new bot for it (this one is tied to the old game process).
-            if (why.StartsWith("rotation", StringComparison.Ordinal) && RaidExtractor.OutputLayout.ActiveId(dir) is { } current
+            // Stopped on errors (2026-11-14 02:09, BlackLord65: an offer window that would not close, and the whole rotation ended): the next account, the
+            // switch closes the game (and the stuck window with it); this account comes again in its turn.
+            var onErrors = why.Contains("errors in a row", StringComparison.Ordinal) && !host.NoRotation && !once;
+            if (onErrors) Print("rotation: this account stopped on errors; going on with the next one");
+            if ((why.StartsWith("rotation", StringComparison.Ordinal) || onErrors) && RaidExtractor.OutputLayout.ActiveId(dir) is { } current
                 && NextAccount(dir, current, host.LoadSettings().Planner) is { } next)
             {
                 live.Dispose();

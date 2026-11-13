@@ -220,6 +220,16 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             // "Beat a Dungeon Boss" counts on any stage: the cheapest (8 Energy, not 20, and a much shorter run; Ehsan's energy goes to the farm).
             // A quest for artifacts or accessories needs the drops: the highest stage.
             var anyBoss = n.Region is null && n.MinStage is null && n.Text.Contains("Boss", StringComparison.OrdinalIgnoreCase);
+            // The player's own dungeon row for it (Ehsan 2026-11-13: "you played Dragon's Lair 25, why? we farm Hard 4"): a Hard stage of that dungeon (or of any
+            // dungeon, for an "any dungeon" quest) counts, and it is what the energy is for: that row's place, difficulty and stage.
+            if (ctx.Settings.Energy.Targets.FirstOrDefault(t => t.Enabled && t.Area == "Dungeon" && EnergyPlaces.Group(t.Region) is null && t.Stage is not null
+                    && (n.Region is null ? t.Difficulty == "Hard" || n.MinStage is null : t.Region == n.Region && (t.Difficulty == "Hard" || n.MinStage is not { } m0 || t.Stage >= m0))) is { } own)
+            {
+                rows.Add(own with { Id = id, RunsPerDay = null });
+                _rowNeed[id] = SuperRaidRules.OfQuest(n.Text);
+                if (n.Tab == "Mission") missions.Add(id);
+                continue;
+            }
             var best = ctx.Settings.Quests.HighestStage;
             var stage = n.MinStage is { } min ? best ? hard ?? Math.Max(min, highest ?? min) : min : anyBoss ? 1 : (int?)null;
             rows.Add(new EnergyTarget { Id = id, Area = "Dungeon", Region = n.Region ?? "DragonsLair", Difficulty = best && hard is not null ? "Hard" : "Normal", Stage = stage });

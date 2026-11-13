@@ -567,7 +567,8 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             if (view is not null && sEnd.Top?.Name != view) throw new StopException($"After clicking {t.Name}: expected {view} on top; {shows}.");
             var again = UiTargets.Resolve(view is null ? tEnd : tEnd.Where(x2 => x2.View == view).ToList(), kind, id, slot);
             if (again.Target is not { } t3 || t3.Path != t.Path) throw new StopException($"After clicking {t.Name}, expected {expected}; {shows}.");
-            log($"step {a.Step}: {t.Name} is still there; clicking it again");
+            log($"step {a.Step}: {t.Name} is still there; clicking it again (any held mouse button or key let go first)");
+            MouseInput.ReleaseStuck();
             t = t3;
         }
     }

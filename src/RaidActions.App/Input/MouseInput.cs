@@ -83,6 +83,18 @@ public static class MouseInput
     /// The game's own "back" key (Esc) to the game in front: only for a screen whose close button is off the window (2026-11-11/12: the summoned champion's
     /// card, its close at y -95 on a 1298x732 window). The reason it was not sent, or null.
     /// </summary>
+    /// <summary>
+    /// Every mouse button and modifier key let go (2026-11-14 01:04: the game ignored every click for an hour, through a game restart; a button or the
+    /// Alt of the bring-to-front tap held down is the likely cause). Harmless when nothing is held.
+    /// </summary>
+    public static void ReleaseStuck()
+    {
+        mouse_event(LeftUp, 0, 0, 0, IntPtr.Zero);
+        mouse_event(0x0010 /* RIGHTUP */, 0, 0, 0, IntPtr.Zero);
+        mouse_event(0x0040 /* MIDDLEUP */, 0, 0, 0, IntPtr.Zero);
+        foreach (byte vk in new byte[] { 0x12, 0x11, 0x10, 0x5B, 0x5C, 0xA4, 0xA5, 0xA2, 0xA3, 0xA0, 0xA1 }) keybd_event(vk, 0, KeyUp, IntPtr.Zero);
+    }
+
     public static string? SendEscape(GameWindowInfo w)
     {
         if (EnsureForeground(w) is { } why) return why;

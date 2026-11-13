@@ -181,8 +181,23 @@ public static class AutoplayCommand
             // The account's turn is over: the game on the next one, and a new bot for it (this one is tied to the old game process).
             // Stopped on errors (2026-11-14 02:09, BlackLord65: an offer window that would not close, and the whole rotation ended): the next account, the
             // switch closes the game (and the stuck window with it); this account comes again in its turn.
-            var onErrors = why.Contains("errors in a row", StringComparison.Ordinal) && !host.NoRotation && !once;
-            if (onErrors) Print("rotation: this account stopped on errors; going on with the next one");
+            var onErrors = why.Contains("errors in a row", StringComparison.Ordinal) && !once;
+            // The game not taking clicks (Ehsan 2026-11-14: "you should not pause the bot; try even closing the game and start again"): first the game
+            // closed and started again on this account; stuck again within the hour: the next account (its switch restarts the game too).
+            if (onErrors && RaidExtractor.OutputLayout.ActiveId(dir) is { } stuckId)
+            {
+                var mark = Path.Combine(dir, "autoplay", "restarted-on-errors.txt");
+                var last = File.Exists(mark) && DateTime.TryParse(File.ReadAllText(mark), null, System.Globalization.DateTimeStyles.RoundtripKind, out var t) ? t : DateTime.MinValue;
+                if (host.NoRotation || DateTime.UtcNow - last > TimeSpan.FromHours(1))
+                {
+                    File.WriteAllText(mark, DateTime.UtcNow.ToString("o", System.Globalization.CultureInfo.InvariantCulture));
+                    live.Dispose();
+                    Print($"rotation: account {stuckId} stopped on errors; the game is closed and started again on it");
+                    LiveAutoplayHost.Relaunch(dir, "autoplay --restart-first" + (args.Contains("--no-yield") ? " --no-yield" : "") + (host.NoRotation ? " --no-rotation" : ""));
+                    return Cli.Failed;
+                }
+                Print("rotation: this account stopped on errors again after a restart; going on with the next one");
+            }
             if ((why.StartsWith("rotation", StringComparison.Ordinal) || onErrors) && RaidExtractor.OutputLayout.ActiveId(dir) is { } current
                 && NextAccount(dir, current, host.LoadSettings().Planner) is { } next)
             {

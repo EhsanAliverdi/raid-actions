@@ -265,6 +265,7 @@
                   "Client.ViewModel.Contextes.Quests.Advanced.AdvancedQuestsItemContext":  [ "_transition" ],
                   "Client.ViewModel.Contextes.AllianceActivityMap.AllianceActivityMapContext":  [ "_demonLord", "_hydra" ],
                   "Client.ViewModel.Contextes.AllianceEnemies.EnemyItem.AllianceEnemyItemContext":  [ "_name", "_unlocked", "_selected", "_StageId_k__BackingField", "_enemyType" ],
+                  "Client.ViewModel.Contextes.HeroesSelectionDialog.HeroesSelectionDoomTowerDialogContext":  [ "_stage", "_isBossStage" ],
                   "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishAllianceEnemyDialogContext":  [ "_damageDealt", "_stageName" ],
                   "Client.ViewModel.Contextes.HeroesSelectionDialog.QuickBattle.AllianceBossQuickBattleCheckboxContext":  [ "_active", "_locked" ],
                   "Client.ViewModel.Contextes.FastRankUpOverlay.GradeItemContext":  [ "_grade", "_isSelected", "_count", "_isLocked" ],

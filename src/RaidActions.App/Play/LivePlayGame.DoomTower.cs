@@ -127,34 +127,60 @@ public sealed partial class LivePlayGame : IDoomTowerGame
                 await SelectTowerDifficulty(tower, ct);
             }
         }
+        // The floor's spot: the candidates on the map (a glowing boss portrait, the gold banners), each tapped and checked in memory (the team screen's
+        // stage) until the open floor's one opens; a wrong one is backed out of; none: the map scrolled up a screen and looked at again (2026-11-13: the
+        // Normal map opened on floors 26-39 and the bot played the beaten floor-30 boss instead of floor 40's Dark Fae).
         var (w, why) = GameWindow.Find();
         if (w is null) throw new PlayStopException(why!);
-        var (capture, problem) = WindowCapture.Take(w);
-        if (capture is null) throw new PlayStopException($"The tower could not be captured: {problem}");
-        (float X, float Y)? spot;
-        using (capture)
+        var tried = 0;
+        for (var view = 0; view < 4; view++)
         {
-            spot = DoomTowerSpot.Find(capture.Image);
-            if (spot is null) { var saved = Path.Combine(folder, $"tower-{tower.ToLowerInvariant()}-{DateTime.Now:HHmmss}.png"); OpenCvSharp.Cv2.ImWrite(saved, capture.Image); log($"autoplay: no gold floor found; the map as seen: {saved}"); }
+            if (view > 0)
+            {
+                // Up the tower: the finger moves down.
+                var sc = w.Client.Width / 1298f;
+                if (MouseInput.Drag(w, 650 * sc, 200 * sc, 650 * sc, 520 * sc) is { } dragFailed) throw new PlayStopException(dragFailed);
+                await Pause(1500, ct);
+            }
+            var (capture, problem) = WindowCapture.Take(w);
+            if (capture is null) throw new PlayStopException($"The tower could not be captured: {problem}");
+            List<(float X, float Y)> spots;
+            using (capture)
+            {
+                spots = DoomTowerSpot.Candidates(capture.Image);
+                var saved = Path.Combine(folder, $"tower-{tower.ToLowerInvariant()}-{DateTime.Now:HHmmss}-{view}.png");
+                OpenCvSharp.Cv2.ImWrite(saved, capture.Image);
+                log($"autoplay: the {tower} map ({saved}): {spots.Count} spot(s) {string.Join(", ", spots.Select(p => $"({p.X:0},{p.Y:0})"))}");
+            }
+            foreach (var at in spots.Take(5))
+            {
+                tried++;
+                if (MouseInput.Click(w, at.X, at.Y, new Random()) is { } notSent) throw new PlayStopException(notSent);
+                var until = DateTime.UtcNow + TimeSpan.FromSeconds(6);
+                while (DateTime.UtcNow < until && !(Top(await ReadState(ct)) is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView))) await Task.Delay(400, ct);
+                var opened = Top(await ReadState(ct));
+                if (opened is null || !PlayTargets.IsTeamView(opened))
+                {
+                    if (opened is PlayTargets.RefillView or UiState.MessageBoxView) await Back(opened, ct);
+                    else if (opened is not null && opened != "DoomTowerHUD" && opened != "DoomTowerMap") await Back(opened, ct);
+                    continue;
+                }
+                var (_, _, play) = await Read(ct);
+                var stage = play.TowerStage;
+                if (current > 0 && stage is { } got && got != current)
+                {
+                    log($"autoplay: ({at.X:0},{at.Y:0}) opened stage {got} (floor {got % 1000}), not floor {openFloor}: back");
+                    await Back(opened, ct);
+                    await Pause(800, ct);
+                    continue;
+                }
+                log($"autoplay: the {tower} floor {openFloor} opened at ({at.X:0},{at.Y:0}) (stage {stage?.ToString() ?? "not read"})");
+                return await PlayTowerTeam(floorBoss is null ? $"{tower} floor {openFloor}" : $"{tower} boss floor {openFloor}", started, dryRun, ct, floorBoss);
+            }
         }
-        if (spot is not { } at)
-        {
-            await SelectTowerDifficulty("Normal", ct);
-            return new BattleOutcome(BattleResult.NotStarted, $"no gold floor on the {tower} map");
-        }
-        log($"autoplay: the {tower} floor to play at ({at.X:0},{at.Y:0})");
-        if (MouseInput.Click(w, at.X, at.Y, new Random()) is { } notSent) throw new PlayStopException(notSent);
-        var until = DateTime.UtcNow + TimeSpan.FromSeconds(10);
-        while (DateTime.UtcNow < until && !(Top(await ReadState(ct)) is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView))) await Task.Delay(500, ct);
-        var opened = Top(await ReadState(ct));
-        if (!(opened is not null && (PlayTargets.IsTeamView(opened) || opened is PlayTargets.RefillView or UiState.MessageBoxView)))
-        {
-            // Only putting the tower back on Normal (it often is already; 2026-11-12 22:47 its list did not open and the turn counted an error).
-            try { await SelectTowerDifficulty("Normal", ct); }
-            catch (PlayStopException e) { log($"autoplay: the tower left as it is ({e.Message})"); }
-            return new BattleOutcome(BattleResult.NotStarted, $"the floor did not open ({opened})");
-        }
-        return await PlayTowerTeam(floorBoss is null ? $"{tower} floor {openFloor}" : $"{tower} boss floor {openFloor}", started, dryRun, ct, floorBoss);
+        try { await SelectTowerDifficulty("Normal", ct); }
+        catch (PlayStopException e) { log($"autoplay: the tower left as it is ({e.Message})"); }
+        return new BattleOutcome(BattleResult.NotStarted, tried == 0 ? $"no gold floor on the {tower} map" : $"floor {openFloor} not found on the {tower} map ({tried} spot(s) tried)");
     }
 
     /// <summary>From the stage's team screen to the result.</summary>

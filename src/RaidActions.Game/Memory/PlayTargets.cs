@@ -41,7 +41,7 @@ public sealed record PlayScan(List<UiTarget> Targets, ArenaBoardRead? Arena, boo
     List<InboxEntry> Inbox, List<string> Notes, List<CryptRead>? Crypts = null, List<StageRead>? Stages = null, List<int>? TeamIds = null,
     PveResultRead? Pve = null, List<CcMapRead>? CcLevels = null, List<TeamPickRead>? Picks = null, int? CcDifficulty = null,
     List<RankUpItemRead>? RankUps = null, int? SelectedShard = null, string? ClanDamage = null, List<RaidExtractor.Autoplay.QuestRead>? Quests = null,
-    ArenaBoardRead? Tag = null, int? TeamSlots = null)
+    ArenaBoardRead? Tag = null, int? TeamSlots = null, int? TowerStage = null)
 {
     public static PlayScan Empty => new([], null, null, null, [], [], []);
 
@@ -49,7 +49,7 @@ public sealed record PlayScan(List<UiTarget> Targets, ArenaBoardRead? Arena, boo
         [.. Inbox, .. o.Inbox], [.. Notes, .. o.Notes], [.. Crypts ?? [], .. o.Crypts ?? []], [.. Stages ?? [], .. o.Stages ?? []],
         [.. TeamIds ?? [], .. o.TeamIds ?? []], Pve ?? o.Pve, [.. CcLevels ?? [], .. o.CcLevels ?? []], [.. Picks ?? [], .. o.Picks ?? []], CcDifficulty ?? o.CcDifficulty,
         [.. RankUps ?? [], .. o.RankUps ?? []], SelectedShard ?? o.SelectedShard, ClanDamage ?? o.ClanDamage, [.. Quests ?? [], .. o.Quests ?? []], Tag ?? o.Tag,
-        TeamSlots is null && o.TeamSlots is null ? null : (TeamSlots ?? 0) + (o.TeamSlots ?? 0));
+        TeamSlots is null && o.TeamSlots is null ? null : (TeamSlots ?? 0) + (o.TeamSlots ?? 0), TowerStage ?? o.TowerStage);
 }
 
 /// <summary>
@@ -171,6 +171,9 @@ public static partial class PlayTargets
     // Clan Boss (plan/clan-boss.md; from the dump 2026-10-31).
     private const string ClanMap = "Client.ViewModel.Contextes.AllianceActivityMap.AllianceActivityMapContext";
     private const string ClanMapItem = "Client.ViewModel.Contextes.AllianceActivityMap.AllianceEnemyMapItemContext";
+    // The Doom Tower's team screen: the stage it opened (2026-11-13: which floor a tap on the map opened).
+    private const string DtSelection = "Client.ViewModel.Contextes.HeroesSelectionDialog.HeroesSelectionDoomTowerDialogContext";
+    private const string StageType = "SharedModel.Meta.Stages.Stage";
     private const string ClanEnemy = "Client.ViewModel.Contextes.AllianceEnemies.EnemyItem.AllianceEnemyItemContext";
     private const string ClanResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishAllianceBossDialogContext";
     private const string ClanEnemyResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishAllianceEnemyDialogContext";
@@ -257,6 +260,7 @@ public static partial class PlayTargets
         List<StageRead>? stages = null;
         List<int>? team = null;
         int? teamSlots = null;
+        int? towerStage = null;
         List<CcMapRead>? ccLevels = null;
         List<TeamPickRead>? picks = null;
         PveResultRead? pve = null;
@@ -858,6 +862,9 @@ public static partial class PlayTargets
                     (picks ??= []).Add(new TeamPickRead(hero.Value, state, target));
                     break;
                 }
+                case DtSelection:
+                    towerStage = Try(() => (int?)g.Int(g.Ref(c.Address, DtSelection, "_stage"), StageType, "Id"), null, notes, "HeroesSelectionDoomTowerDialogContext._stage.Id");
+                    break;
                 case ShopOffer:
                 {
                     // The Shop: only an offer the game itself marks free, not locked behind its timer, is ever a target.
@@ -1417,7 +1424,7 @@ public static partial class PlayTargets
         return new PlayScan(targets, arena, auto, result, hud, inbox, notes.Distinct().ToList(), crypts, stages, team?.Distinct().ToList(), pve, ccLevels, picks, ccDifficulty,
             rankUps, selectedShard, clanDamage,
             [.. quests.Select(q => q.Tab == "?" ? q with { Tab = questTab is { } k && k >= 0 && k < QuestTabs.Length ? QuestTabs[k] : "Daily" } : q)],
-            tagRows is not null || tagFree is not null ? new ArenaBoardRead(tagRows ?? [], tagFree, tagFreeText, null, null) : null, TeamSlots: teamSlots);
+            tagRows is not null || tagFree is not null ? new ArenaBoardRead(tagRows ?? [], tagFree, tagFreeText, null, null) : null, TeamSlots: teamSlots, TowerStage: towerStage);
     }
 
     /// <summary>An inbox entry that holds Classic Arena tokens (not Tag/Live arena tokens or auto-battle tickets), by its text and icon.</summary>

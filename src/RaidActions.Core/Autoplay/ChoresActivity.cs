@@ -38,6 +38,12 @@ public interface IChoresGame
     /// <summary>The gear clean-up: the pieces <see cref="GearSale.Cleanup"/> picks sold through the sell command; how many (a dry run: 0, the sale shown).</summary>
     Task<int> CleanupGearAsync(GearCleanupSettings s, bool dryRun, CancellationToken ct) => Task.FromResult(0);
 
+    /// <summary>The champions waiting to go back to their vault (put-back.json) since at least this long: their ids (Ehsan 2026-11-13).</summary>
+    IReadOnlyList<int> PutBackDue(TimeSpan after) => [];
+
+    /// <summary>Those champions' gear off and each back in the vault it came from; what was done.</summary>
+    Task<string> PutBackAsync(TimeSpan after, bool dryRun, CancellationToken ct) => Task.FromResult("");
+
     /// <summary>The clan's Members page: Check in, and the stars' activity chests; what was done ("not supported" until the screen is explored).</summary>
     Task<string> ClanCheckInAsync(bool dryRun, CancellationToken ct) => Task.FromResult("not supported");
 
@@ -80,6 +86,9 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
     /// <summary>The clean-up's day is Ehsan's own (local) day, not the game's UTC day (2026-11-13: at UTC+11 the UTC day only starts at 11:00).</summary>
     private static DateOnly CleanupToday(PlayContext ctx) => DateOnly.FromDateTime(DateTime.SpecifyKind(ctx.Utc, DateTimeKind.Utc).ToLocalTime());
 
+    /// <summary>How long a champion taken out of a vault stays out before it goes back.</summary>
+    public static readonly TimeSpan PutBackAfter = TimeSpan.FromHours(1);
+
     private bool Open(PlayContext ctx, string job) => !_paused.TryGetValue(job, out var until) || ctx.Utc >= until;
 
     /// <summary>The job due now, or null; the quests' first.</summary>
@@ -88,6 +97,8 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         var s = ctx.Settings.Chores;
         if (game.MasteryRequested()) return "masteries";
         if (CleanupDue(ctx)) return "cleanup";
+        // Champions the bot took out of a vault for a fight go back an hour after (their area played meanwhile; Ehsan 2026-11-13).
+        if (Open(ctx, "putback") && game.PutBackDue(PutBackAfter).Count > 0) return "putback";
         if (ctx.QuestLeft(QuestNeedKind.Market) > 0 && Open(ctx, "market")) return "market";
         if (s.TavernLevelUps && ctx.QuestLeft(QuestNeedKind.LevelUp) > 0 && Open(ctx, "level")) return "level";
         if (s.ArtifactUpgrades && ctx.QuestLeft(QuestNeedKind.ArtifactAttempts) > 0 && Open(ctx, "attempts")) return "attempts";
@@ -151,6 +162,12 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
                     _checkInDay = DateOnly.FromDateTime(ctx.Utc);
                     var done = await game.ClanCheckInAsync(ctx.DryRun, ct);
                     return done == "not supported" ? "" : Report(ctx, "checkin", done);
+                }
+                case "putback":
+                {
+                    _paused["putback"] = ctx.Utc + TimeSpan.FromMinutes(30);
+                    var done = await game.PutBackAsync(PutBackAfter, ctx.DryRun, ct);
+                    return done.Length == 0 ? "" : Report(ctx, "putback", done);
                 }
                 case "cleanup":
                 {

@@ -91,6 +91,10 @@ public sealed partial class LivePlayGame : IClanBossGame
     /// <summary>One alliance boss battle: the map item (Demon Lord, Hydra), the row of its enemy type and difficulty, Battle, Start, result.</summary>
     private async Task<BattleOutcome> FightAllianceAsync(string label, string mapKind, int enemyType, string resultView, string difficulty, bool dryRun, CancellationToken ct)
     {
+        // The boss's team geared first when it asks for it (Ehsan 2026-11-13).
+        var gearArea = enemyType == 3 ? "chimera" : enemyType == 2 ? "hydra" : "clan-boss";
+        var gearChoice = TeamsOf(gearArea)?.Default;
+        await GearIfAsked(label, BotTeams.ContentArea(gearArea), gearArea == "hydra" ? 6 : 5, gearChoice, gearChoice?.GearUp == true, gearChoice?.PutBack == true, dryRun, ct);
         var started = DateTime.UtcNow;
         log($"autoplay: STEP {label} {difficulty}");
         await OpenAllianceEnemy(mapKind, resultView, ct);

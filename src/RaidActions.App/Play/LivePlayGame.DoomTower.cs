@@ -43,6 +43,12 @@ public sealed partial class LivePlayGame : IDoomTowerGame
     {
         var started = DateTime.UtcNow;
         var name = DoomTowerRules.Name(stage);
+        // The boss's team (or the bosses' / the tower's) geared first when it asks for it (Ehsan 2026-11-13).
+        var bossFirst = RaidExtractor.GdTowerBoss.Load(Path.Combine(extractorRoot, "output", "gamedata")).GetValueOrDefault(stage.Id)?.Boss;
+        var diffName = stage.Hard ? "Hard" : "Normal";
+        var gearChoice = (bossFirst is null ? null : TeamsOf($"doom-tower:{diffName}:boss:{bossFirst}")) ?? TeamsOf($"doom-tower:{diffName}:bosses") ?? TeamsOf("doom-tower");
+        await GearIfAsked($"Doom Tower {diffName} {bossFirst ?? "boss"}", bossFirst is null ? "dt-floors" : "dt-" + new string([.. bossFirst.ToLowerInvariant().Where(char.IsLetter)]).Replace("celestial", "", StringComparison.Ordinal),
+            5, gearChoice?.Default, gearChoice?.Default.GearUp == true, gearChoice?.Default.PutBack == true, dryRun, ct);
         log($"autoplay: STEP Doom Tower {name}");
         await OpenDoomTower(ct);
         // Choosing a difficulty moves the map, so only when the bot left it on Hard; a miss (Hard left from elsewhere) chooses Normal and tries once more.

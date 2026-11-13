@@ -84,7 +84,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
     {
         NewDay(ctx);
         if (_day is null || ctx.Utc - _dayAt > PlanStale || _day.UtcDay != DateOnly.FromDateTime(ctx.Utc)) return Decision.Now("reading today's crypts");
-        return Next(ctx.Settings.FactionWars, ctx.DryRun) is { } step ? Decision.Now(step.Why)
+        return Next(ctx.Settings.FactionWars, ctx.DryRun, ctx.Settings.Teams) is { } step ? Decision.Now(step.Why)
             : Decision.Wait(NextUtcDay(ctx.Utc), _day.Open.Count == 0 ? "no crypt open today" : "today's keys are used: next crypts at the new day (UTC)");
     }
 
@@ -95,7 +95,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
         _day = await game.PlanDayAsync(ct);
         _dayAt = ctx.Utc;
         var s = ctx.Settings.FactionWars;
-        if (Next(s, ctx.DryRun) is not { } step) return "";
+        if (Next(s, ctx.DryRun, ctx.Settings.Teams) is not { } step) return "";
         await ctx.ThinkAsync(ct);
         switch (step.Kind)
         {
@@ -226,7 +226,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
     private sealed record Step(string Kind, CryptPlan? Crypt, string Why);
 
     /// <summary>What to do next, in the day's order; null when nothing is left today.</summary>
-    private Step? Next(FactionWarsSettings s, bool dryRun)
+    private Step? Next(FactionWarsSettings s, bool dryRun, IReadOnlyDictionary<string, AreaTeams>? teams = null)
     {
         if (_day is null) return null;
         var playable = _day.Open.Where(c => c.Keys > s.KeepKeys && Run(c, s) is not null && c.Team.Count > 0 && !_dryShown.Contains(c.Name)
@@ -236,7 +236,9 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
         foreach (var c in playable)
         {
             // Not geared yet, or its gear came off earlier and keys came back (they regenerate): gear it (again).
-            if (s.GearTeam && (!_geared.Contains(c.Name) || _removed.Contains(c.Name))) return new("gear", c, $"{c.Name}: gearing the team");
+            // The card's "gear the team", or the faction's own team set to gear up (Ehsan 2026-11-13).
+            var factionGear = teams?.GetValueOrDefault($"faction-wars:{c.Faction}")?.Default.GearUp == true;
+            if ((s.GearTeam || factionGear) && (!_geared.Contains(c.Name) || _removed.Contains(c.Name))) return new("gear", c, $"{c.Name}: gearing the team");
             return new("fight", c, $"{c.Name}: stage {Run(c, s)!.Value.Stage}{(Run(c, s)!.Value.SuperRaid ? " Super Raid" : "")} ({c.Keys} keys)");
         }
         if (s.RemoveGearAfter && !dryRun)

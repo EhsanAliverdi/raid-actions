@@ -49,6 +49,11 @@ public sealed partial class LivePlayGame : IEnergyGame
     {
         var started = DateTime.UtcNow;
         var where = EnergyPlanner.Describe(run);
+        // "The bot picks the best" with gear up (the row's, or the place's on Iron Twins / Keeps): geared before the stage opens (Ehsan 2026-11-13).
+        var placeTeam = run.Target.RegionTeams.GetValueOrDefault(run.Region);
+        await GearIfAsked($"{where} team", BotTeams.ContentArea(run.Target.Area, run.Region, run.AtDifficulty ?? run.Target.Difficulty), EnergyPlaces.Slots(run.Target.Area),
+            placeTeam ?? new TeamChoice { Mode = run.Target.BotTeam && run.Target.Team.Count == 0 ? TeamMode.BotChooses : TeamMode.Current },
+            placeTeam?.GearUp ?? run.Target.GearUp, placeTeam?.PutBack ?? run.Target.PutBack, dryRun, ct);
         log($"autoplay: STEP going to {where}");
         var story = run.Target.Area == "Story";
         var resultView = story ? PlayTargets.StoryResultView

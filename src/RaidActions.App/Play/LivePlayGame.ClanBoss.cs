@@ -269,7 +269,20 @@ public sealed partial class LivePlayGame : IClanBossGame
             await Pause(1500, ct);
             var top = Top(await Settled(ct));
             log($"autoplay: {row}: chest collected" + (top != PlayTargets.ClanDialogView ? $" (reward window {top}). Screen dump: {DumpScreen("clan chest reward")}" : ""));
-            for (var k = 0; k < 4 && Top(await Settled(ct)) is { } t2 && t2 != PlayTargets.ClanDialogView; k++) { await Back(t2, ct); await Pause(800, ct); }
+            // The chest's window (GachaChestOverlay, seen 2026-11-13) has no close: it waits, then Esc; any other window its own close.
+            for (var k = 0; k < 6 && Top(await Settled(ct)) is { } t2 && t2 != PlayTargets.ClanDialogView; k++)
+            {
+                if (t2 == "GachaChestOverlay")
+                {
+                    await Pause(1500, ct);
+                    if (Top(await Settled(ct)) != t2) continue;
+                    if (Game.Window.GameWindow.Find().Window is { } w && Input.MouseInput.SendEscape(w) is null) log("autoplay: the chest's window: Esc sent");
+                    await Pause(1200, ct);
+                    continue;
+                }
+                await Back(t2, ct);
+                await Pause(800, ct);
+            }
         }
         catch (PlayStopException e) { log($"autoplay: {row}: chest not taken ({e.Message}). Screen dump: {DumpScreen("clan chest")}"); }
     }

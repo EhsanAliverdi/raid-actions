@@ -257,6 +257,8 @@ public sealed partial class LivePlayGame : IFactionWarsGame
             }
             if (Top(s) == PlayTargets.BattleMenuView)
             {
+                // The card can be off the window (the battle menu scrolls sideways; 2026-11-13 18:35 at x -103): dragged into view first, as Doom Tower's.
+                await DragIntoView("mode-fw", ct);
                 await Click("mode-fw", null, (s2, _) => Has(s2, PlayTargets.FwMapView), "the Faction Wars map opens", ct);
                 continue;
             }

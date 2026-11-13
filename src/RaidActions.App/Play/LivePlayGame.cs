@@ -181,8 +181,8 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             var tryKey = $"{area}|{stage}";
             var tried = LoadTries().GetValueOrDefault(tryKey) ?? [];
             var size = p0.TeamSlots is > 0 and var n ? n : 5;
-            var variants = new List<List<int>> { BotTeams.Pick(d0, gd0, extractorRoot, contentArea, size) }.Where(v => v.Count > 0)
-                .Concat(TeamTries.Variants(d0.Champions, size)).ToList();
+            // At most three teams (Ehsan 2026-11-13): the needs team, the same with other fillers, the general pick; every one lost: the stage waits.
+            var variants = BotTeams.Tries(d0, gd0, extractorRoot, contentArea, size);
             if (TeamTries.Pick(variants, tried) is not { } choice)
             {
                 log($"autoplay: {area}: every team tried at {stage} lost: waiting");

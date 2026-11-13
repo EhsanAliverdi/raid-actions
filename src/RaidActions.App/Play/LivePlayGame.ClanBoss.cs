@@ -223,6 +223,57 @@ public sealed partial class LivePlayGame : IClanBossGame
         return await RefillByPlus("AllianceBossKey", "Clan Boss keys", dryRun, ct);
     }
 
+    private readonly Dictionary<string, DateTime> _chestSweep = [];
+
+    /// <summary>
+    /// Yesterday's alliance boss chests (Ehsan 2026-11-13: "you are not collecting rewards for Demon Lord, it is on the same screen as you play"): the
+    /// selected row's Collect Chest whenever it shows, and every row of the boss looked at every 6 hours (a chest left there greys Start out).
+    /// </summary>
+    private async Task CollectAllianceChests(string type, CancellationToken ct)
+    {
+        await TakeClanChest(ct);
+        var key = $"{(await Account(ct)).Data.Account.Name}|{type}";
+        if (_chestSweep.TryGetValue(key, out var last) && DateTime.UtcNow - last < TimeSpan.FromHours(6)) return;
+        _chestSweep[key] = DateTime.UtcNow;
+        var names = (await Read(ct)).Targets.Where(t => t.Kind == "clan-difficulty" && t.Note?.Contains(type, StringComparison.Ordinal) == true
+            && t.Note.Contains("; locked", StringComparison.Ordinal) != true).Select(t => t.Name).Distinct().ToList();
+        foreach (var name in names)
+        {
+            bool Row(UiTarget t) => t.Kind == "clan-difficulty" && t.Name == name && t.Note?.Contains(type, StringComparison.Ordinal) == true;
+            var row = (await Read(ct)).Targets.FirstOrDefault(Row);
+            if (row is null) continue;
+            if (row.Note?.Contains("; selected", StringComparison.Ordinal) != true)
+            {
+                try
+                {
+                    await DragIntoView("clan-difficulty", ct, Row);
+                    await Click("clan-difficulty", Row, (_, scan) => scan().Targets.Any(t => Row(t) && t.Note?.Contains("; selected", StringComparison.Ordinal) == true), $"{name} selected", ct);
+                }
+                catch (PlayStopException e) { log($"autoplay: {name}: not selected to look for its chest ({e.Message})"); continue; }
+                await Pause(600, ct);
+            }
+            await TakeClanChest(ct);
+        }
+    }
+
+    /// <summary>The selected row's Collect Chest when it shows: clicked, the reward window closed.</summary>
+    private async Task TakeClanChest(CancellationToken ct)
+    {
+        var (_, targets, _) = await Read(ct);
+        if (targets.FirstOrDefault(t => t.Kind == "clan-collect" && t.NotClickable is null) is not { } box) return;
+        var row = targets.FirstOrDefault(t => t.Kind == "clan-difficulty" && t.Note?.Contains("; selected", StringComparison.Ordinal) == true)?.Name ?? "the boss";
+        try
+        {
+            await Click("clan-collect", t => t.Path == box.Path, (s2, scan) => Top(s2) != PlayTargets.ClanDialogView || !scan().Targets.Any(t => t.Kind == "clan-collect" && t.NotClickable is null),
+                $"{row}: chest taken", ct, within: TimeSpan.FromSeconds(8));
+            await Pause(1500, ct);
+            var top = Top(await Settled(ct));
+            log($"autoplay: {row}: chest collected" + (top != PlayTargets.ClanDialogView ? $" (reward window {top}). Screen dump: {DumpScreen("clan chest reward")}" : ""));
+            for (var k = 0; k < 4 && Top(await Settled(ct)) is { } t2 && t2 != PlayTargets.ClanDialogView; k++) { await Back(t2, ct); await Pause(800, ct); }
+        }
+        catch (PlayStopException e) { log($"autoplay: {row}: chest not taken ({e.Message}). Screen dump: {DumpScreen("clan chest")}"); }
+    }
+
     private async Task OpenAllianceEnemy(string mapKind, string resultView, CancellationToken ct)
     {
         _nav.FitWindow();
@@ -236,7 +287,7 @@ public sealed partial class LivePlayGame : IClanBossGame
             var (_, targets, _) = await Read(ct);
             // The list of the wanted boss: its rows' enemy type (a list of the other boss is left).
             var want = mapKind == "clan-chimera" ? "type 3" : mapKind == "clan-hydra" ? "type 2" : "type 1";
-            if (targets.Any(t => t.Kind == "clan-difficulty" && t.Note?.Contains(want, StringComparison.Ordinal) == true)) return;
+            if (targets.Any(t => t.Kind == "clan-difficulty" && t.Note?.Contains(want, StringComparison.Ordinal) == true)) { await CollectAllianceChests(want, ct); return; }
             if (targets.Any(t => t.Kind == "clan-difficulty")) { await Back(Top(s)!, ct); continue; }
             if (targets.Any(t => t.Kind == mapKind))
             {

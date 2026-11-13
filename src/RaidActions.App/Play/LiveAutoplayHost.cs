@@ -271,8 +271,12 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
         }
     }
 
+    /// <summary>A test run on one area (autoplay --only): the account in the game plays on, no rotation.</summary>
+    public bool NoRotation { get; set; }
+
     public string? RotateDue(DateTime? nextUsefulUtc)
     {
+        if (NoRotation) return null;
         if (RaidExtractor.OutputLayout.GameId(dir) is not { } current) return null;
         var pool = RaidExtractor.AccountPool.Load(dir);
         if (!pool.Rotate) return null;
@@ -299,7 +303,7 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
 
     // A turn held for a task in progress does not keep an account another device has taken (2026-11-11 21:02: BlackLord65 opened elsewhere, a Faction
     // Wars gear task held the turn, and the bot waited instead of moving on; Ehsan: "both should move to the next account").
-    public bool CanRotate() => RaidExtractor.OutputLayout.GameId(dir) is { } current && RaidExtractor.AccountPool.Load(dir) is { Rotate: true } pool
+    public bool CanRotate() => !NoRotation && RaidExtractor.OutputLayout.GameId(dir) is { } current && RaidExtractor.AccountPool.Load(dir) is { Rotate: true } pool
         && pool.Next(current, DateTime.UtcNow) is not null;
 
     private string? _heldNote;

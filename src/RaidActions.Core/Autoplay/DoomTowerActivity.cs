@@ -47,15 +47,15 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
     private (DtStage? Stage, string Why) Pick(PlayContext ctx) =>
         _map is null ? (null, "not read") : DoomTowerRules.Pick([.. _map.Stages.Where(s => !_skip.Contains(s.Id) && ctx.Held($"{AreaId}:stage:{s.Id}") is null)], _map.Gold, _map.Silver, ctx.Settings.DoomTower, SilverQuest(ctx));
 
-    private sealed record Saved(DoomTowerMap? Map, DateTime ReadAt, List<int> Skip, DateTime ClimbAfter, DateTime NormalAfter = default);
+    private sealed record Saved(DoomTowerMap? Map, DateTime ReadAt, List<int> Skip, DateTime ClimbAfter, DateTime NormalAfter = default, DateTime NormalFinished = default);
 
     // Kept for the next bot on the account (a rotation's restart): the map is not opened again before its hour.
-    public string? SaveState() => _map is null ? null : System.Text.Json.JsonSerializer.Serialize(new Saved(_map, _readAt, [.. _skip], _climbAfter, _normalAfter), AutoplayJson.Options);
+    public string? SaveState() => _map is null ? null : System.Text.Json.JsonSerializer.Serialize(new Saved(_map, _readAt, [.. _skip], _climbAfter, _normalAfter, _normalFinished), AutoplayJson.Options);
 
     public void LoadState(string json, DateTime utc)
     {
         if (System.Text.Json.JsonSerializer.Deserialize<Saved>(json, AutoplayJson.Options) is not { Map: not null } s) return;
-        (_map, _readAt, _climbAfter, _normalAfter) = (s.Map, s.ReadAt, s.ClimbAfter, s.NormalAfter);
+        (_map, _readAt, _climbAfter, _normalAfter, _normalFinished) = (s.Map, s.ReadAt, s.ClimbAfter, s.NormalAfter, s.NormalFinished);
         _skip.UnionWith(s.Skip);
     }
 
@@ -76,7 +76,12 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
 
     private const string ClimbKey = AreaId + ":climb";
 
-    private bool ClimbDue(PlayContext ctx) => ctx.Settings.DoomTower.Climb && ctx.Utc >= _climbAfter && ctx.Held(ClimbKey) is null && GoldFree(ctx);
+    /// <summary>When the Normal tower was last found finished (no floor left to play): Hard is climbed only after (Ehsan 2026-11-13: "finish Normal first,
+    /// then Hard"); a tower's rotation starts Normal over, so "finished" counts for a week.</summary>
+    private DateTime _normalFinished;
+
+    private bool ClimbDue(PlayContext ctx) => ctx.Settings.DoomTower.Climb && ctx.Utc >= _climbAfter && ctx.Held(ClimbKey) is null && GoldFree(ctx)
+        && ctx.Utc - _normalFinished < TimeSpan.FromDays(7);
 
     /// <summary>
     /// The Normal tower's free floors (Ehsan 2026-11-10: "on main account yesterday you did not play doomtower normal"; a new tower left BlackLord65 with
@@ -120,6 +125,7 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
         var outcome = await game.ClimbDoomTowerAsync(hard, ctx.DryRun, ct);
         if (outcome.Result is BattleResult.NotStarted or BattleResult.Retry)
         {
+            if (!hard && outcome.Text.Contains("no gold floor", StringComparison.Ordinal)) _normalFinished = ctx.Utc;
             Rest(ctx.Utc + TimeSpan.FromHours(hard ? 6 : 12), $"{tower} tower: {outcome.Text}");
             ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", $"{tower} tower: {outcome.Text}");
             return "";

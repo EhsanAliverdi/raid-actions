@@ -156,6 +156,15 @@ public static class AutoplayCommand
             // Keys before energy (Ehsan 2026-10-31: "use keys smartly, the first priority is the quests, especially the daily ones like Faction
             // Wars"): energy can always play (the farm), so it comes last and takes every turn the key areas leave.
             IActivity[] activities = [giftsActivity, arena, tagActivity, cbActivity, hydraActivity, chimeraActivity, fwActivity, ccActivity, dtActivity, liveActivity, choresActivity, energyActivity];
+            // autoplay --only doom-tower[,chores]: a test run of those areas on the account in the game, no rotation (2026-11-13: the Dark Fae).
+            var onlyAt = Array.IndexOf(args, "--only");
+            if (onlyAt >= 0 && onlyAt + 1 < args.Length)
+            {
+                var only = args[onlyAt + 1].Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                activities = [.. activities.Where(a => only.Contains(a.Id, StringComparer.OrdinalIgnoreCase))];
+                host.NoRotation = true;
+                Print($"Only: {string.Join(", ", activities.Select(a => a.Id))} (no rotation)");
+            }
             host.GameBlocked = game.SessionTaken;
             host.RetryGame = game.RetryConnection;
             host.GameReadable = game.UiReadable;

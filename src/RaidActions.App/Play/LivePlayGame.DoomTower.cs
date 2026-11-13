@@ -84,6 +84,9 @@ public sealed partial class LivePlayGame : IDoomTowerGame
 
     private bool _towerOnHard;
 
+    /// <summary>A boss's Content teams fight ("Dark Fae" → dt-darkfae).</summary>
+    private static string TowerContent(string boss) => "dt-" + new string([.. boss.ToLowerInvariant().Where(char.IsLetter)]).Replace("celestial", "", StringComparison.Ordinal);
+
     /// <summary>The Normal or Hard tower on the map; the game keeps the last one chosen.</summary>
     private async Task SelectTowerDifficulty(string name, CancellationToken ct)
     {
@@ -101,7 +104,17 @@ public sealed partial class LivePlayGame : IDoomTowerGame
     {
         var started = DateTime.UtcNow;
         var tower = hard ? "Hard" : "Normal";
-        log($"autoplay: STEP Doom Tower: climbing {tower}");
+        // The floor to play (the account's progress: its stage id) and, on a boss floor, its boss (Ehsan 2026-11-13: BlackLord65 stuck at the Dark Fae):
+        // the boss's team on the page, prepared first (gear up) when it asks for it.
+        var (climbData, _, _, _) = await Account(ct);
+        var current = climbData.Progress?.DoomTower?.StageIndicatorRaw.GetValueOrDefault(tower) ?? 0;
+        var floorBoss = current % 10 == 0 && current > 0 ? RaidExtractor.GdTowerBoss.Load(Path.Combine(extractorRoot, "output", "gamedata")).GetValueOrDefault(current)?.Boss : null;
+        log($"autoplay: STEP Doom Tower: climbing {tower}, floor {current % 1000}{(floorBoss is null ? "" : $" ({floorBoss})")}");
+        if (floorBoss is not null)
+        {
+            var bossChoice = TeamsOf($"doom-tower:{tower}:boss:{floorBoss}") ?? TeamsOf($"doom-tower:{tower}:bosses") ?? TeamsOf("doom-tower");
+            await PrepareTeam($"Doom Tower {tower} {floorBoss}", "doom-tower", TowerContent(floorBoss), 5, bossChoice?.Default, dryRun, ct);
+        }
         await OpenDoomTower(ct);
         await SelectTowerDifficulty(tower, ct);
         var (w, why) = GameWindow.Find();
@@ -131,7 +144,7 @@ public sealed partial class LivePlayGame : IDoomTowerGame
             catch (PlayStopException e) { log($"autoplay: the tower left as it is ({e.Message})"); }
             return new BattleOutcome(BattleResult.NotStarted, $"the floor did not open ({opened})");
         }
-        return await PlayTowerTeam($"{tower} floor", started, dryRun, ct);
+        return await PlayTowerTeam(floorBoss is null ? $"{tower} floor" : $"{tower} boss floor {current % 1000}", started, dryRun, ct, floorBoss);
     }
 
     /// <summary>From the stage's team screen to the result.</summary>

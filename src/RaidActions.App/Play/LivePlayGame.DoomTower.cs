@@ -106,17 +106,27 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         var tower = hard ? "Hard" : "Normal";
         // The floor to play (the account's progress: its stage id) and, on a boss floor, its boss (Ehsan 2026-11-13: BlackLord65 stuck at the Dark Fae):
         // the boss's team on the page, prepared first (gear up) when it asks for it.
+        log($"autoplay: STEP Doom Tower: climbing {tower}");
+        await OpenDoomTower(ct);
+        await SelectTowerDifficulty(tower, ct);
+        // The floor to play: the map's open one (2026-11-13: the account's progress said 30 while 31-39 were beaten and 40 was open), its stage id from
+        // the tower's rotation (the progress's stage id: 703 1 030), and on a boss floor its boss: that boss's team, prepared first when it asks for it.
         var (climbData, _, _, _) = await Account(ct);
-        var current = climbData.Progress?.DoomTower?.StageIndicatorRaw.GetValueOrDefault(tower) ?? 0;
-        var floorBoss = current % 10 == 0 && current > 0 ? RaidExtractor.GdTowerBoss.Load(Path.Combine(extractorRoot, "output", "gamedata")).GetValueOrDefault(current)?.Boss : null;
-        log($"autoplay: STEP Doom Tower: climbing {tower}, floor {current % 1000}{(floorBoss is null ? "" : $" ({floorBoss})")}");
+        var raw = climbData.Progress?.DoomTower?.StageIndicatorRaw.Values.FirstOrDefault() ?? 0;
+        var openFloor = (await Read(ct)).Targets.Where(t => t.Kind == "dt-stage" && t.Id is > 0 and < 800 && t.Note?.Contains("status 1", StringComparison.Ordinal) == true)
+            .Select(t => t.Id!.Value).DefaultIfEmpty(0).Min();
+        var current = raw > 0 && openFloor > 0 ? raw / 10_000 * 10_000 + (hard ? 2 : 1) * 1000 + openFloor : 0;
+        var floorBoss = openFloor % 10 == 0 && current > 0 ? RaidExtractor.GdTowerBoss.Load(Path.Combine(extractorRoot, "output", "gamedata")).GetValueOrDefault(current)?.Boss : null;
+        log($"autoplay: Doom Tower {tower}: floor {openFloor} open{(floorBoss is null ? "" : $": {floorBoss}")}");
         if (floorBoss is not null)
         {
             var bossChoice = TeamsOf($"doom-tower:{tower}:boss:{floorBoss}") ?? TeamsOf($"doom-tower:{tower}:bosses") ?? TeamsOf("doom-tower");
-            await PrepareTeam($"Doom Tower {tower} {floorBoss}", "doom-tower", TowerContent(floorBoss), 5, bossChoice?.Default, dryRun, ct);
+            if ((await PrepareTeam($"Doom Tower {tower} {floorBoss}", "doom-tower", TowerContent(floorBoss), 5, bossChoice?.Default, dryRun, ct)).Length > 0)
+            {
+                await OpenDoomTower(ct);
+                await SelectTowerDifficulty(tower, ct);
+            }
         }
-        await OpenDoomTower(ct);
-        await SelectTowerDifficulty(tower, ct);
         var (w, why) = GameWindow.Find();
         if (w is null) throw new PlayStopException(why!);
         var (capture, problem) = WindowCapture.Take(w);
@@ -144,7 +154,7 @@ public sealed partial class LivePlayGame : IDoomTowerGame
             catch (PlayStopException e) { log($"autoplay: the tower left as it is ({e.Message})"); }
             return new BattleOutcome(BattleResult.NotStarted, $"the floor did not open ({opened})");
         }
-        return await PlayTowerTeam(floorBoss is null ? $"{tower} floor" : $"{tower} boss floor {current % 1000}", started, dryRun, ct, floorBoss);
+        return await PlayTowerTeam(floorBoss is null ? $"{tower} floor {openFloor}" : $"{tower} boss floor {openFloor}", started, dryRun, ct, floorBoss);
     }
 
     /// <summary>From the stage's team screen to the result.</summary>

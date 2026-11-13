@@ -118,8 +118,10 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
         var key = hard ? ClimbKey : NormalKey;
         void Rest(DateTime until, string why)
         {
+            // A dry run rests nothing (2026-11-13: a dry run's "Start shown" rested the Normal climb for 12 hours).
+            if (ctx.DryRun) return;
             if (hard) _climbAfter = until; else _normalAfter = until;
-            if (!ctx.DryRun) ctx.Hold(key, until, why);
+            ctx.Hold(key, until, why);
         }
         await ctx.ThinkAsync(ct);
         var outcome = await game.ClimbDoomTowerAsync(hard, ctx.DryRun, ct);

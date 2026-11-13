@@ -24,6 +24,8 @@ public sealed partial class LivePlayGame
         var byId = data.Champions.ToDictionary(c => c.Id);
         var reserve = team.Where(id => byId.TryGetValue(id, out var c) && c.InBathhouse).ToList();
         var master = team.Where(id => byId.TryGetValue(id, out var c) && c.InVault).ToList();
+        // What each wore before (the put-back never strips gear a champion had of its own).
+        var before = team.ToDictionary(id => id, id => data.Artifacts.Where(a => a.OwnerHeroId == id).Select(a => a.Id).ToList());
         string[] dry = dryRun ? ["--dry-run"] : [];
         log($"autoplay: STEP gearing the bot's team for {tag}: {string.Join(", ", team.Select(Who))}");
         if (reserve.Count > 0)
@@ -45,8 +47,8 @@ public sealed partial class LivePlayGame
         if (putBack && !dryRun && reserve.Count + master.Count > 0)
         {
             var list = PutBackList.Load(ExtractorOutput).Where(e => !team.Contains(e.Id)).ToList();
-            list.AddRange(reserve.Select(id => new PutBackEntry(id, "reserve", DateTime.UtcNow, fight)));
-            list.AddRange(master.Select(id => new PutBackEntry(id, "master", DateTime.UtcNow, fight)));
+            list.AddRange(reserve.Select(id => new PutBackEntry(id, "reserve", DateTime.UtcNow, fight, before[id])));
+            list.AddRange(master.Select(id => new PutBackEntry(id, "master", DateTime.UtcNow, fight, before[id])));
             PutBackList.Save(ExtractorOutput, list);
             log($"autoplay: {tag}: {reserve.Count + master.Count} champion(s) go back to their vault later");
         }
@@ -61,12 +63,22 @@ public sealed partial class LivePlayGame
         var all = PutBackList.Load(ExtractorOutput);
         var due = all.Where(e => DateTime.UtcNow - e.Utc >= after).ToList();
         if (due.Count == 0) return "";
+        // The locks first (Ehsan 2026-11-13: "make sure it respects the lock for gear, this is very important"): a protected or frozen champion (the
+        // Clan Boss team too), one wearing a protected piece, or one that wore gear of its own before is never stripped: it stays out, as it is.
+        var (data, _, _, locks) = await Account(ct);
+        var keep = due.Where(e => locks.IsLocked(e.Id) || e.Before is null || e.Before.Count > 0
+            || data.Artifacts.Any(a => a.OwnerHeroId == e.Id && locks.ProtectedArtifacts.Contains(a.Id))).ToList();
+        foreach (var e in keep)
+            log($"autoplay: {Who(e.Id)} stays out of the {e.Where} vault, gear on: {(locks.IsLocked(e.Id) ? "locked" : e.Before is not { Count: 0 } ? "it had gear of its own" : "it wears a protected piece")}");
+        if (!dryRun) PutBackList.Save(ExtractorOutput, [.. all.Except(keep)]);
+        due = [.. due.Except(keep)];
+        if (due.Count == 0) return keep.Count == 0 ? "" : $"{keep.Count} champion(s) kept out (locked, or gear of their own)";
         foreach (var g in due.GroupBy(e => e.Where))
         {
             log($"autoplay: STEP putting back into the {g.Key} vault: {string.Join(", ", g.Select(e => Who(e.Id)))}");
             await StripGear([.. g.Select(e => e.Id)], g.Key, dryRun, ct);
         }
-        if (!dryRun) PutBackList.Save(ExtractorOutput, [.. all.Except(due)]);
+        if (!dryRun) PutBackList.Save(ExtractorOutput, [.. PutBackList.Load(ExtractorOutput).Where(e => !due.Any(d => d.Id == e.Id))]);
         await HomeAsync(Action("after putting back"), ct);
         return $"{due.Count} champion(s) back in their vault, gear off" + (dryRun ? " (dry run)" : "");
     }

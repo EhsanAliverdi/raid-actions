@@ -91,6 +91,13 @@ public sealed partial class LivePlayGame : IFactionWarsGame
     /// </summary>
     private async Task StripGear(IReadOnlyList<int> ids, string then, bool dryRun, CancellationToken ct)
     {
+        // Never a locked champion (protected, frozen, the Clan Boss team) nor one wearing a protected piece (Ehsan 2026-11-13: "it must respect the
+        // locks, this is very important"): whoever calls this, those are left out.
+        var (lockData, _, _, locks) = await Account(ct);
+        var refused = ids.Where(id => locks.IsLocked(id) || lockData.Artifacts.Any(a => a.OwnerHeroId == id && locks.ProtectedArtifacts.Contains(a.Id))).ToList();
+        if (refused.Count > 0) log($"autoplay: gear not removed (locked, or a protected piece): {string.Join(", ", refused.Select(Who))}");
+        ids = [.. ids.Except(refused)];
+        if (ids.Count == 0) return;
         var args = ids.Select(i => i.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
         try { await RunCommand(["remove-gear", .. args, "--then", then, .. (dryRun ? new[] { "--dry-run" } : [])], ct); }
         catch (PlayStopException e) when (!dryRun)

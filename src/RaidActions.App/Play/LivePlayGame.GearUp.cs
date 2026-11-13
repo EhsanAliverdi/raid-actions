@@ -5,84 +5,111 @@ using RaidExtractor.Battle;
 namespace RaidActions.App.Play;
 
 /// <summary>
-/// "The bot picks the best" with "gear up" and "put back" (Ehsan 2026-11-13: "an auto gear option which gears the team it builds, and return it to where it
-/// was after use: master vault, reserve vault"): before an area's fight, off its team screen, the bot's team comes out of the vaults and gets the best gear
-/// (once a day per team); the champions that came out of a vault are noted (put-back.json) and go back to it, gear off, an hour later (the chores).
+/// The one team preparation of every area (raid-extractor plan/team-prep.md, Core <see cref="TeamPrep"/>; Ehsan 2026-11-13: "a common Prepare team module
+/// shared between all areas"): the team the page's picker says; with "gear up", before the fight and off its screens, the team's places and pieces noted,
+/// the champions out of the vaults and geared (once a day per team, the locks always win, the noted pieces kept off other teams); with "put back", an hour
+/// after the team's last use (Faction Wars: after its day) each champion gets its own pieces back and returns where it was.
 /// </summary>
 public sealed partial class LivePlayGame
 {
     private readonly HashSet<string> _gearedToday = [];
 
-    /// <summary>Gears the bot's team for <paramref name="tag"/> when its choice asks for it; nothing otherwise. Never on the fight's own screens.</summary>
-    private async Task GearIfAsked(string tag, string? contentArea, int size, TeamChoice? choice, bool gearUp, bool putBack, bool dryRun, CancellationToken ct)
+    /// <summary>Prepares the bot's team for <paramref name="tag"/> when its choice asks for it; nothing otherwise.</summary>
+    /// <param name="team">The team already chosen (Faction Wars' crypt team); null: the bot's pick for <paramref name="contentArea"/>.</param>
+    private async Task<string> PrepareTeam(string tag, string area, string? contentArea, int size, TeamChoice? choice, bool dryRun, CancellationToken ct,
+        IReadOnlyList<int>? team = null, string? faction = null)
     {
-        if (!gearUp || choice is not null && choice.Mode != TeamMode.BotChooses) return;
-        if (!_gearedToday.Add($"{DateTime.UtcNow:yyyyMMdd}|{tag}")) return;
+        if (choice is not { Mode: TeamMode.BotChooses, GearUp: true }) return "";
         var (data, gd, ratings, locks) = await Account(ct);
-        var team = BotTeams.Pick(data, gd, extractorRoot, contentArea, size);
-        if (team.Count == 0) return;
-        var byId = data.Champions.ToDictionary(c => c.Id);
-        var reserve = team.Where(id => byId.TryGetValue(id, out var c) && c.InBathhouse).ToList();
-        var master = team.Where(id => byId.TryGetValue(id, out var c) && c.InVault).ToList();
-        // What each wore before (the put-back never strips gear a champion had of its own).
-        var before = team.ToDictionary(id => id, id => data.Artifacts.Where(a => a.OwnerHeroId == id).Select(a => a.Id).ToList());
+        team ??= BotTeams.Pick(data, gd, extractorRoot, contentArea, size, faction);
+        if (team.Count == 0) return "";
+        var now = DateTime.UtcNow;
+        // Every use keeps a prepared team out a while longer.
+        if (choice.PutBack && !dryRun) TeamPrep.Save(ExtractorOutput, TeamPrep.Merge(TeamPrep.Load(ExtractorOutput), [], [.. team], now));
+        if (!_gearedToday.Add($"{now:yyyyMMdd}|{tag}")) return "";
+        var fight = $"Auto Play: {tag}";
+        var snapshot = TeamPrep.Snapshot(data, team, fight, area, now);
+        log($"autoplay: STEP preparing the bot's team for {tag}: {string.Join(", ", snapshot.Select(e => $"{Who(e.Id)} ({e.Place}, {e.Before.Count} pieces)"))}");
         string[] dry = dryRun ? ["--dry-run"] : [];
-        log($"autoplay: STEP gearing the bot's team for {tag}: {string.Join(", ", team.Select(Who))}");
-        if (reserve.Count > 0)
+        var vaulted = snapshot.Where(e => e.Place != ChampionPlace.List).Select(e => e.Id.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
+        if (vaulted.Count > 0)
         {
-            await RunCommand(["vault-withdraw", .. reserve.Select(i => i.ToString(System.Globalization.CultureInfo.InvariantCulture)), "--reserve", .. dry], ct);
+            await RunCommand(["vault-withdraw", .. vaulted, .. dry], ct);
             (data, gd, ratings, locks) = await Account(ct);
         }
-        var fight = $"Auto Play: {tag}";
         var made = Prepare.Make(data, gd, ratings, team, fight, locks: locks);
-        var picked = made.Members.Where(m => m.Changes || m.InVault).ToList();
+        var picked = made.Members.Where(m => m.Changes).ToList();
         if (picked.Count > 0)
         {
             var (commands, _, problem) = Prepare.BotCommands(data, gd, fight, picked, ExtractorOutput, dryRun);
-            if (commands is null && picked.Any(m => m.InVault))
-                commands = [["vault-withdraw", .. picked.Where(m => m.InVault).Select(m => m.ChampionId.ToString(System.Globalization.CultureInfo.InvariantCulture)), .. dry]];
-            if (commands is null) log($"autoplay: {tag}: no gear to move ({problem ?? "nothing better in the inventory"})");
+            if (commands is null) log($"autoplay: {tag}: no gear moved ({problem ?? "nothing better in the inventory"})");
             foreach (var args in commands ?? []) await RunCommand(args, ct);
         }
-        if (putBack && !dryRun && reserve.Count + master.Count > 0)
-        {
-            var list = PutBackList.Load(ExtractorOutput).Where(e => !team.Contains(e.Id)).ToList();
-            list.AddRange(reserve.Select(id => new PutBackEntry(id, "reserve", DateTime.UtcNow, fight, before[id])));
-            list.AddRange(master.Select(id => new PutBackEntry(id, "master", DateTime.UtcNow, fight, before[id])));
-            PutBackList.Save(ExtractorOutput, list);
-            log($"autoplay: {tag}: {reserve.Count + master.Count} champion(s) go back to their vault later");
-        }
-        await HomeAsync(Action("after gearing"), ct);
+        if (choice.PutBack && !dryRun) TeamPrep.Save(ExtractorOutput, TeamPrep.Merge(TeamPrep.Load(ExtractorOutput), snapshot, [.. team], now));
+        await HomeAsync(Action("after preparing the team"), ct);
+        var pieces = picked.Sum(m => m.Moves.Count);
+        return $"{pieces} piece(s) for {picked.Count} champion(s), {vaulted.Count} out of a vault" + (choice.PutBack ? "; put back after" : "") + (dryRun ? " (dry run)" : "");
     }
 
-    public IReadOnlyList<int> PutBackDue(TimeSpan after) => [.. PutBackList.Load(ExtractorOutput).Where(e => Due(e, after)).Select(e => e.Id)];
+    /// <summary>Your locks (and the Clan Boss team) plus the pieces of champions the bot has out: those stay off other teams until they are put back.</summary>
+    private Locks WithPrepared(Locks locks, SavedExport data)
+    {
+        var reserved = TeamPrep.Reserved(TeamPrep.Load(ExtractorOutput));
+        if (reserved.Count == 0 || locks.Set is not { } set) return locks;
+        return new Locks(set with { Name = $"{set.Name} + pieces of champions out", ProtectedArtifacts = [.. set.Artifacts, .. reserved] }, data);
+    }
 
-    /// <summary>An hour after; a Faction Wars team only once its day is over (its crypt may be played again the same day).</summary>
-    private static bool Due(PutBackEntry e, TimeSpan after) =>
-        e.Fight.StartsWith("Faction Wars", StringComparison.Ordinal) ? e.Utc.Date < DateTime.UtcNow.Date : DateTime.UtcNow - e.Utc >= after;
+    public IReadOnlyList<int> PutBackDue(TimeSpan after) => [.. TeamPrep.Load(ExtractorOutput).Where(e => TeamPrep.Due(e, DateTime.UtcNow, after)).Select(e => e.Id)];
 
+    /// <summary>The champions whose team the bot is done with: their own pieces back, then each to where it was. The locks always win.</summary>
     public async Task<string> PutBackAsync(TimeSpan after, bool dryRun, CancellationToken ct)
     {
-        var all = PutBackList.Load(ExtractorOutput);
-        var due = all.Where(e => Due(e, after)).ToList();
+        var due = TeamPrep.Load(ExtractorOutput).Where(e => TeamPrep.Due(e, DateTime.UtcNow, after)).ToList();
         if (due.Count == 0) return "";
-        // The locks first (Ehsan 2026-11-13: "make sure it respects the lock for gear, this is very important"): a protected or frozen champion (the
-        // Clan Boss team too), one wearing a protected piece, or one that wore gear of its own before is never stripped: it stays out, as it is.
-        var (data, _, _, locks) = await Account(ct);
-        var keep = due.Where(e => locks.IsLocked(e.Id) || e.Before is null || e.Before.Count > 0
-            || data.Artifacts.Any(a => a.OwnerHeroId == e.Id && locks.ProtectedArtifacts.Contains(a.Id))).ToList();
-        foreach (var e in keep)
-            log($"autoplay: {Who(e.Id)} stays out of the {e.Where} vault, gear on: {(locks.IsLocked(e.Id) ? "locked" : e.Before is not { Count: 0 } ? "it had gear of its own" : "it wears a protected piece")}");
-        if (!dryRun) PutBackList.Save(ExtractorOutput, [.. all.Except(keep)]);
-        due = [.. due.Except(keep)];
-        if (due.Count == 0) return keep.Count == 0 ? "" : $"{keep.Count} champion(s) kept out (locked, or gear of their own)";
-        foreach (var g in due.GroupBy(e => e.Where))
+        var (data, gd, _, _) = await Account(ct);
+        var locks = Prepare.LocksFor(data, LockStore.Load(ExtractorOutput));            // your locks only: the noted pieces are the ones going back
+        var steps = due.Select(e => (Entry: e, Step: TeamPrep.Restore(e, data, locks))).ToList();
+        foreach (var (e, step) in steps.Where(s => s.Step.Skip is not null))
+            log($"autoplay: {Who(e.Id)} is left as it is ({step.Skip})");
+        var go = steps.Where(s => s.Step.Skip is null).ToList();
+        string[] dry = dryRun ? ["--dry-run"] : [];
+        static string N(int id) => id.ToString(System.Globalization.CultureInfo.InvariantCulture);
+
+        // 1. The gear: what the bot put on comes off, the champion's own pieces go back on.
+        var regear = go.Where(s => s.Step.GearChanged).ToList();
+        if (regear.Count > 0)
         {
-            log($"autoplay: STEP putting back into the {g.Key} vault: {string.Join(", ", g.Select(e => Who(e.Id)))}");
-            await StripGear([.. g.Select(e => e.Id)], g.Key, dryRun, ct);
+            log($"autoplay: STEP putting their own gear back on: {string.Join(", ", regear.Select(s => Who(s.Entry.Id)))}");
+            await RunCommand(["unequip", .. regear.Select(s => N(s.Entry.Id)), .. dry], ct);
+            var withPieces = regear.Where(s => s.Step.Reequip.Count > 0).ToList();
+            if (withPieces.Count > 0 && !dryRun)
+            {
+                (data, gd, _, _) = await Account(ct);
+                var byId = data.Artifacts.ToDictionary(a => a.Id);
+                var members = withPieces.Select(s => new PrepareMember(s.Entry.Id, Who(s.Entry.Id), "Restore", "its own gear back", false, null,
+                    [.. s.Step.Reequip.Where(byId.ContainsKey).Select(id => new PieceMove($"{byId[id].Set} {byId[id].Slot}", null, id, byId[id].Slot))], [], [])).ToList();
+                var (commands, _, problem) = Prepare.BotCommands(data, gd, "Auto Play: put back", members, ExtractorOutput, dryRun);
+                if (commands is null) log($"autoplay: their own pieces were not put back on: {problem}");
+                foreach (var args in commands ?? []) await RunCommand(args, ct);
+            }
         }
-        if (!dryRun) PutBackList.Save(ExtractorOutput, [.. PutBackList.Load(ExtractorOutput).Where(e => !due.Any(d => d.Id == e.Id))]);
+
+        // 2. The place: back into the vault it came from (a vault champion that wore gear goes to the master vault with it: not built yet, see below).
+        var reserve = go.Where(s => s.Entry.Place == ChampionPlace.Reserve).Select(s => s.Entry.Id).ToList();
+        var master = go.Where(s => s.Entry.Place == ChampionPlace.Master && s.Entry.Before.Count == 0).Select(s => s.Entry.Id).ToList();
+        var geared = go.Where(s => s.Entry.Place == ChampionPlace.Master && s.Entry.Before.Count > 0).ToList();
+        if (reserve.Count > 0) await StripGear(reserve, "reserve", dryRun, ct);
+        if (master.Count > 0) await StripGear(master, "master", dryRun, ct);
+        foreach (var (e, _) in geared)
+            log($"autoplay: {Who(e.Id)} has its own gear back and stays in the champion list: moving a geared champion into the master vault is not built yet (the vault screen must be explored first)");
+
+        if (!dryRun)
+        {
+            var done = steps.Select(s => s.Entry.Id).ToHashSet();
+            TeamPrep.Save(ExtractorOutput, [.. TeamPrep.Load(ExtractorOutput).Where(e => !done.Contains(e.Id))]);
+        }
         await HomeAsync(Action("after putting back"), ct);
-        return $"{due.Count} champion(s) back in their vault, gear off" + (dryRun ? " (dry run)" : "");
+        return $"{go.Count} champion(s) put back ({regear.Count} with their own gear, {reserve.Count + master.Count} into their vault)"
+            + (steps.Count > go.Count ? $", {steps.Count - go.Count} left as they are" : "") + (dryRun ? " (dry run)" : "");
     }
 }

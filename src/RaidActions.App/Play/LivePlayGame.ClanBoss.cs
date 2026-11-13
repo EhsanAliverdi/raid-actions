@@ -94,7 +94,7 @@ public sealed partial class LivePlayGame : IClanBossGame
         // The boss's team geared first when it asks for it (Ehsan 2026-11-13).
         var gearArea = enemyType == 3 ? "chimera" : enemyType == 2 ? "hydra" : "clan-boss";
         var gearChoice = TeamsOf(gearArea)?.Default;
-        await GearIfAsked(label, BotTeams.ContentArea(gearArea), gearArea == "hydra" ? 6 : 5, gearChoice, gearChoice?.GearUp == true, gearChoice?.PutBack == true, dryRun, ct);
+        await PrepareTeam(label, gearArea, BotTeams.ContentArea(gearArea), gearArea == "hydra" ? 6 : 5, gearChoice, dryRun, ct);
         var started = DateTime.UtcNow;
         log($"autoplay: STEP {label} {difficulty}");
         await OpenAllianceEnemy(mapKind, resultView, ct);

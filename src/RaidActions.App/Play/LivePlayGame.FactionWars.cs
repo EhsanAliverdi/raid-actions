@@ -78,43 +78,12 @@ public sealed partial class LivePlayGame : IFactionWarsGame
     /// <summary>The team choice for a faction's crypt: its own on the Faction Wars page, else the area's.</summary>
     private TeamChoice? FactionChoice(string faction) => TeamsOf($"faction-wars:{faction}")?.Default ?? TeamsOf("faction-wars")?.Default;
 
+    /// <summary>The crypt team prepared by the shared team preparation (the faction's picker: gear up, put back; plan/team-prep.md).</summary>
     public async Task<string> GearTeamAsync(CryptPlan crypt, bool dryRun, CancellationToken ct)
     {
-        var (data, gd, ratings, locks) = await Account(ct);
-        var fight = $"Faction Wars: {crypt.Name}";
-        // Who was where before (the put-back), and the reserve vault's champions out first (Prepare takes the master vault's out itself).
-        var choice = FactionChoice(crypt.Faction);
-        var byId = data.Champions.ToDictionary(c => c.Id);
-        var reserve = crypt.Team.Where(id => byId.TryGetValue(id, out var c) && c.InBathhouse).ToList();
-        var master = crypt.Team.Where(id => byId.TryGetValue(id, out var c) && c.InVault).ToList();
-        var before = crypt.Team.ToDictionary(id => id, id => data.Artifacts.Where(a => a.OwnerHeroId == id).Select(a => a.Id).ToList());
-        if (reserve.Count > 0)
-        {
-            await RunCommand(["vault-withdraw", .. reserve.Select(i => i.ToString(System.Globalization.CultureInfo.InvariantCulture)), .. (dryRun ? new[] { "--dry-run" } : [])], ct);
-            (data, gd, ratings, locks) = await Account(ct);
-        }
-        if (choice is { PutBack: true } && !dryRun && reserve.Count + master.Count > 0)
-        {
-            var list = PutBackList.Load(ExtractorOutput).Where(e => !crypt.Team.Contains(e.Id)).ToList();
-            list.AddRange(reserve.Select(id => new PutBackEntry(id, "reserve", DateTime.UtcNow, fight, before[id])));
-            list.AddRange(master.Select(id => new PutBackEntry(id, "master", DateTime.UtcNow, fight, before[id])));
-            PutBackList.Save(ExtractorOutput, list);
-            log($"autoplay: {crypt.Name}: {reserve.Count + master.Count} champion(s) go back to their vault later");
-        }
-        var made = Prepare.Make(data, gd, ratings, crypt.Team, fight, locks: locks);
-        var picked = made.Members.Where(m => m.Changes || m.InVault).ToList();
-        if (picked.Count == 0) return "nothing better in the inventory; the team keeps its gear";
-        var (commands, _, problem) = Prepare.BotCommands(data, gd, fight, picked, ExtractorOutput, dryRun);
-        if (commands is null)
-        {
-            var inVault = picked.Where(m => m.InVault).Select(m => m.ChampionId.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
-            if (inVault.Count == 0) return problem ?? "nothing to equip";
-            commands = [["vault-withdraw", .. inVault, .. (dryRun ? new[] { "--dry-run" } : [])]];
-        }
-        foreach (var args in commands) await RunCommand(args, ct);
-        var pieces = picked.Sum(m => m.Moves.Count);
-        return $"{pieces} piece{(pieces == 1 ? "" : "s")} for {picked.Count(m => m.Changes)} champion(s){(picked.Any(m => m.InVault) ? $", {picked.Count(m => m.InVault)} out of a vault" : "")}"
-            + (dryRun ? " (dry run)" : "");
+        var done = await PrepareTeam($"Faction Wars: {crypt.Name}", "faction-wars", "factionwars", Math.Max(5, crypt.Team.Count), FactionChoice(crypt.Faction), dryRun, ct,
+            team: crypt.Team, faction: crypt.Faction);
+        return done.Length == 0 ? "already prepared today" : done;
     }
 
     public async Task<string> RemoveGearAsync(IReadOnlyList<int> ids, bool dryRun, CancellationToken ct)
@@ -349,7 +318,7 @@ public sealed partial class LivePlayGame : IFactionWarsGame
         var data = await game.Account.ReadAsync(ct);
         foreach (var c in data.Champions) _names[c.Id] = c.Name ?? $"#{c.Id}";
         var gd = GameDataLookup.Load(ExtractorOutput);
-        return (data, gd, ChampionRatings.Load(extractorRoot), Prepare.LocksFor(data, LockStore.Load(ExtractorOutput)));
+        return (data, gd, ChampionRatings.Load(extractorRoot), WithPrepared(Prepare.LocksFor(data, LockStore.Load(ExtractorOutput)), data));
     }
 
     private readonly Dictionary<int, string> _names = [];

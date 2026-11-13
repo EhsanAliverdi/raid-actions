@@ -237,8 +237,9 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
         {
             // Not geared yet, or its gear came off earlier and keys came back (they regenerate): gear it (again).
             // The card's "gear the team", or the faction's own team set to gear up (Ehsan 2026-11-13).
-            var factionGear = teams?.GetValueOrDefault($"faction-wars:{c.Faction}")?.Default.GearUp == true;
-            if ((s.GearTeam || factionGear) && (!_geared.Contains(c.Name) || _removed.Contains(c.Name))) return new("gear", c, $"{c.Name}: gearing the team");
+            // The faction's team on the page decides (Ehsan 2026-11-13: one team setup for every area): "the bot picks" with "gear up".
+            var choice = teams?.GetValueOrDefault($"faction-wars:{c.Faction}")?.Default ?? teams?.GetValueOrDefault("faction-wars")?.Default;
+            if (choice is { Mode: TeamMode.BotChooses, GearUp: true } && (!_geared.Contains(c.Name) || _removed.Contains(c.Name))) return new("gear", c, $"{c.Name}: preparing the team");
             return new("fight", c, $"{c.Name}: stage {Run(c, s)!.Value.Stage}{(Run(c, s)!.Value.SuperRaid ? " Super Raid" : "")} ({c.Keys} keys)");
         }
         if (s.RemoveGearAfter && !dryRun)

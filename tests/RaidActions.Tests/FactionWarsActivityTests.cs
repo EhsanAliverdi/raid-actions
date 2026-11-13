@@ -10,7 +10,7 @@ public class FactionWarsActivityTests
     private static readonly DateTime Start = new(2026, 10, 29, 6, 0, 0, DateTimeKind.Utc);
 
     private static (FakeHost Host, FakeFactionWarsGame Game, AutoplayEngine Engine) Make(Func<FactionWarsSettings, FactionWarsSettings>? fw = null, bool dryRun = false,
-        TimeSpan? stopAfter = null)
+        TimeSpan? stopAfter = null, bool botTeam = true)
     {
         var host = new FakeHost(Start)
         {
@@ -18,6 +18,8 @@ public class FactionWarsActivityTests
             {
                 Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 },
                 FactionWars = (fw ?? (s => s))(new FactionWarsSettings { Enabled = true }),
+                // The team picker decides the gearing (plan/team-prep.md): the bot's pick, geared up (unless a test switches the card's gearing off).
+                Teams = botTeam ? new() { ["faction-wars"] = new AreaTeams { Default = new TeamChoice { Mode = TeamMode.BotChooses, GearUp = true } } } : [],
             },
         };
         var game = new FakeFactionWarsGame(() => host.UtcNow) { Delay = host.DelayAsync };
@@ -45,7 +47,8 @@ public class FactionWarsActivityTests
     [Fact]
     public async Task A_defeat_at_the_next_stage_farms_the_highest_beaten_stage_for_the_rest_of_the_day()
     {
-        var (_, game, engine) = Make(stopAfter: TimeSpan.FromHours(2));
+        // With a team of the player's (the bot choosing retries the same stage with its next team instead).
+        var (_, game, engine) = Make(stopAfter: TimeSpan.FromHours(2), botTeam: false);
         game.Open.Add(new FakeFactionWarsGame.Crypt { Faction = "OgrynTribes", Keys = 4, HighestPassed = 8, Team = [1, 2, 3], WinsUpTo = 9 });
         await engine.RunAsync(once: false, Limit());
         // Farming after the defeat is a Super Raid while the keys pay for one (Ehsan 2026-11-11).

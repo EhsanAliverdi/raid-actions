@@ -70,7 +70,7 @@ public sealed partial class LivePlayGame : IDoomTowerGame
                 $"{name} opens", ct, within: TimeSpan.FromSeconds(10));
         }
         // The boss on this floor (output/gamedata/doomtower.json, read from the game's stage data): its own team on the page, when set.
-        var boss = RaidExtractor.GdTowerBoss.Load(Path.Combine(extractorRoot, "output", "gamedata")).GetValueOrDefault(stage.Id)?.Name;
+        var boss = RaidExtractor.GdTowerBoss.Load(Path.Combine(extractorRoot, "output", "gamedata")).GetValueOrDefault(stage.Id)?.Boss;
         if (boss is not null) log($"autoplay: Doom Tower {name}: {boss}");
         return await PlayTowerTeam(name, started, dryRun, ct, boss);
     }

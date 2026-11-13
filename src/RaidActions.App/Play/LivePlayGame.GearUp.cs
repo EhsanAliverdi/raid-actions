@@ -55,13 +55,16 @@ public sealed partial class LivePlayGame
         await HomeAsync(Action("after gearing"), ct);
     }
 
-    public IReadOnlyList<int> PutBackDue(TimeSpan after) =>
-        [.. PutBackList.Load(ExtractorOutput).Where(e => DateTime.UtcNow - e.Utc >= after).Select(e => e.Id)];
+    public IReadOnlyList<int> PutBackDue(TimeSpan after) => [.. PutBackList.Load(ExtractorOutput).Where(e => Due(e, after)).Select(e => e.Id)];
+
+    /// <summary>An hour after; a Faction Wars team only once its day is over (its crypt may be played again the same day).</summary>
+    private static bool Due(PutBackEntry e, TimeSpan after) =>
+        e.Fight.StartsWith("Faction Wars", StringComparison.Ordinal) ? e.Utc.Date < DateTime.UtcNow.Date : DateTime.UtcNow - e.Utc >= after;
 
     public async Task<string> PutBackAsync(TimeSpan after, bool dryRun, CancellationToken ct)
     {
         var all = PutBackList.Load(ExtractorOutput);
-        var due = all.Where(e => DateTime.UtcNow - e.Utc >= after).ToList();
+        var due = all.Where(e => Due(e, after)).ToList();
         if (due.Count == 0) return "";
         // The locks first (Ehsan 2026-11-13: "make sure it respects the lock for gear, this is very important"): a protected or frozen champion (the
         // Clan Boss team too), one wearing a protected piece, or one that wore gear of its own before is never stripped: it stays out, as it is.

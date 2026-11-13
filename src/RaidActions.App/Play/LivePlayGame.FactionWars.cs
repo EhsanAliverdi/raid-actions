@@ -54,13 +54,53 @@ public sealed partial class LivePlayGame : IFactionWarsGame
     public async Task<FactionWarsDay> PlanDayAsync(CancellationToken ct)
     {
         var (data, gd, ratings, locks) = await Account(ct);
-        return FactionWarsPlanner.Plan(data, gd, extractorRoot, ratings, locks, DateTime.UtcNow);
+        var day = FactionWarsPlanner.Plan(data, gd, extractorRoot, ratings, locks, DateTime.UtcNow);
+        // A faction set to "the bot picks the best" (Ehsan 2026-11-13: every account): the crypt team is the bot's pick (your saved crypt team as it is,
+        // else the built members of the suggestion, vaults included), so the team geared is the team played.
+        var byId = data.Champions.ToDictionary(c => c.Id);
+        return day with
+        {
+            Open = [.. day.Open.Select(c =>
+            {
+                if (FactionChoice(c.Faction) is not { Mode: TeamMode.BotChooses }) return c;
+                var pick = BotTeams.Pick(data, gd, extractorRoot, "factionwars", Math.Max(5, c.Team.Count), c.Faction);
+                if (pick.Count == 0) return c;
+                return c with
+                {
+                    Team = pick, TeamNames = [.. pick.Select(id => byId.TryGetValue(id, out var h) ? h.Name ?? $"#{id}" : $"#{id}")],
+                    TeamKind = "bot", InVault = [.. pick.Where(id => byId.TryGetValue(id, out var h) && (h.InVault || h.InBathhouse))],
+                    Removable = [.. pick.Where(id => !locks.IsLocked(id))],
+                };
+            })],
+        };
     }
+
+    /// <summary>The team choice for a faction's crypt: its own on the Faction Wars page, else the area's.</summary>
+    private TeamChoice? FactionChoice(string faction) => TeamsOf($"faction-wars:{faction}")?.Default ?? TeamsOf("faction-wars")?.Default;
 
     public async Task<string> GearTeamAsync(CryptPlan crypt, bool dryRun, CancellationToken ct)
     {
         var (data, gd, ratings, locks) = await Account(ct);
         var fight = $"Faction Wars: {crypt.Name}";
+        // Who was where before (the put-back), and the reserve vault's champions out first (Prepare takes the master vault's out itself).
+        var choice = FactionChoice(crypt.Faction);
+        var byId = data.Champions.ToDictionary(c => c.Id);
+        var reserve = crypt.Team.Where(id => byId.TryGetValue(id, out var c) && c.InBathhouse).ToList();
+        var master = crypt.Team.Where(id => byId.TryGetValue(id, out var c) && c.InVault).ToList();
+        var before = crypt.Team.ToDictionary(id => id, id => data.Artifacts.Where(a => a.OwnerHeroId == id).Select(a => a.Id).ToList());
+        if (reserve.Count > 0)
+        {
+            await RunCommand(["vault-withdraw", .. reserve.Select(i => i.ToString(System.Globalization.CultureInfo.InvariantCulture)), .. (dryRun ? new[] { "--dry-run" } : [])], ct);
+            (data, gd, ratings, locks) = await Account(ct);
+        }
+        if (choice is { PutBack: true } && !dryRun && reserve.Count + master.Count > 0)
+        {
+            var list = PutBackList.Load(ExtractorOutput).Where(e => !crypt.Team.Contains(e.Id)).ToList();
+            list.AddRange(reserve.Select(id => new PutBackEntry(id, "reserve", DateTime.UtcNow, fight, before[id])));
+            list.AddRange(master.Select(id => new PutBackEntry(id, "master", DateTime.UtcNow, fight, before[id])));
+            PutBackList.Save(ExtractorOutput, list);
+            log($"autoplay: {crypt.Name}: {reserve.Count + master.Count} champion(s) go back to their vault later");
+        }
         var made = Prepare.Make(data, gd, ratings, crypt.Team, fight, locks: locks);
         var picked = made.Members.Where(m => m.Changes || m.InVault).ToList();
         if (picked.Count == 0) return "nothing better in the inventory; the team keeps its gear";

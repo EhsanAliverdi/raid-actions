@@ -47,6 +47,9 @@ public interface IChoresGame
     /// <summary>The clan's Members page: Check in, and the stars' activity chests; what was done ("not supported" until the screen is explored).</summary>
     Task<string> ClanCheckInAsync(bool dryRun, CancellationToken ct) => Task.FromResult("not supported");
 
+    /// <summary>The red dots on the village now (the game at the village first); empty when not read.</summary>
+    Task<IReadOnlyList<(string Button, string Dot)>> VillageRedDotsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<(string, string)>>([]);
+
     /// <summary>One piece upgraded (the choice from the gear advice); null when nothing is worth upgrading.</summary>
     /// <param name="minLevel">A quest's level.</param>
     /// <param name="attempts">A quest counting attempts: the next level only.</param>
@@ -103,6 +106,8 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         if (s.TavernLevelUps && ctx.QuestLeft(QuestNeedKind.LevelUp) > 0 && Open(ctx, "level")) return "level";
         if (s.ArtifactUpgrades && ctx.QuestLeft(QuestNeedKind.ArtifactAttempts) > 0 && Open(ctx, "attempts")) return "attempts";
         if (s.ArtifactUpgrades && ctx.QuestLeft(QuestNeedKind.ArtifactLevel) > 0 && Open(ctx, "piece")) return "piece";
+        // The village's red dots (Ehsan 2026-11-16): looked at every 20 minutes; each one brings its job forward, one nothing handles is a warning.
+        if (s.RedDots && ctx.Utc >= _dotsAt && Open(ctx, "dots")) return "dots";
         if (s.AutoJoinClan && ctx.Utc >= _clanAt && Open(ctx, "clan")) return "clan";
         // The clan's day does not start at 00:00 UTC (Ehsan: "at the clan's reset"): looked at every 4 hours; the Members page's Check In says whether it is due.
         if (s.ClanCheckIn && ctx.Utc >= _checkInNext && Open(ctx, "checkin")) return "checkin";
@@ -119,7 +124,8 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         DateOnly? CheckIn = null, DateOnly? Cleanup = null);
 
     private DateOnly? _checkInDay, _cleanupDay;
-    private DateTime _checkInNext;
+    private DateTime _checkInNext, _dotsAt;
+    private readonly Dictionary<string, DateOnly> _dotsNoted = [];
 
     /// <summary>The clean-up's pieces per sale (the live game's batch).</summary>
     public const int CleanupBatch = 100;
@@ -180,6 +186,38 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
                     // A full batch: more may be left; the next batch in 20 minutes, not tomorrow.
                     if (sold >= CleanupBatch) { (_cleanupDay, _cleanedThisRun) = (null, false); _paused["cleanup"] = ctx.Utc + TimeSpan.FromMinutes(20); }
                     return sold > 0 ? Report(ctx, "cleanup", $"gear clean-up: sold {sold} piece(s)") : Report(ctx, "cleanup", ctx.DryRun ? "gear clean-up shown (dry run)" : "gear clean-up: nothing to sell");
+                }
+                case "dots":
+                {
+                    _dotsAt = ctx.Utc + TimeSpan.FromMinutes(20);
+                    var dots = await game.VillageRedDotsAsync(ct);
+                    var acted = new List<string>();
+                    foreach (var (button, dot) in dots)
+                    {
+                        var what = RedDots.For(button);
+                        if (what.Job is { } dotJob)
+                        {
+                            // Its job now: the timer that would have waited is cleared.
+                            switch (dotJob)
+                            {
+                                case "inbox": _inboxAt = ctx.Utc; break;
+                                case "free": _freeAt = ctx.Utc; break;
+                                case "checkin": _checkInNext = ctx.Utc; break;
+                                case "pass": _passAt = ctx.Utc; break;
+                                case "pit": _pitAt = ctx.Utc; break;
+                            }
+                            acted.Add($"{button} → {dotJob}");
+                        }
+                        else if (_dotsNoted.GetValueOrDefault(button) != DateOnly.FromDateTime(ctx.Utc))
+                        {
+                            // Logged once a day per button: by rule (no warning), or not handled (a warning to fix the code).
+                            _dotsNoted[button] = DateOnly.FromDateTime(ctx.Utc);
+                            if (what.Ignore is { } why) ctx.Event(AreaId, "reddot", $"red dot on {button} ({dot}): left ({why})");
+                            else ctx.Event(AreaId, "warning", $"red dot on {button} ({dot}): the bot does not handle it yet");
+                        }
+                    }
+                    if (acted.Count > 0) ctx.Event(AreaId, "reddot", $"red dots: {string.Join(", ", acted)}");
+                    return "";
                 }
                 case "inbox":
                     _inboxAt = ctx.Utc + TimeSpan.FromMinutes(Math.Max(30, s.InboxEveryMinutes));

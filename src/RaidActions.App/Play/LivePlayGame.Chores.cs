@@ -588,6 +588,16 @@ public sealed partial class LivePlayGame : IChoresGame
     /// The game's Quick Join for an account without a clan (Ehsan 2026-11-06: "for a new account use quick clan join"): battle menu → the Clan Boss card →
     /// the "no clan" screen → Quick Join; the account says whether it worked. Nothing that creates a clan or costs is ever a target.
     /// </summary>
+    /// <summary>The village's red dots: at the village, every active indicator with the button it sits on (read only).</summary>
+    public async Task<IReadOnlyList<(string Button, string Dot)>> VillageRedDotsAsync(CancellationToken ct)
+    {
+        await HomeAsync(Action("to the village"), ct);
+        var dots = (await Read(ct)).Play.RedDots ?? [];
+        var list = dots.Where(d => d.View == PlayTargets.VillageHudView).Select(d => (d.Button, d.Dot)).Distinct().ToList();
+        log($"autoplay: red dots on the village: {(list.Count == 0 ? "none" : string.Join(", ", list.Select(d => d.Button)))}");
+        return list;
+    }
+
     /// <summary>
     /// The clan's daily check-in (Ehsan 2026-11-16: "you always miss it; it is something you need to do always"): village → Clan → Members → the
     /// account's own row's Check In (its red dot). "already" when the button is not there (checked in, or no clan).

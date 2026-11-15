@@ -11,6 +11,9 @@ public class ChoresActivityTests
     {
         public List<string> Calls { get; } = [];
         public bool FailMarket { get; set; }
+        public List<(string Button, string Dot)> Dots { get; } = [];
+
+        public Task<IReadOnlyList<(string Button, string Dot)>> VillageRedDotsAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<(string, string)>>(Dots);
 
         public Task<IReadOnlyList<string>> BuyAtMarketAsync(ChoresSettings s, bool quest, bool dryRun, CancellationToken ct)
         {
@@ -82,7 +85,7 @@ public class ChoresActivityTests
     {
         var (off, _, offChores) = Make();
         Assert.NotEqual("clan", offChores.Decide(off).Why);     // off by default
-        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Chores = new ChoresSettings { Enabled = true, AutoJoinClan = true, Cleanup = new GearCleanupSettings { Enabled = false } } } };
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Chores = new ChoresSettings { Enabled = true, AutoJoinClan = true, RedDots = false, Cleanup = new GearCleanupSettings { Enabled = false } } } };
         var game = new Game();
         var ctx = new PlayContext(host.Settings, new FakeArenaGame(() => host.UtcNow), host, false, host.Events.Add);
         var chores = new ChoresActivity(game);
@@ -96,7 +99,7 @@ public class ChoresActivityTests
     public async Task The_quests_jobs_come_first_then_the_market_and_the_advised_upgrades()
     {
         var (ctx, game, chores) = Make(Need(QuestNeedKind.Market, 1), Need(QuestNeedKind.LevelUp, 1), Need(QuestNeedKind.ArtifactAttempts, 4), Need(QuestNeedKind.ArtifactLevel, 1, 12));
-        for (var i = 0; i < 7; i++) await chores.RunTurnAsync(ctx, CancellationToken.None); // the clan check-in (on by default since 2026-11-16) takes a turn too
+        for (var i = 0; i < 8; i++) await chores.RunTurnAsync(ctx, CancellationToken.None); // the red dots and the clan check-in (on by default since 2026-11-16) take a turn each
         Assert.Equal(["market quest=True", "level", "upgrade  True 0", "upgrade  True 0", "upgrade 12 False 0", "inbox"], game.Calls);
     }
 
@@ -122,5 +125,20 @@ public class ChoresActivityTests
         await chores.RunTurnAsync(ctx, CancellationToken.None);
         Assert.NotEqual("cleanup", chores.Decide(ctx).Why);
         Assert.False(chores.Full(ctx));
+    }
+
+    [Fact]
+    public async Task Red_dots_bring_their_job_forward_and_one_not_handled_is_a_warning()
+    {
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Chores = new ChoresSettings { Enabled = true, Cleanup = new GearCleanupSettings { Enabled = false } } } };
+        var game = new Game();
+        game.Dots.AddRange([("InboxButton", "HasItemsIndicator_h"), ("CollectionButton", "HasNewHeroIndicator_h"), ("TournamentsButton", "Indicator_h")]);
+        var ctx = new PlayContext(host.Settings, new FakeArenaGame(() => host.UtcNow), host, false, host.Events.Add);
+        var chores = new ChoresActivity(game);
+        Assert.Equal("dots", chores.Decide(ctx).Why);
+        await chores.RunTurnAsync(ctx, CancellationToken.None);
+        Assert.Contains(host.Events, e => e.Kind == "reddot" && e.Text.Contains("InboxButton → inbox", StringComparison.Ordinal));
+        Assert.Contains(host.Events, e => e.Kind == "reddot" && e.Text.Contains("CollectionButton", StringComparison.Ordinal));
+        Assert.Contains(host.Events, e => e.Kind == "warning" && e.Text.Contains("TournamentsButton", StringComparison.Ordinal));
     }
 }

@@ -37,11 +37,14 @@ public sealed record PveResultRead(int? ResultType, int? Stars, string? StageNam
 public sealed record RankUpItemRead(int HeroId, bool? Active, List<int> FoodIds, UiTarget? Toggle);
 
 /// <summary>What Auto Play reads on the screens it plays: click targets and the facts next to them.</summary>
+/// <summary>A red dot on the screen (Ehsan 2026-11-16: "a reward to claim or an activity to do"): its screen, the button it sits on, its own name and path.</summary>
+public sealed record RedDotRead(string View, string Button, string Dot, string Path);
+
 public sealed record PlayScan(List<UiTarget> Targets, ArenaBoardRead? Arena, bool? AutoOn, ArenaResultRead? Result, List<HudResource> Hud,
     List<InboxEntry> Inbox, List<string> Notes, List<CryptRead>? Crypts = null, List<StageRead>? Stages = null, List<int>? TeamIds = null,
     PveResultRead? Pve = null, List<CcMapRead>? CcLevels = null, List<TeamPickRead>? Picks = null, int? CcDifficulty = null,
     List<RankUpItemRead>? RankUps = null, int? SelectedShard = null, string? ClanDamage = null, List<RaidExtractor.Autoplay.QuestRead>? Quests = null,
-    ArenaBoardRead? Tag = null, int? TeamSlots = null, int? TowerStage = null)
+    ArenaBoardRead? Tag = null, int? TeamSlots = null, int? TowerStage = null, List<RedDotRead>? RedDots = null)
 {
     public static PlayScan Empty => new([], null, null, null, [], [], []);
 
@@ -49,7 +52,7 @@ public sealed record PlayScan(List<UiTarget> Targets, ArenaBoardRead? Arena, boo
         [.. Inbox, .. o.Inbox], [.. Notes, .. o.Notes], [.. Crypts ?? [], .. o.Crypts ?? []], [.. Stages ?? [], .. o.Stages ?? []],
         [.. TeamIds ?? [], .. o.TeamIds ?? []], Pve ?? o.Pve, [.. CcLevels ?? [], .. o.CcLevels ?? []], [.. Picks ?? [], .. o.Picks ?? []], CcDifficulty ?? o.CcDifficulty,
         [.. RankUps ?? [], .. o.RankUps ?? []], SelectedShard ?? o.SelectedShard, ClanDamage ?? o.ClanDamage, [.. Quests ?? [], .. o.Quests ?? []], Tag ?? o.Tag,
-        TeamSlots is null && o.TeamSlots is null ? null : (TeamSlots ?? 0) + (o.TeamSlots ?? 0), TowerStage ?? o.TowerStage);
+        TeamSlots is null && o.TeamSlots is null ? null : (TeamSlots ?? 0) + (o.TeamSlots ?? 0), TowerStage ?? o.TowerStage, [.. RedDots ?? [], .. o.RedDots ?? []]);
 }
 
 /// <summary>
@@ -1447,12 +1450,27 @@ public static partial class PlayTargets
                 targets.Add(Make("arena-tab", $"arena: tab {k}", toggles[k], toggles[k], toggles[k].IsOn == true ? "on" : "off", id: k));
         }
 
+        // Every red dot (the game's indicators: Indicator_h, RewardIndicator_h, UpdatedIndicator_h, HasItemsIndicator_h, HasNewHeroIndicator_h, ...).
+        var redDots = nodes.Where(x => x.ActiveInHierarchy && RedDot(x.Name))
+            .Select(x =>
+            {
+                var parts = x.Path.Split('/');
+                var button = parts.Length >= 2 ? parts[^2] : "";
+                return new RedDotRead(t.View, button, x.Name, x.Path);
+            }).DistinctBy(d => d.Path).ToList();
+
         if (rows is not null || free is not null || tab is not null) arena = new ArenaBoardRead(rows ?? [], free, freeText, loading, tab);
         return new PlayScan(targets, arena, auto, result, hud, inbox, notes.Distinct().ToList(), crypts, stages, team?.Distinct().ToList(), pve, ccLevels, picks, ccDifficulty,
             rankUps, selectedShard, clanDamage,
             [.. quests.Select(q => q.Tab == "?" ? q with { Tab = questTab is { } k && k >= 0 && k < QuestTabs.Length ? QuestTabs[k] : "Daily" } : q)],
-            tagRows is not null || tagFree is not null ? new ArenaBoardRead(tagRows ?? [], tagFree, tagFreeText, null, null) : null, TeamSlots: teamSlots, TowerStage: towerStage);
+            tagRows is not null || tagFree is not null ? new ArenaBoardRead(tagRows ?? [], tagFree, tagFreeText, null, null) : null, TeamSlots: teamSlots, TowerStage: towerStage,
+            RedDots: redDots);
     }
+
+    /// <summary>An element that is a red dot: the game's indicator images (not a wizard's pointer, not the menu's controller).</summary>
+    public static bool RedDot(string name) =>
+        name.Contains("Indicator", StringComparison.Ordinal) && !name.Contains("Wizard", StringComparison.Ordinal) && !name.Contains("Controller", StringComparison.Ordinal)
+        && !name.Contains("Progress", StringComparison.Ordinal) && !name.Contains("Loading", StringComparison.Ordinal);
 
     /// <summary>An inbox entry that holds Classic Arena tokens (not Tag/Live arena tokens or auto-battle tickets), by its text and icon.</summary>
     public static bool IsArenaTokens(InboxEntry e)

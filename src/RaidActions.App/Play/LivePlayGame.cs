@@ -174,6 +174,14 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         log($"autoplay: team {string.Join(", ", t.Ids.Select(i => $"#{i}"))} {(result == BattleResult.Victory ? "won" : "lost")} at {t.Key}");
     }
 
+    /// <summary>The team a stage with tries will field next (the same choice <see cref="ApplyDefaultTeam"/> makes), or null: none left, or no tries there.</summary>
+    private async Task<List<int>?> NextTry(string area, string stage, string? contentArea, int size, CancellationToken ct)
+    {
+        var (d0, gd0, _, _) = await Account(ct);
+        var tried = LoadTries().GetValueOrDefault($"{area}|{stage}") ?? [];
+        return TeamTries.Pick(BotTeams.Tries(d0, gd0, extractorRoot, contentArea ?? BotTeams.ContentArea(area), size), tried);
+    }
+
     /// <summary>A team screen open: what it shows noted, and the area's default set when the page says so. False: the game refused a champion.</summary>
     /// <param name="key">The team's own key on the page (Ehsan 2026-11-13: Doom Tower's floors per difficulty, "doom-tower:Hard:floors"); its choice
     /// first, else the area's. The team shown is noted under both.</param>

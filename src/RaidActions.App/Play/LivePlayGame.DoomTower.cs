@@ -121,7 +121,9 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         if (floorBoss is not null)
         {
             var bossChoice = TeamsOf($"doom-tower:{tower}:boss:{floorBoss}") ?? TeamsOf($"doom-tower:{tower}:bosses") ?? TeamsOf("doom-tower");
-            if ((await PrepareTeam($"Doom Tower {tower} {floorBoss}", "doom-tower", TowerContent(floorBoss), 5, bossChoice?.Default, dryRun, ct)).Length > 0)
+            // The team that will fight: the stage's next try, not the general pick (2026-11-16: Dorothy's team was geared, the 2nd and 3rd tries fought ungeared).
+            var nextTry = await NextTry("doom-tower", $"{tower} boss floor {openFloor}", TowerContent(floorBoss), 5, ct);
+            if ((await PrepareTeam($"Doom Tower {tower} {floorBoss}", "doom-tower", TowerContent(floorBoss), 5, bossChoice?.Default, dryRun, ct, team: nextTry)).Length > 0)
             {
                 await OpenDoomTower(ct);
                 await SelectTowerDifficulty(tower, ct);

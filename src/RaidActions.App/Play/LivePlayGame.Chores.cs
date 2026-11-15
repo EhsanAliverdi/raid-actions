@@ -194,7 +194,11 @@ public sealed partial class LivePlayGame : IChoresGame
         bool Soon(InboxEntry e) => PlayTargets.IsAnyTokens(e) && (e.Icon?.Contains("TokensMax", StringComparison.Ordinal) == true ? LastHours(e.Expires) : ChoreRules.ExpiresWithinADay(e.Expires));
         // The entries taken, not the token counts that rose (2026-11-10 09:36: one left at the over-the-cap warning was reported claimed, the regen counted).
         await CollectInbox(Soon, "Token", "tokens expiring within a day", dryRun, ct);
-        return _inboxTaken;
+        var taken = _inboxTaken;
+        // Every other gift too (Ehsan 2026-11-16: the inbox's red dot is new items to claim; free gifts, quest and playtime rewards were never taken):
+        // all but tokens and energy, which their areas take when they need them.
+        await CollectInbox(e => !PlayTargets.IsAnyTokens(e) && !PlayTargets.IsEnergy(e), "Silver", "gifts", dryRun, ct);
+        return taken + _inboxTaken;
     }
 
     private string MasteryFile => RaidExtractor.Battle.MasteryRequest.PathIn(ExtractorOutput);
@@ -486,6 +490,8 @@ public sealed partial class LivePlayGame : IChoresGame
         return claimed;
     }
 
+    private const string CoalitionView = "CooperationEventWorldBossDialog";
+
     /// <summary>Each event's milestones: its card, its page's Claim All (a web page: its fixed spot), its X.</summary>
     private async Task<int> ClaimEventsAsync(bool dryRun, CancellationToken ct)
     {
@@ -508,7 +514,16 @@ public sealed partial class LivePlayGame : IChoresGame
         var tapped = 0;
         for (var k = 0; k < cards; k++)
         {
-            await Click("event-card", t => t.Id == k, (s2, _) => Top(s2) == "SoloEventInfoWebView", $"event {k + 1} opens", ct, within: TimeSpan.FromSeconds(8));
+            await Click("event-card", t => t.Id == k, (s2, _) => Top(s2) is "SoloEventInfoWebView" or CoalitionView, $"event {k + 1} opens", ct, within: TimeSpan.FromSeconds(8));
+            // The Demon Coalition (a co-op Demon Lord event, its own screen): not built yet (docs/TODO.md); left, the next event (2026-11-16: it stopped
+            // the whole round, no other event was claimed).
+            if (Top(await ReadState(ct)) == CoalitionView)
+            {
+                log("autoplay: events: the Demon Coalition event is not built yet: left");
+                await Back(CoalitionView, ct);
+                await Pause(1000, ct);
+                continue;
+            }
             await Task.Delay(3500, ct); // the page loads
             if (dryRun) log("autoplay: WOULD TAP the event's Claim All (dry run)");
             else { await Click("event-claimall", null, (_, _) => true, "the event's Claim All", ct); tapped++; await Pause(2000, ct); }
@@ -551,7 +566,11 @@ public sealed partial class LivePlayGame : IChoresGame
                 // Collect All stays clickable with nothing left (Ehsan 2026-11-06: "it was clicking on claim 100 times while there was nothing to
                 // claim"): a tap that brings no reward box took nothing, and the tab is done. A game notification on top (the Clan Boss's element) is no box.
                 var box = Top(s3) is { } top && top != view && !top.EndsWith("NotificationView", StringComparison.Ordinal) ? top : null;
-                if (box is null && !confirmed)
+                // A challenge's Claim opens no box: it only adds pass points (Ehsan 2026-11-16: three Daily Challenges claimed, no window; the bot left the
+                // tab after the first). Its button gone, or one Claim fewer on the tab, is the claim taken.
+                var left = (await Read(ct)).Targets.Where(t => t.Kind == "pass-claim" && t.NotClickable is null).ToList();
+                var taken = claim.Name != "claim: CollectAllRewardsButton" && (left.All(t => t.Path != claim.Path) || left.Count < now.Count(t => t.Kind == "pass-claim" && t.NotClickable is null));
+                if (box is null && !confirmed && !taken)
                 {
                     log($"autoplay: {claim.Name} on {view}: nothing came of it, nothing left to claim on this tab");
                     break;
@@ -569,6 +588,37 @@ public sealed partial class LivePlayGame : IChoresGame
     /// The game's Quick Join for an account without a clan (Ehsan 2026-11-06: "for a new account use quick clan join"): battle menu → the Clan Boss card →
     /// the "no clan" screen → Quick Join; the account says whether it worked. Nothing that creates a clan or costs is ever a target.
     /// </summary>
+    /// <summary>
+    /// The clan's daily check-in (Ehsan 2026-11-16: "you always miss it; it is something you need to do always"): village → Clan → Members → the
+    /// account's own row's Check In (its red dot). "already" when the button is not there (checked in, or no clan).
+    /// </summary>
+    public async Task<string> ClanCheckInAsync(bool dryRun, CancellationToken ct)
+    {
+        var (data, _, _, _) = await Account(ct);
+        if (data.Progress?.Clan is not { AllianceId: not null }) return "already: no clan";
+        await HomeAsync(Action("to the village"), ct);
+        await Click("village-clan", null, (s2, _) => Top(s2) == "AllianceOverlay", "the Clan screen opens", ct, within: TimeSpan.FromSeconds(10));
+        await Pause(1200, ct);
+        await Click("clan-tab", t => t.Id == 2, (_, scan) => scan().Targets.Any(t => t.Kind == "clan-checkin") || scan().Targets.Any(t => t.Kind == "clan-tab" && t.Id == 2), "Members opens", ct,
+            within: TimeSpan.FromSeconds(8));
+        await Pause(1500, ct);
+        var button = (await Read(ct)).Targets.FirstOrDefault(t => t.Kind == "clan-checkin" && t.NotClickable is null);
+        string result;
+        if (button is null) result = "already: no Check In on the Members page (checked in today)";
+        else if (dryRun) { log("autoplay: WOULD CLICK the clan's Check In (dry run)"); result = "dry run"; }
+        else
+        {
+            await Click("clan-checkin", t => t.Path == button.Path, (_, scan) => scan().Targets.All(t => t.Kind != "clan-checkin" || t.Path != button.Path), "checked in", ct,
+                within: TimeSpan.FromSeconds(8), shot: true);
+            await Pause(1500, ct);
+            var top = Top(await Settled(ct));
+            if (top is not null && top != "AllianceOverlay") { await Back(top, ct); await Pause(800, ct); }
+            result = "checked in";
+        }
+        await HomeAsync(Action("from the clan"), ct);
+        return result;
+    }
+
     public async Task<string> JoinClanAsync(bool dryRun, CancellationToken ct)
     {
         var (data, _, _, _) = await Account(ct);
@@ -624,6 +674,27 @@ public sealed partial class LivePlayGame : IChoresGame
         }
         await Click("village-shop", null, (s2, _) => Top(s2) == PlayTargets.ShopView, "the Shop opens", ct, within: TimeSpan.FromSeconds(10));
         await Pause(2000, ct);
+        var claimed = await ClaimShopFree(dryRun, ct);
+        // Every section and each section's tabs (Ehsan 2026-11-16: the daily free gift is in a section the Shop does not open on).
+        foreach (var section in (await Read(ct)).Targets.Where(t => t.Kind == "shop-section").Select(t => t.Note).ToList())
+        {
+            await Click("shop-section", t => t.Note == section, (_, _) => true, $"the Shop's {section}", ct);
+            await Pause(1500, ct);
+            claimed += await ClaimShopFree(dryRun, ct);
+            foreach (var tab in (await Read(ct)).Targets.Where(t => t.Kind == "shop-subtab").Select(t => t.Id).ToList())
+            {
+                await Click("shop-subtab", t => t.Id == tab, (_, _) => true, $"{section} tab {tab}", ct);
+                await Pause(1200, ct);
+                claimed += await ClaimShopFree(dryRun, ct);
+            }
+        }
+        await Back(PlayTargets.ShopView, ct);
+        return claimed;
+    }
+
+    /// <summary>Every offer the open Shop page shows free: its tile, then the "Get this for free?" window's Claim.</summary>
+    private async Task<int> ClaimShopFree(bool dryRun, CancellationToken ct)
+    {
         var claimed = 0;
         for (var i = 0; i < 4; i++)
         {
@@ -647,7 +718,6 @@ public sealed partial class LivePlayGame : IChoresGame
             claimed++;
             log($"autoplay: claimed {offer.Name}");
         }
-        await Back(PlayTargets.ShopView, ct);
         return claimed;
     }
 

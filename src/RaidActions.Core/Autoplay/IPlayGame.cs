@@ -10,6 +10,9 @@ namespace RaidActions.Autoplay;
 /// </summary>
 public interface IPlayGame
 {
+    /// <summary>Whether the last arena fight really used the 4-affinity team (read once, then reset).</summary>
+    bool TookAffinityTeam() => true;
+
     /// <summary>The amounts that regenerate (and gems, never spent): read from the account, timers from the HUD when it shows them.</summary>
     Task<GameResources> ReadResourcesAsync(CancellationToken ct);
 

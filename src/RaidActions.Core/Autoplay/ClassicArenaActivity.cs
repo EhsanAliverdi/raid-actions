@@ -149,6 +149,12 @@ public sealed class ClassicArenaActivity : IActivity
             throw;
         }
         var who = $"{target.Name ?? "?"} ({target.Power:N0})";
+        if (outcome.Result == BattleResult.Retry)
+        {
+            // Nothing fought (the 4-affinity team's champions just came out of a vault): the fight next turn.
+            ctx.Event(AreaId, "quest", outcome.Text);
+            return "";
+        }
         if (outcome.Result == BattleResult.NotStarted)
         {
             _skip.Add(target.UserId);
@@ -172,8 +178,13 @@ public sealed class ClassicArenaActivity : IActivity
         }
         if (variant != TeamVariant.Default)
         {
-            ctx.QuestNeeds = [.. ctx.QuestNeeds.Where(n => n.Kind != QuestNeedKind.ArenaAffinities)];
-            ctx.Event(AreaId, "quest", $"fought with the {variant} team ({outcome.Result}); the arena team goes back before the next fight");
+            // Only when the team really fought (2026-11-16: "fought with the Affinities team" was logged four times a day while the normal team fought).
+            if (ctx.Game.TookAffinityTeam())
+            {
+                ctx.QuestNeeds = [.. ctx.QuestNeeds.Where(n => n.Kind != QuestNeedKind.ArenaAffinities)];
+                ctx.Event(AreaId, "quest", $"fought with the {variant} team ({outcome.Result}); the arena team goes back before the next fight");
+            }
+            else ctx.Event(AreaId, "warning", $"the {variant} team could not be built (vaults included): the normal team fought; the quest stays open");
         }
         return $"{outcome.Result} vs {who}";
     }

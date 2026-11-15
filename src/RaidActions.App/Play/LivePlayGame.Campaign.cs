@@ -170,13 +170,17 @@ public sealed partial class LivePlayGame
         await OpenFastRankUp(ct);
         var done = 0;
         var champions = (await Account(ct)).Data.Champions;
-        var levels = champions.ToDictionary(c => c.Id, c => c.Level);
-        // The vaults' food only when the row's food may come from them ("Food from the vaults too": its pool holds vault champions; Ehsan 2026-11-06:
-        // "I keep my food in the Master Vault").
-        await FoodVault(champions.Any(c => c.InVault && pool.Contains(c.Id)), ct);
+        // The vaults only when a planned rank-up takes a champion from them (2026-11-16: the food counts both vaults; BlackLord65's 26 maxed Rares in the
+        // reserve vault would be listed and fed first).
+        var planned = rankUps.SelectMany(r => r.FoodIds.Append(r.HeroId)).ToHashSet();
+        await FoodVault(champions.Any(c => (c.InVault || c.InBathhouse) && planned.Contains(c.Id)), ct);
         foreach (var grade in rankUps.Select(r => r.Rank).Distinct().Order())
         {
             if (!await SelectGrade(grade, ct)) continue;
+            // Read again each grade: a champion ranked up on the grade below is level-1 food here.
+            var levels = (await Account(ct)).Data.Champions.ToDictionary(c => c.Id, c => c.Level);
+            // Only the planned rank-ups (Ehsan 2026-11-16: "one at a time"): the game ticks every maxed champion it can feed.
+            var heroes = rankUps.Where(r => r.Rank == grade).Select(r => r.HeroId).ToHashSet();
             // Only food: every champion the game ticked, and every food it picked, must be in the pool; anything else is unticked.
             // Champions only a team screen refused (state 99) are still food here. The food the game picked must never have been levelled
             // (Ehsan 2026-10-31: it took a level 16 common for a rank-up): any other is unticked with its rank-up.
@@ -200,6 +204,26 @@ public sealed partial class LivePlayGame
                 catch (Exception e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal) && missed.Add(wrong.HeroId))
                 {
                     log($"autoplay: {Who(wrong.HeroId)} stayed ticked: trying once more");
+                    await Pause(1000, ct);
+                }
+            }
+            // More ticked than planned: the ones not planned are unticked (each a champion the plan keeps for later, or one it does not need now).
+            for (var i = 0; i < 12; i++)
+            {
+                var (_, _, play) = await Read(ct);
+                var active = (play.RankUps ?? []).Where(r => r.Active == true).ToList();
+                if (active.Count <= heroes.Count) break;
+                var extra = active.FirstOrDefault(r => !heroes.Contains(r.HeroId)) ?? active[^1];
+                log($"autoplay: {Who(extra.HeroId)} is not a planned rank-up ({heroes.Count} planned at grade {grade}): unticked");
+                await WheelIntoView("fastrankup-item", extra.HeroId, ct);
+                try
+                {
+                    await Click("fastrankup-item", t => t.Id == extra.HeroId, (_, scan) => scan().RankUps?.FirstOrDefault(r => r.HeroId == extra.HeroId)?.Active != true,
+                        $"{Who(extra.HeroId)} unticked", ct);
+                }
+                catch (Exception e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal) && missed.Add(extra.HeroId))
+                {
+                    log($"autoplay: {Who(extra.HeroId)} stayed ticked: trying once more");
                     await Pause(1000, ct);
                 }
             }

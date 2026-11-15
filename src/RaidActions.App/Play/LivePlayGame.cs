@@ -118,6 +118,17 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
 
     public Task<BattleOutcome> FightArenaVariantAsync(long userId, TeamVariant variant, bool dryRun, CancellationToken ct) => FightArena(userId, dryRun, variant, ct);
 
+    /// <summary>The last arena fight's 4-affinity quest: the team could not be built (the normal team fought), or its champions came out of a vault.</summary>
+    private bool _affinityFailed, _affinityRetry;
+
+    /// <summary>Whether the last arena fight really used the 4-affinity team (read once by the arena area, then reset).</summary>
+    public bool TookAffinityTeam()
+    {
+        var took = !_affinityFailed && !_affinityRetry;
+        _affinityFailed = _affinityRetry = false;
+        return took;
+    }
+
     /// <summary>The arena team as it was before the 4-affinity quest fight: put back on the next arena fight (kept across restarts).</summary>
     private string ArenaTeamFile => Path.Combine(ExtractorOutput, "autoplay", "arena-team-before-quest.json");
 
@@ -300,10 +311,30 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             questTeam = TeamRules.Resolve(TeamsOf(ClassicArenaAreaId), variant, shownTeam, data0.Champions, fillEmpty: true).Team;
             // No team of four affinities on this account (2026-11-11: KaelStormVex's only Void champions are in the Bathhouse): the fight is played with
             // the arena team, so the arena goes on (it was an error that paused Classic Arena for an hour, twice a turn).
+            // An affinity only in a vault (2026-11-16, Smasher8465: the quest was never done, four fights a day with the normal team): those champions taken
+            // out of the vault first (as the team preparation does), then the team built again.
+            if (questTeam is null && !dryRun)
+            {
+                var all = data0.Champions.Select(c => c with { InVault = false, InBathhouse = false }).ToList();
+                if (TeamRules.Resolve(TeamsOf(ClassicArenaAreaId), variant, shownTeam, all, fillEmpty: true).Team is { } withVaults)
+                {
+                    var vaulted = withVaults.Where(id => data0.Champions.FirstOrDefault(c => c.Id == id) is { } c && (c.InVault || c.InBathhouse))
+                        .Select(id => id.ToString(System.Globalization.CultureInfo.InvariantCulture)).ToList();
+                    if (vaulted.Count > 0)
+                    {
+                        log($"autoplay: STEP the {variant} team needs {vaulted.Count} champion(s) from the vaults: taken out first");
+                        await Back(PlayTargets.TeamView, ct);
+                        await RunCommand(["vault-withdraw", .. vaulted], ct);
+                        _affinityRetry = true;
+                        return new BattleOutcome(BattleResult.Retry, "the 4-affinity team's champions were taken out of the vault: the fight next turn");
+                    }
+                }
+            }
             if (questTeam is null)
             {
-                log($"autoplay: no {variant} team can be built on this account (an affinity has no champion outside the vault and the Bathhouse): the arena team fights");
+                log($"autoplay: no {variant} team can be built on this account, vaults included: the arena team fights (the quest stays open)");
                 quest = false;
+                _affinityFailed = true;
             }
         }
         var restore = !quest ? SavedArenaTeam() : null;
@@ -402,11 +433,15 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         await Pause(1500, ct);
         // The list is built after the dialog (2026-11-08 07:52: read with 0 entries while five Classic Arena refills were there): waited for, up to 8 s.
         for (var wait = 0; wait < 16 && (await Read(ct)).Play.Inbox.Count == 0; wait++) await Pause(500, ct);
-        for (var n = 0; n < 10; n++)
+        // Entries left this time (over a cap, or Collect did not take them): skipped, the next ones collected (2026-11-16, Smasher8465: one capped Quest
+        // Reward stopped the whole inbox and eleven free gifts stayed).
+        var left = new HashSet<string>();
+        static string KeyOf(InboxEntry e) => $"{e.Title}|{e.Message}|{e.Icon}|{e.Expires}";
+        for (var n = 0; n < 20; n++)
         {
             var (_, _, play) = await Read(ct);
             // The soonest to expire first (Ehsan 2026-11-08: "many of them about to expire").
-            var entry = play.Inbox.Where(e => match(e) && e.Collect?.NotClickable is null).OrderBy(e => ChoreRules.MinutesLeft(e.Expires) ?? double.MaxValue).FirstOrDefault();
+            var entry = play.Inbox.Where(e => match(e) && e.Collect?.NotClickable is null && !left.Contains(KeyOf(e))).OrderBy(e => ChoreRules.MinutesLeft(e.Expires) ?? double.MaxValue).FirstOrDefault();
             if (entry is null)
             {
                 if (n == 0) log($"autoplay: inbox: no {what} ({play.Inbox.Count} entries: {string.Join("; ", play.Inbox.Select(e => $"[{e.Title}|{e.Message}|{e.Icon}|{e.Expires}]").Take(10))}). Screen dump: {DumpScreen("inbox")}");
@@ -428,7 +463,8 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             catch (PlayStopException e)
             {
                 log($"autoplay: inbox: Collect on [{entry.Title}|{entry.Message}|{entry.Icon}] did not take it ({e.Message}); left in the inbox. Screen dump: {DumpScreen("inbox collect")}");
-                break;
+                left.Add(KeyOf(entry));
+                continue;
             }
             // The game's "the most is 10: claiming loses the rest" (MissingResourceOverlay, 2026-11-10 07:51: closed and claimed again ten times): closed, the
             // entry left in the inbox, nothing more of it claimed now (the tokens are spent first, the next inbox check claims it).
@@ -436,8 +472,9 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             if (Top(s3) == "MissingResourceOverlay")
             {
                 await Back("MissingResourceOverlay", ct);
-                log($"autoplay: inbox: [{entry.Title}|{entry.Message}] would go over the cap (the game warns some would be lost): left in the inbox");
-                break;
+                log($"autoplay: inbox: [{entry.Title}|{entry.Message}] would go over the cap (the game warns some would be lost): left in the inbox, the next one");
+                left.Add(KeyOf(entry));
+                continue;
             }
             _inboxTaken++;
             if (Top(s3) is { } top && top != PlayTargets.InboxView && top.EndsWith("Overlay", StringComparison.Ordinal)) await Back(top, ct);

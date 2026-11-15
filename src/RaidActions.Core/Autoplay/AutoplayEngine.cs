@@ -43,6 +43,9 @@ public interface IAutoplayHost
 
     /// <summary>Keeps the last quest read for the app's To-do page (every open quest and what the bot does about it).</summary>
     void SaveQuests(QuestSnapshot snapshot) { }
+
+    /// <summary>Every quest of the read, done ones too (the app's quest table).</summary>
+    void SaveQuestBoard(QuestBoard board) { }
 }
 
 /// <summary>

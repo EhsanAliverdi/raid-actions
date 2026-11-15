@@ -104,7 +104,8 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         if (s.ArtifactUpgrades && ctx.QuestLeft(QuestNeedKind.ArtifactAttempts) > 0 && Open(ctx, "attempts")) return "attempts";
         if (s.ArtifactUpgrades && ctx.QuestLeft(QuestNeedKind.ArtifactLevel) > 0 && Open(ctx, "piece")) return "piece";
         if (s.AutoJoinClan && ctx.Utc >= _clanAt && Open(ctx, "clan")) return "clan";
-        if (s.ClanCheckIn && _checkInDay != DateOnly.FromDateTime(ctx.Utc) && Open(ctx, "checkin")) return "checkin";
+        // The clan's day does not start at 00:00 UTC (Ehsan: "at the clan's reset"): looked at every 4 hours; the Members page's Check In says whether it is due.
+        if (s.ClanCheckIn && ctx.Utc >= _checkInNext && Open(ctx, "checkin")) return "checkin";
         if (s.InboxExpiringTokens && ctx.Utc >= _inboxAt && Open(ctx, "inbox")) return "inbox";
         if (s.PassRewards && ctx.Utc >= _passAt && Open(ctx, "pass")) return "pass";
         if (s.SparringPit && ctx.Utc >= _pitAt && Open(ctx, "pit")) return "pit";
@@ -118,6 +119,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         DateOnly? CheckIn = null, DateOnly? Cleanup = null);
 
     private DateOnly? _checkInDay, _cleanupDay;
+    private DateTime _checkInNext;
 
     /// <summary>The clean-up's pieces per sale (the live game's batch).</summary>
     public const int CleanupBatch = 100;
@@ -161,7 +163,8 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
                 {
                     _checkInDay = DateOnly.FromDateTime(ctx.Utc);
                     var done = await game.ClanCheckInAsync(ctx.DryRun, ct);
-                    return done == "not supported" ? "" : Report(ctx, "checkin", done);
+                    _checkInNext = ctx.Utc + TimeSpan.FromHours(done == "checked in" ? 12 : 4);
+                    return done == "not supported" || done.StartsWith("already", StringComparison.Ordinal) ? "" : Report(ctx, "checkin", done);
                 }
                 case "putback":
                 {

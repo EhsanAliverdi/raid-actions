@@ -237,6 +237,8 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
 
     public void SaveQuests(QuestSnapshot snapshot) => snapshot.Save(dir);
 
+    public void SaveQuestBoard(QuestBoard board) => board.Save(dir);
+
     private (DateOnly Day, IReadOnlySet<string> Closed)? _schedule;
 
     /// <summary>The schedule (this account's visits of the last four weeks and raid-extractor's config/dungeon-days.json), worked out once a day.</summary>

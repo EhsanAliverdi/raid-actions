@@ -221,7 +221,7 @@ public static partial class PlayTargets
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-quickjoin", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-collect", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-reward", "resource-add", "refill-use", "live-state", "live-phase", "live-slot", "live-confirm",
-        "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "menu-open", "menu-item", "reward-claim", "reward-tab", "event-card", "event-claimall", "event-close", "challenge-confirm", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "village-pass", "village-challenges", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
+        "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "menu-open", "menu-item", "reward-claim", "reward-tab", "event-card", "event-claimall", "event-close", "challenge-confirm", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "shop-section", "shop-subtab", "village-pass", "village-challenges", "village-clan", "clan-tab", "clan-checkin", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh",
     };
@@ -1224,6 +1224,7 @@ public static partial class PlayTargets
             foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null))
             {
                 if (x.Name == "BattlePass_h") targets.Add(Make("village-pass", "village: Passes", x, x, null));
+                else if (x.Name == "AllianceButton") targets.Add(Make("village-clan", "village: Clan", x, x, null));
                 else if (x.Name == "ChallengesButton_h") targets.Add(Make("village-challenges", "village: Challenges", x, x, null));
             }
         if (t.View is "BattlePassDialog" or "ChallengesDialog")
@@ -1232,6 +1233,26 @@ public static partial class PlayTargets
                 if (x.IsOn is not null && x.Name is "LevelReward" or "DailyQuests" or "WeeklyQuests_h" or "PermanentQuests_h") targets.Add(Make("pass-tab", $"forge pass: {x.Name}", x, x, null));
                 else if (x.IsOn is not null && x.Name is "0_Heroes" or "1_Artifacts" or "2_Dungeons" or "3_Arena" or "4_Badges") targets.Add(Make("challenge-tab", $"challenges: {x.Name}", x, x, null));
                 else if (x.Name.Contains("Claim", StringComparison.OrdinalIgnoreCase) || x.Name == "CollectAllRewardsButton") targets.Add(Make("pass-claim", $"claim: {x.Name}", x, x, x.Path));
+            }
+
+        // The Shop's sections (seen 2026-11-16: Packs, Bank, Gem, Daily & Progression, Limited Special Offers; the daily free gift is not in the one it
+        // opens on) and a section's own tabs (Daily & Progression, Limited: DailyAndLimitedTabsButtonContext). Only to look for an offer the game marks free.
+        if (t.View == ShopView)
+            foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null))
+            {
+                if (x.IsOn is not null && x.Name is "Packs" or "Bank" or "Gem" or "Daily_h" or "Limited_h") targets.Add(Make("shop-section", $"shop: {x.Name}", x, x, x.Name));
+                else if (x.Context?.Class.EndsWith(".DailyAndLimitedTabsButtonContext", StringComparison.Ordinal) == true && int.TryParse(x.Name, out var k))
+                    targets.Add(Make("shop-subtab", $"shop: tab {k}", x, x, x.Path, id: k));
+            }
+
+        // The Clan screen (seen 2026-11-16): its tabs (Tab1 Info, Tab2 Members, ...) and, on Members, the account's own row's Check In (the only one
+        // shown: the other rows' are inactive). Ehsan: "you always miss the check-in; it is done once a day at the clan's reset".
+        if (t.View == "AllianceOverlay")
+            foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null))
+            {
+                if (x.IsOn is not null && x.Name.StartsWith("Tab", StringComparison.Ordinal) && int.TryParse(x.Name[3..], out var n))
+                    targets.Add(Make("clan-tab", $"clan: tab {n}", x, x, x.Name, id: n));
+                else if (x.Name == "CheckInButton_h") targets.Add(Make("clan-checkin", "clan: Check In", x, x, x.Path));
             }
 
         // A champion's masteries: the fourth tab, the big Masteries button (a fixed spot on that tab), and Learn on a mastery's panel. Its GetMaxMasteryButton_h and

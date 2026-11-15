@@ -110,6 +110,7 @@ public sealed class FreeRewardsActivity(IFreeRewardsGame game) : IActivity
                     {
                         var snap = QuestSnapshot.From(ctx.Utc, pass.Quests, ctx.Settings.Quests);
                         ctx.Host.SaveQuests(snap);
+                        ctx.Host.SaveQuestBoard(QuestBoard.From(ctx.Utc, pass.Quests));
                         if (ctx.Settings.Planner.QuestTasks && ctx.Host.Tasks is { } book) QuestTasks.Sync(book, snap);
                     }
                     var open = ctx.QuestNeeds.Where(n => n.Playable).ToList();

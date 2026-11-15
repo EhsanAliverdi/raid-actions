@@ -96,7 +96,7 @@ public class ChoresActivityTests
     public async Task The_quests_jobs_come_first_then_the_market_and_the_advised_upgrades()
     {
         var (ctx, game, chores) = Make(Need(QuestNeedKind.Market, 1), Need(QuestNeedKind.LevelUp, 1), Need(QuestNeedKind.ArtifactAttempts, 4), Need(QuestNeedKind.ArtifactLevel, 1, 12));
-        for (var i = 0; i < 6; i++) await chores.RunTurnAsync(ctx, CancellationToken.None);
+        for (var i = 0; i < 7; i++) await chores.RunTurnAsync(ctx, CancellationToken.None); // the clan check-in (on by default since 2026-11-16) takes a turn too
         Assert.Equal(["market quest=True", "level", "upgrade  True 0", "upgrade  True 0", "upgrade 12 False 0", "inbox"], game.Calls);
     }
 

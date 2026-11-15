@@ -48,7 +48,10 @@ public static class DoomTowerSpot
             if (Cv2.CountNonZero(middle) < 0.5 * middle.Total()) continue;
             banners.Add((box.X + box.Width / 2f, box.Y + box.Height / 2f, -box.Y));
         }
-        return [.. glows.Take(3).Select(g => (g.X, g.Y)), .. banners.OrderByDescending(b => b.Score).Select(b => (b.X, b.Y))];
+        // Not the map's buttons (2026-11-15: the Bastion button at the bottom right glowed red and was tapped: it left the tower): the right column of
+        // Rankings / Reward Info / Bastion and the difficulty box at the bottom left.
+        bool OnMap((float X, float Y, double Score) c) => !(c.X > 1150 * scale && c.Y > 380 * scale) && !(c.X < 320 * scale && c.Y > 620 * scale);
+        return [.. glows.Where(OnMap).Take(3).Select(g => (g.X, g.Y)), .. banners.Where(OnMap).OrderByDescending(b => b.Score).Select(b => (b.X, b.Y))];
     }
 
     public static (float X, float Y)? Find(Mat bgr)

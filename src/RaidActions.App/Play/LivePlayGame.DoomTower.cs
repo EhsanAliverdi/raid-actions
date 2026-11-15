@@ -133,13 +133,13 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         var (w, why) = GameWindow.Find();
         if (w is null) throw new PlayStopException(why!);
         var tried = 0;
-        for (var view = 0; view < 4; view++)
+        for (var view = 0; view < 8; view++)
         {
             if (view > 0)
             {
-                // Up the tower: the finger moves down.
+                // Up the tower: the finger moves down (2026-11-15: a 320-pixel drag moved ~7 floors; the map opened at floor 10 and floor 40 was never seen).
                 var sc = w.Client.Width / 1298f;
-                if (MouseInput.Drag(w, 650 * sc, 200 * sc, 650 * sc, 520 * sc) is { } dragFailed) throw new PlayStopException(dragFailed);
+                if (MouseInput.Drag(w, 650 * sc, 120 * sc, 650 * sc, 640 * sc) is { } dragFailed) throw new PlayStopException(dragFailed);
                 await Pause(1500, ct);
             }
             var (capture, problem) = WindowCapture.Take(w);
@@ -163,6 +163,9 @@ public sealed partial class LivePlayGame : IDoomTowerGame
                 {
                     if (opened is PlayTargets.RefillView or UiState.MessageBoxView) await Back(opened, ct);
                     else if (opened is not null && opened != "DoomTowerHUD" && opened != "DoomTowerMap") await Back(opened, ct);
+                    // Still on the tower? (2026-11-15: a tap on a button left it and the next look was the village's.)
+                    if (Top(await ReadState(ct)) is { } now && now != "DoomTowerHUD" && now != "DoomTowerMap")
+                        return new BattleOutcome(BattleResult.NotStarted, $"a tap on the {tower} map left the tower ({now}); floor {openFloor} not found");
                     continue;
                 }
                 var (_, _, play) = await Read(ct);
@@ -172,6 +175,8 @@ public sealed partial class LivePlayGame : IDoomTowerGame
                     log($"autoplay: ({at.X:0},{at.Y:0}) opened stage {got} (floor {got % 1000}), not floor {openFloor}: back");
                     await Back(opened, ct);
                     await Pause(800, ct);
+                    // A lower floor: the open one is further up, past this screen (its spots are lower floors too): scroll on.
+                    if (got % 1000 < openFloor) break;
                     continue;
                 }
                 log($"autoplay: the {tower} floor {openFloor} opened at ({at.X:0},{at.Y:0}) (stage {stage?.ToString() ?? "not read"})");

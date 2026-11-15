@@ -80,7 +80,7 @@ public class EnergyActivityTests
 
         Assert.True(arena.Played);
         // The chain ends at the refresh and the arena's turn is next (energy below its cap: no "full" turn first).
-        var chainEnd = Assert.Single(host.Events, e => e.Kind == "chain");
+        var chainEnd = Assert.Single(host.Events, e => e.Kind == "chain" && !e.Text.Contains("stop asked"));   // the test ends with a stop: that chain ends too
         Assert.Contains("Classic Arena", chainEnd.Text);
         var after = host.Events.SkipWhile(e => e != chainEnd).Where(e => e.Kind == "turn").Skip(1).First();
         Assert.Equal("classic-arena", after.Area);

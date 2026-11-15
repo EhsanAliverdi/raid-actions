@@ -394,6 +394,8 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     /// </summary>
     private string? ChainBreak(PlayContext ctx, IReadOnlyList<IActivity> enabled, string self, bool once)
     {
+        // Stop asked (2026-11-14 07:41: a Dragon's Lair chain started run after run while the app asked it to stop).
+        if (host.StopRequested()) return "stop asked";
         if (!once && host.RotateDue(null) is { } rotate) return "rotation: " + rotate;
         // Only an area the next turn would really give to (2026-11-06: arena tokens full broke every Campaign chain, and the next turn went to Energy again,
         // full too and first in the order): an urgent one, or a full one while this area is not full or comes after it.

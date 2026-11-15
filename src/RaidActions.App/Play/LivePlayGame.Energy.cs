@@ -288,6 +288,14 @@ public sealed partial class LivePlayGame : IEnergyGame
             if (teamView is not null) await Back(teamView, ct);
             return new BattleOutcome(BattleResult.NotStarted, "not enough energy or keys (the refill offer was closed)");
         }
+        // Minotaur's Labyrinth with every champion at today's scroll cap (2026-11-15: "All selected Champions have already earned the maximum number of
+        // Scrolls. Do you wish to continue?"): not continued (no scrolls, the energy goes elsewhere); closed, and the labyrinth is closed for today.
+        if (Top(inBattle) == UiState.MessageBoxView && inBattle.MessageBox?.Message?.Contains("maximum number of Scrolls", StringComparison.OrdinalIgnoreCase) == true)
+        {
+            await Back(UiState.MessageBoxView, ct);
+            if (teamView is not null && Top(await ReadState(ct)) == teamView) await Back(teamView, ct);
+            return new BattleOutcome(BattleResult.NotStarted, "closed today: every champion has today's maximum of scrolls");
+        }
         if (!inBattle.Active.Any(v => BattleViews.Contains(v.Name))) await Refuse(inBattle, $"Start {where}", ct);
         log($"autoplay: {where} started");
         var result = await WaitBattle(ct, resultView);

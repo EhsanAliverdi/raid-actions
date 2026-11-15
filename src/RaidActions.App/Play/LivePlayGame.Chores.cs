@@ -324,12 +324,27 @@ public sealed partial class LivePlayGame : IChoresGame
         // A window on top leaves the capture blank: the game comes to the front first.
         if (MouseInput.EnsureForeground(w) is { } behind) { log($"autoplay: {behind}"); return false; }
         await Pause(500, ct);
-        var (capture, problem) = WindowCapture.Take(w);
-        if (capture is null) { log($"autoplay: the village could not be captured: {problem}"); return false; }
-        (float X, float Y)? spot;
-        using (capture) spot = VillageSpot.Find(capture.Image, label);
-        if (spot is not { } at) { log($"autoplay: the {name} label is not on screen"); return false; }
         var scale = w.Client.Width / 1298f;
+        // Not on screen: the village view is moved and looked at again (2026-11-15: the view opened shifted up, the Market and the Guardian Ring were below
+        // the screen, and the fixed spots opened the Portal and a champion screen). The finger moves up (the lower buildings come in), then right, then left.
+        (float, float)[] drags = [(0, 0), (0, -260), (300, 0), (-600, 0)];
+        (float X, float Y)? spot = null;
+        foreach (var (dx, dy) in drags)
+        {
+            if (dx != 0 || dy != 0)
+            {
+                float x0 = (dx < 0 ? 950 : dx > 0 ? 350 : 650) * scale, y0 = (dy < 0 ? 470 : 330) * scale;
+                if (MouseInput.Drag(w, x0, y0, x0 + dx * scale, y0 + dy * scale) is { } dragFailed) { log($"autoplay: the village could not be moved: {dragFailed}"); break; }
+                await Pause(1200, ct);
+                if (Top(await ReadState(ct)) != PlayTargets.VillageHudView) { log($"autoplay: moving the village opened another screen"); return false; }
+            }
+            var (capture, problem) = WindowCapture.Take(w);
+            if (capture is null) { log($"autoplay: the village could not be captured: {problem}"); return false; }
+            using (capture) spot = VillageSpot.Find(capture.Image, label);
+            if (spot is not null) break;
+            log($"autoplay: the {name} label is not on screen{(dx != 0 || dy != 0 ? $" (view moved {dx:0},{dy:0})" : "")}");
+        }
+        if (spot is not { } at) return false;
         log($"autoplay: the {name} building, by its label at ({at.X:0},{at.Y:0})");
         // The Market's tent is tapped high: the game's "Progress Mission available" banner covers the part just above its label, and a tap there opens Missions.
         var above = (name == "market" ? 130 : 60) * scale;

@@ -244,7 +244,8 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             if (rows.All(r => r.Id != id)) rows.Add(new EnergyTarget { Id = id, Area = "Story", Region = n.Region!, Difficulty = QuestPlanner.DifficultyNamed(n.Text), Stage = n.MinStage });
         }
         // A quest row that keeps losing stops taking the energy: the list goes on.
-        return [.. rows.Where(r => _questRowLosses.GetValueOrDefault(r.Id) < MaxQuestRowLosses && _missionWins.GetValueOrDefault(r.Id).Stale < MaxQuestRowLosses
+        // Nor one whose dungeon was seen closed today (2026-11-16: Minotaur's Labyrinth with every champion at the day's scrolls, visited each turn).
+        return [.. rows.Where(r => !(r.Area == "Dungeon" && _closedToday.Contains(r.Region)) && _questRowLosses.GetValueOrDefault(r.Id) < MaxQuestRowLosses && _missionWins.GetValueOrDefault(r.Id).Stale < MaxQuestRowLosses
             && ctx.Held($"{AreaId}:mission:{r.Id}") is null)];
     }
 

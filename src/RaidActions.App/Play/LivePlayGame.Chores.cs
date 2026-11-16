@@ -593,6 +593,10 @@ public sealed partial class LivePlayGame : IChoresGame
     {
         await HomeAsync(Action("to the village"), ct);
         var dots = (await Read(ct)).Play.RedDots ?? [];
+        // A dot on a bare "Image" takes the name of the button above it (2026-11-16: …/PlariumProgram_h/Image/Indicator_h, the side menu's Plarium Points).
+        static string Named(RedDotRead d) => d.Button is not "Image" ? d.Button
+            : d.Path.Split('/').Reverse().Skip(2).FirstOrDefault(x => x.EndsWith("_h", StringComparison.Ordinal) || x.EndsWith("Button", StringComparison.Ordinal)) ?? d.Button;
+        dots = [.. dots.Select(d => d with { Button = Named(d) })];
         var list = dots.Where(d => d.View == PlayTargets.VillageHudView).Select(d => (d.Button, d.Dot)).Distinct().ToList();
         log($"autoplay: red dots on the village: {(list.Count == 0 ? "none" : string.Join(", ", list.Select(d => d.Button)))}");
         // A dot no rule knows: its full path, so it can be told apart (2026-11-16: a bare "Image" button).

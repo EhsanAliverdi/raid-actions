@@ -11,6 +11,7 @@ public class RedDotsTests
     [InlineData("Indicator", "BankIndicator_h", "free")]      // the Shop is the game's Bank
     [InlineData("AllianceButton", null, "checkin")]
     [InlineData("BattlePass_h", null, "pass")]
+    [InlineData("PlariumProgram_h", "Indicator_h", "pass")]
     public void A_dot_brings_its_job_forward(string button, string? dot, string job) => Assert.Equal(job, RedDots.For(button, dot).Job);
 
     [Fact]

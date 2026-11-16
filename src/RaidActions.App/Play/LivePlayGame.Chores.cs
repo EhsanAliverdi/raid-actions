@@ -466,6 +466,8 @@ public sealed partial class LivePlayGame : IChoresGame
         catch (PlayStopException e) { log($"autoplay: side menu rewards: {e.Message}"); await HomeAsync(Action("from the side menu"), ct); }
         try { claimed += await ClaimEventsAsync(dryRun, ct); }
         catch (PlayStopException e) { log($"autoplay: event rewards: {e.Message}"); await HomeAsync(Action("from the events"), ct); }
+        try { await LookAtTournamentsAsync(ct); }
+        catch (PlayStopException e) { log($"autoplay: tournaments: {e.Message}"); await HomeAsync(Action("from the tournaments"), ct); }
         return claimed;
     }
 
@@ -510,6 +512,21 @@ public sealed partial class LivePlayGame : IChoresGame
     }
 
     private const string CoalitionView = "CooperationEventWorldBossDialog";
+
+    /// <summary>
+    /// The Tournaments button's red dot (Ehsan 2026-11-17: a village dot with none inside means a new one started or starts soon): the page opened, so the
+    /// game counts it seen, and closed. Its cards are a web page the bot cannot read, so nothing is claimed there yet.
+    /// </summary>
+    private async Task LookAtTournamentsAsync(CancellationToken ct)
+    {
+        var (s, _, _) = await Read(ct);
+        if (Top(s) != PlayTargets.VillageHudView) await ToVillage(ct);
+        if ((await Read(ct)).Targets.FirstOrDefault(t => t.Kind == "event-card" && t.Id == -2) is not { Note: "open dot" }) return;
+        await Click("event-card", t => t.Id == -2, (s2, _) => Top(s2) == "TournamentsWebView", "the tournaments open", ct, within: TimeSpan.FromSeconds(10));
+        await Pause(3000, ct);
+        log("autoplay: tournaments: the red dot was looked at (a new tournament; nothing claimed there: a web page)");
+        await CloseWebPages(ct);
+    }
 
     /// <summary>Each event's milestones: its card, its page's Claim All (a web page: its fixed spot), its X.</summary>
     private async Task<int> ClaimEventsAsync(bool dryRun, CancellationToken ct)

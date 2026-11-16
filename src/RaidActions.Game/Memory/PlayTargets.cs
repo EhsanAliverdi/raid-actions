@@ -1312,6 +1312,15 @@ public static partial class PlayTargets
                 targets.Add(Make("event-card", "village: Events", x, x, dot ? "open dot" : "open", id: -1));
                 break;
             }
+            // The Tournaments button (a web page: its cards cannot be read; 2026-11-17): its dot in the note.
+            for (var i = 0; i < nodes.Count; i++)
+            {
+                var x = nodes[i];
+                if (x.Name != "TournamentsButton_h" || x.Interactable is null || !x.ActiveInHierarchy || x.Screen is null) continue;
+                var dot = SelfAndBelow(i).Any(y => y.ActiveInHierarchy && RedDot(y.Name));
+                targets.Add(Make("event-card", "village: Tournaments", x, x, dot ? "open dot" : "open", id: -2));
+                break;
+            }
         }
         // A challenge's own window (Ehsan's claims, recorded 2026-11-03): the card's Claim opens it, its Claim (BTN_2) takes the reward.
         if (t.View == "ChallengeQuestOverlay")

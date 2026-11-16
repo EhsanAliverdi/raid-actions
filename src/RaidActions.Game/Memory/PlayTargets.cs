@@ -104,6 +104,9 @@ public static partial class PlayTargets
     /// <summary>The Classic Arena's defence picker (seen 2026-11-16: the Defence tab's slot opens it; 4 slots under "Squad", the compact list, BTN_2 saves).</summary>
     public const string ArenaDefencePickView = "PickArenaDefenceOverlay";
 
+    /// <summary>"The leader has no aura skill: start anyway?" after a team's Start (seen 2026-11-17 on a Faction Wars crypt).</summary>
+    public const string NoAuraView = "NoAuraSkillConfirmationOverlay";
+
     private const string BattleMapButton = "Client.ViewModel.Contextes.Village.HUD.BattleMapButtonContext";
     private const string InboxButton = "Client.ViewModel.Contextes.InboxButtonContext";
     private const string ArenaModes = "Client.ViewModel.Contextes.BattleModeSelectionDialog.ArenaModesContainerContext";
@@ -230,7 +233,7 @@ public static partial class PlayTargets
         "mode-clan", "clan-quickjoin", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-collect", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-reward", "resource-add", "refill-use", "live-state", "live-phase", "live-slot", "live-confirm",
         "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "menu-open", "menu-item", "reward-claim", "reward-tab", "event-card", "event-claimall", "event-close", "challenge-confirm", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "shop-section", "shop-subtab", "village-pass", "village-challenges", "village-clan", "clan-tab", "clan-checkin", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
-        "arena-tag", "tag-opponent", "tag-refresh", "arena-defence-slot", "defence-save",
+        "arena-tag", "tag-opponent", "tag-refresh", "arena-defence-slot", "defence-save", "noaura-confirm",
     };
 
     [GeneratedRegex(@"Vault|Storage", RegexOptions.IgnoreCase)] private static partial Regex VaultName();
@@ -1471,6 +1474,13 @@ public static partial class PlayTargets
                 if (button is null) continue;
                 targets.Add(Make("arena-defence-slot", $"arena defence: slot {slot}", x, button, filledNode is not null ? "filled" : "empty", id: slot));
             }
+        // The no-aura confirmation's one button that is not its close (the close is a way back already).
+        if (t.View == NoAuraView)
+        {
+            var buttons = nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null
+                && !System.Text.RegularExpressions.Regex.IsMatch(x.Name, "close|cancel|back|^x$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)).ToList();
+            if (buttons.Count == 1) targets.Add(Make("noaura-confirm", $"no aura: {buttons[0].Name}", buttons[0], buttons[0], null));
+        }
         if (t.View == ArenaDefencePickView)
             foreach (var x in nodes.Where(x => x.Name == "BTN_2" && x.ActiveInHierarchy && x.Screen is not null).Take(1))
                 targets.Add(Make("defence-save", "arena defence: Save", x, x, null));

@@ -171,6 +171,18 @@ public sealed partial class LivePlayGame : IFactionWarsGame
             (wanted, _trying) = (choice, (key, choice));
             log($"autoplay: STEP {crypt.Name} stage {stage}: the bot's team {string.Join(", ", choice.Select(Who))} ({tried.Count(t => !t.Won)} lost here so far)");
         }
+        // A leader with an aura that works here in slot 1 (2026-11-17 00:51, killer8465: Start asked "no aura skill, continue?" and the crypt was left):
+        // the team's best aura first; with none in the team, its weakest swapped for the faction's best built aura champion.
+        {
+            var (ld, lgd, _, _) = await Account(ct);
+            var facPool = ld.Champions.Where(c => c.Faction == crypt.Faction && !c.InVault && !c.InBathhouse).ToList();
+            var led = RaidExtractor.Autoplay.BotTeams.Led([.. wanted], ld, lgd, "factionwars", facPool);
+            if (!led.SequenceEqual(wanted))
+            {
+                log($"autoplay: STEP {crypt.Name}: the leader with an aura first: {string.Join(", ", led.Select(Who))}");
+                wanted = led;
+            }
+        }
         // A member in a vault (2026-11-13 23:58, BlackLord65: Umetogi, Chani, Vagabond, Odachi in the reserve vault, no gear: the crypt's team screen does
         // not list them, and the stage-10 battle before was played ungeared): out of the vault (and geared when the faction's picker says so), then again.
         var (vd, _, _, _) = await Account(ct);
@@ -192,11 +204,11 @@ public sealed partial class LivePlayGame : IFactionWarsGame
             finally { _cryptAgain = false; }
         }
         // Empty slots too (2026-11-16: every referral account's crypt opened with no team; Start did nothing all day and 12 keys a crypt sat full).
-        if (!shown.ToHashSet().SetEquals(wanted))
+        if (!shown.ToHashSet().SetEquals(wanted) || shown.Count > 0 && wanted.Count > 0 && shown[0] != wanted[0])
         {
             // Another team in the slots (2026-10-30: the last one played by hand), or none: the crypt team is set here (Cursed City's routine).
             log($"autoplay: STEP setting {crypt.Name}'s crypt team: {string.Join(", ", wanted.Select(Who))}");
-            try { await SetTeam(wanted, ct, PlayTargets.FwTeamView); }
+            try { await SetTeam(wanted, ct, PlayTargets.FwTeamView, leader: wanted.Count > 0 ? wanted[0] : null); }
             catch (LockedHeroException e)
             {
                 await Back(PlayTargets.FwTeamView, ct);
@@ -223,8 +235,16 @@ public sealed partial class LivePlayGame : IFactionWarsGame
         }
         try
         {
-            await Click("team-start", t => t.View == PlayTargets.FwTeamView, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView,
+            await Click("team-start", t => t.View == PlayTargets.FwTeamView, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView
+                    or PlayTargets.NoAuraView,
                 "the battle starts", ct, within: TimeSpan.FromSeconds(25), shot: true);
+            // "No aura skill: start anyway?" (no aura champion in the faction): its one button that is not the close (the screen dumped to check it).
+            if (Top(await ReadState(ct)) == PlayTargets.NoAuraView)
+            {
+                log($"autoplay: {crypt.Name}: the game asks to start without an aura; started anyway. Screen dump: {DumpScreen("no aura confirmation")}");
+                await Click("noaura-confirm", null, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) != PlayTargets.NoAuraView,
+                    "the battle starts", ct, within: TimeSpan.FromSeconds(25), shot: true);
+            }
         }
         catch (PlayStopException)
         {

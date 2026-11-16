@@ -156,7 +156,9 @@ public sealed partial class LivePlayGame
             if (shown.Count == 0) return;
             var (w, why) = Game.Window.GameWindow.Find();
             if (w is null) throw new PlayStopException(why!);
-            var (cx, cy) = (shown.Average(x => x.Center.X), shown.Average(x => x.Center.Y));
+            // The wheel near the list's left edge, not its centre (2026-11-16: Fast Rank Up's food filter panel stays drawn over the middle of the list
+            // after Apply and took the wheel; #210 never came into view and the food rank-ups paused three times).
+            var (cx, cy) = (shown.Min(x => x.X) + 40, shown.Average(x => x.Center.Y));
             var down = r.Center.Y > cy;
             if (Input.MouseInput.Wheel(w, cx, cy, down ? -2 : 2) is { } notSent) throw new PlayStopException("Not scrolled: " + notSent);
             log($"autoplay: scrolled the list {(down ? "down" : "up")} to bring #{id} into view");

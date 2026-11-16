@@ -81,9 +81,75 @@ public sealed partial class LivePlayGame : IFactionWarsGame
     /// <summary>The crypt team prepared by the shared team preparation (the faction's picker: gear up, put back; plan/team-prep.md).</summary>
     public async Task<string> GearTeamAsync(CryptPlan crypt, bool dryRun, CancellationToken ct)
     {
+        // The push first (referral accounts): the team levelled with XP brews, then geared.
+        string? pushed = null;
+        try { pushed = await PushTeamAsync(crypt.Team, dryRun, ct); }
+        catch (PlayStopException e) { log($"autoplay: Faction Wars push: {e.Message}"); await HomeAsync(Action("from the Tavern"), ct); }
         var done = await PrepareTeam($"Faction Wars: {crypt.Name}", "faction-wars", "factionwars", Math.Max(5, crypt.Team.Count), FactionChoice(crypt.Faction), dryRun, ct,
             team: crypt.Team, faction: crypt.Faction);
-        return done.Length == 0 ? "already prepared today" : done;
+        return (done.Length == 0 ? "already prepared today" : done) + (pushed is null ? "" : $"; push: {pushed}");
+    }
+
+    private const string BrewView = "InstantBrewLevelUpOverlay";
+    private static readonly string[] BrewOrder = ["Magic", "Force", "Spirit", "Void"];
+
+    /// <summary>
+    /// The Faction Wars push (Ehsan 2026-11-17; plan/requests-2026-11-17.md): each team member of a ticked rarity below the push level gets XP brews of its own
+    /// affinity on the Tavern's Brew screen (its rank's tab, its brew at amount 1, the champion, Upgrade), one brew at a time and checked in the account, until
+    /// it reaches the level (never past its rank's maximum: no rank-ups) or the brews run out. Null when nothing was done.
+    /// </summary>
+    public async Task<string?> PushTeamAsync(IReadOnlyList<int> team, bool dryRun, CancellationToken ct)
+    {
+        var push = AutoplaySettings.Load(ExtractorOutput).FactionWars.Push;
+        if (!push.Enabled) return null;
+        var done = new List<string>();
+        foreach (var id in team)
+        {
+            var brews = 0;
+            for (var round = 0; round < 8; round++)
+            {
+                var (data, _, _, _) = await Account(ct);
+                if (data.Champions.FirstOrDefault(c => c.Id == id) is not { } c || push.TargetFor(c.Rarity, c.Rank, c.Level) is not { } to) break;
+                var affinity = Array.IndexOf(BrewOrder, c.Element);
+                var left = data.Inventory?.Items.GetValueOrDefault($"HeroLevelUpItem{c.Element}") ?? 0;
+                if (affinity < 0 || left <= 0) { log($"autoplay: push: {Who(id)} needs {c.Element} brews, none left"); break; }
+                log($"autoplay: STEP push: {Who(id)} level {c.Level} → {to} ({c.Rarity} {c.Rank}★, {c.Element} brew {left} left)");
+                if (dryRun) break;
+                await OpenTavernLevel(ct);
+                await Click("brew-open", null, (s2, _) => Top(s2) == BrewView, "the Brew screen opens", ct, within: TimeSpan.FromSeconds(8));
+                await Pause(1200, ct);
+                await Click("brew-grade", t => t.Id == c.Rank, (_, _) => true, $"the {c.Rank}★ tab", ct);
+                await Pause(800, ct);
+                // "The selected brews and champions will be reset": confirmed (a fresh screen has none; nothing is spent by it).
+                if (Top(await Settled(ct)) == UiState.MessageBoxView) { await Click("battle-giveup-yes", null, (s2, _) => Top(s2) != UiState.MessageBoxView, "the reset confirmed", ct); await Pause(600, ct); }
+                await Click("brew-item", t => t.Id == affinity, (_, _) => true, $"the {c.Element} brew", ct);
+                await Pause(600, ct);
+                await DragIntoView("brew-hero", ct, t => t.Id == id);
+                await Click("brew-hero", t => t.Id == id, (_, _) => true, Who(id), ct);
+                await Pause(600, ct);
+                await Click("brew-upgrade", null, (_, _) => true, "Upgrade", ct);
+                await Pause(2500, ct);
+                // Whatever the game shows after (a level-up window), then the Brew screen closed.
+                for (var k = 0; k < 3; k++)
+                {
+                    var top = Top(await Settled(ct));
+                    if (top is null || top == PlayTargets.TavernView) break;
+                    if (top == BrewView) await Click("brew-close", null, (s2, _) => Top(s2) != BrewView, "the Brew screen closes", ct);
+                    else await Back(top, ct);
+                    await Pause(700, ct);
+                }
+                var after = (await Account(ct)).Data.Champions.FirstOrDefault(x => x.Id == id)?.Level ?? c.Level;
+                if (after <= c.Level) { log($"autoplay: push: {Who(id)} stayed at level {c.Level} after Upgrade: stopped. Screen dump: {DumpScreen("push no level")}"); break; }
+                brews++;
+            }
+            if (brews > 0)
+            {
+                var now = (await Account(ct)).Data.Champions.FirstOrDefault(x => x.Id == id)?.Level;
+                done.Add($"{Who(id)} to level {now} ({brews} brew(s))");
+            }
+        }
+        if (done.Count > 0) await HomeAsync(Action("from the Tavern"), ct);
+        return done.Count == 0 ? null : string.Join(", ", done);
     }
 
     public async Task<string> RemoveGearAsync(IReadOnlyList<int> ids, bool dryRun, CancellationToken ct)

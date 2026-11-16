@@ -27,6 +27,9 @@ public interface IGameObjects
     /// <summary>The non-null elements of a List&lt;T&gt; of references.</summary>
     IReadOnlyList<ulong> RefList(ulong list, int max);
 
+    /// <summary>The reference at a raw offset (a field whose name is not known; check the object's class before trusting it). 0 when none.</summary>
+    ulong RefAt(ulong obj, int offset) => 0;
+
     /// <summary>The game's name for an enum value, or null when it is not a member.</summary>
     string? EnumName(string enumType, int value);
 

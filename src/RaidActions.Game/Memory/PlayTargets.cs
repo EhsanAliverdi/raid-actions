@@ -236,7 +236,7 @@ public static partial class PlayTargets
         "mode-clan", "clan-quickjoin", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-collect", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-reward", "resource-add", "refill-use", "live-state", "live-phase", "live-slot", "live-confirm",
         "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "menu-open", "menu-item", "reward-claim", "reward-tab", "event-card", "event-claimall", "event-close", "challenge-confirm", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "shop-section", "shop-subtab", "village-pass", "village-challenges", "village-clan", "clan-tab", "clan-checkin", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
-        "arena-tag", "tag-opponent", "tag-refresh", "arena-defence-slot", "defence-save", "noaura-confirm", "tag-tab", "pit-levelup",
+        "arena-tag", "tag-opponent", "tag-refresh", "arena-defence-slot", "defence-save", "noaura-confirm", "tag-tab", "pit-levelup", "brew-open", "brew-grade", "brew-item", "brew-hero", "brew-upgrade", "brew-close",
     };
 
     [GeneratedRegex(@"Vault|Storage", RegexOptions.IgnoreCase)] private static partial Regex VaultName();
@@ -866,6 +866,18 @@ public static partial class PlayTargets
                     }
                     break;
                 }
+                case var brewClass when brewClass.EndsWith(".InstantBrewLevelUpHeroItemContext", StringComparison.Ordinal):
+                {
+                    // A champion on the Brew screen: its Hero, found by its offset (0x80, 2026-11-17; the field's name is not known) and accepted only when the
+                    // object there is a SharedModel.Meta.Heroes.Hero (a game update that moves it gives no target, never a wrong one).
+                    const string HeroModel = "SharedModel.Meta.Heroes.Hero";
+                    var heroPtr = Try(() => g.RefAt(c.Address, 0x80), 0UL, notes, null);
+                    int? hero = heroPtr != 0 && Try(() => g.ClassName(heroPtr), "", notes, null) == HeroModel
+                        ? Try(() => (int?)g.Int(heroPtr, HeroModel, "Id"), null, notes, "Hero.Id") : null;
+                    var box = SelfAndBelow(i).FirstOrDefault(x => x.Name == "BASE_HeroAvatar_Selectable" && x.Interactable is not null);
+                    if (hero is > 0 && box is not null) targets.Add(Make("brew-hero", $"brew: #{hero}", n, box, null, id: hero));
+                    break;
+                }
                 case SelectableAvatar when IsTeamView(t.View):
                 {
                     // A champion in the team screen's list: clicking it puts it in the first free slot.
@@ -1432,6 +1444,27 @@ public static partial class PlayTargets
         if (t.View == UiState.MessageBoxView)
             foreach (var x in nodes.Where(x => x.Name == "1" && x.Context?.Class.EndsWith(".MessageBoxButtonContext", StringComparison.Ordinal) == true && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
                 targets.Add(Make("battle-giveup-yes", "message box: second button", x, x, null));
+
+        // The Tavern's Brew screen (seen 2026-11-17, KaelStormVex): its button on the Upgrade Level tab, the rank tabs (GradeItemContext, in order: 1★ ..
+        // 6★), the four brews (in the game's affinity order: Magic, Force, Spirit, Void), each champion of the rank (its avatar's id), Upgrade and the X.
+        if (t.View == TavernView)
+            foreach (var x in nodes.Where(x => x.Name == "InstantBrewLevelUpButton" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                targets.Add(Make("brew-open", "tavern: Brew", x, x, null));
+        if (t.View == "InstantBrewLevelUpOverlay")
+        {
+            var grades = nodes.Where(x => x.Context?.Class.EndsWith(".GradeItemContext", StringComparison.Ordinal) == true && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null)
+                .OrderBy(x => x.Screen!.Value.X).ToList();
+            for (var k = 0; k < grades.Count; k++) targets.Add(Make("brew-grade", $"brew: {k + 1}★ tab", grades[k], grades[k], null, id: k + 1));
+            var brews = nodes.Where(x => x.Context?.Class.EndsWith(".InstantBrewLevelUpBrewItemContext", StringComparison.Ordinal) == true && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null)
+                .OrderBy(x => x.Screen!.Value.X).ToList();
+            string[] affinities = ["Magic", "Force", "Spirit", "Void"];
+            for (var k = 0; k < brews.Count && k < affinities.Length; k++) targets.Add(Make("brew-item", $"brew: {affinities[k]}", brews[k], brews[k], affinities[k], id: k));
+            foreach (var x in nodes.Where(x => x.ActiveInHierarchy && x.Screen is not null && x.Interactable is not null))
+            {
+                if (x.Name == "UpgradeButton") targets.Add(Make("brew-upgrade", "brew: Upgrade", x, x, null));
+                else if (x.Name == "CloseButton") targets.Add(Make("brew-close", "brew: close", x, x, null));
+            }
+        }
 
         // The Tavern's Upgrade Level tab, the main slot's X and Upgrade.
         if (t.View == TavernView)

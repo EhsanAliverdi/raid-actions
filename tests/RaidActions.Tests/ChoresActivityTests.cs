@@ -116,7 +116,7 @@ public class ChoresActivityTests
     [Fact]
     public async Task The_gear_clean_up_comes_first_once_a_day()
     {
-        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Chores = new ChoresSettings { Enabled = true } } };
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Chores = new ChoresSettings { Enabled = true, RedDots = false, ClanCheckIn = false } } };
         var game = new Game();
         var chores = new ChoresActivity(game);
         var ctx = new PlayContext(host.Settings, new FakeArenaGame(() => host.UtcNow), host, false, host.Events.Add);
@@ -140,5 +140,18 @@ public class ChoresActivityTests
         Assert.Contains(host.Events, e => e.Kind == "reddot" && e.Text.Contains("InboxButton → inbox", StringComparison.Ordinal));
         Assert.Contains(host.Events, e => e.Kind == "reddot" && e.Text.Contains("CollectionButton", StringComparison.Ordinal));
         Assert.Contains(host.Events, e => e.Kind == "warning" && e.Text.Contains("TournamentsButton", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task The_red_dots_and_the_check_in_go_first_until_done()
+    {
+        // 2026-11-16: Chores played only on the fair turns and the dots and the check-in never came in a rotation.
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Chores = new ChoresSettings { Enabled = true, Cleanup = new() { Enabled = false } } } };
+        var game = new Game();
+        var chores = new ChoresActivity(game);
+        var ctx = new PlayContext(host.Settings, new FakeArenaGame(() => host.UtcNow), host, false, host.Events.Add);
+        Assert.True(chores.Full(ctx));
+        for (var i = 0; i < 2; i++) await chores.RunTurnAsync(ctx, CancellationToken.None);
+        Assert.False(chores.Full(ctx));
     }
 }

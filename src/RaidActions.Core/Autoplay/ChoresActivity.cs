@@ -80,7 +80,19 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
     public bool IsEnabled(AutoplaySettings settings) => settings.Chores.Enabled;
 
     /// <summary>A mastery request from the app goes first: someone is waiting for it.</summary>
-    public bool Full(PlayContext ctx) => game.MasteryRequested() || CleanupDue(ctx);
+    // The red-dot round, the clan check-in and the jobs a red dot brought forward go first like a full resource (2026-11-16: Chores only played on
+    // the fair turns, spent them on quest jobs, and the dots and the check-in never came in a whole rotation).
+    public bool Full(PlayContext ctx) => game.MasteryRequested() || CleanupDue(ctx) || RewardsDue(ctx);
+
+    private readonly HashSet<string> _brought = [];
+
+    private bool RewardsDue(PlayContext ctx)
+    {
+        var s = ctx.Settings.Chores;
+        return (s.RedDots && ctx.Utc >= _dotsAt && Open(ctx, "dots"))
+            || (s.ClanCheckIn && ctx.Utc >= _checkInNext && Open(ctx, "checkin"))
+            || _brought.Any(j => Open(ctx, j));
+    }
 
     /// <summary>The clean-up first at the start of a run (Ehsan 2026-11-12: "at the start, after the game synced, you know if anything is to sell").</summary>
     private bool CleanupDue(PlayContext ctx) => ctx.Settings.Chores is { Enabled: true, Cleanup.Enabled: true } c
@@ -156,6 +168,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
     {
         var s = ctx.Settings.Chores;
         var job = Next(ctx);
+        if (job is not null) _brought.Remove(job);
         try
         {
             switch (job)
@@ -206,6 +219,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
                                 case "pass": _passAt = ctx.Utc; break;
                                 case "pit": _pitAt = ctx.Utc; break;
                             }
+                            _brought.Add(dotJob);
                             acted.Add($"{button} → {dotJob}");
                         }
                         else if (_dotsNoted.GetValueOrDefault(button) != DateOnly.FromDateTime(ctx.Utc))

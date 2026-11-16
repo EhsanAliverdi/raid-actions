@@ -56,7 +56,13 @@ public sealed partial class LivePlayGame : IClanBossGame
                 await Pause(800, ct);
                 var (s2, list, _) = await Read(ct);
                 top = list.Where(t => t.Kind == "clan-chest").Select(t => ClanBossRules.Damage(t.Note)).Where(d => d is not null).Select(d => d!.Value).DefaultIfEmpty(0).Max();
-                if (top > 0) _clanTop[difficulty] = top;
+                if (top > 0)
+                {
+                    _clanTop[difficulty] = top;
+                    // Kept for the Goal page's keys (plan/cb-goal.md).
+                    try { RaidExtractor.Autoplay.ClanChests.Note(ExtractorOutput, difficulty, top); }
+                    catch (Exception e) when (e is IOException or UnauthorizedAccessException) { log($"autoplay: clan chests not saved: {e.Message}"); }
+                }
                 await Back(Top(s2)!, ct);
                 await Pause(800, ct);
             }

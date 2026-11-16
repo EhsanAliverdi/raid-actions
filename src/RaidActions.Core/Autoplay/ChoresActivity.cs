@@ -86,10 +86,19 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
 
     private readonly HashSet<string> _brought = [];
 
+    /// <summary>When each job last ran: a red dot brings a job back only after <see cref="DotJobGap"/> (2026-11-16: the Shop's dot stays lit, so every
+    /// look brought the free-offer job again and it broke each chain of runs; Ehsan: "you play one level then go back and check market??").</summary>
+    private readonly Dictionary<string, DateTime> _ranAt = [];
+
+    private static readonly TimeSpan DotJobGap = TimeSpan.FromMinutes(60);
+
+    /// <summary>The look at the village's red dots ends a chain of runs only when it is this late (it is due every 20 minutes otherwise).</summary>
+    private static readonly TimeSpan DotsLookLate = TimeSpan.FromMinutes(40);
+
     private bool RewardsDue(PlayContext ctx)
     {
         var s = ctx.Settings.Chores;
-        return (s.RedDots && ctx.Utc >= _dotsAt && Open(ctx, "dots"))
+        return (s.RedDots && ctx.Utc >= _dotsAt + DotsLookLate && Open(ctx, "dots"))
             || (s.ClanCheckIn && ctx.Utc >= _checkInNext && Open(ctx, "checkin"))
             || _brought.Any(j => Open(ctx, j));
     }
@@ -168,7 +177,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
     {
         var s = ctx.Settings.Chores;
         var job = Next(ctx);
-        if (job is not null) _brought.Remove(job);
+        if (job is not null) { _brought.Remove(job); _ranAt[job] = ctx.Utc; }
         try
         {
             switch (job)
@@ -210,6 +219,11 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
                         var what = RedDots.For(button, dot);
                         if (what.Job is { } dotJob)
                         {
+                            if (_ranAt.TryGetValue(dotJob, out var ran) && ctx.Utc - ran < DotJobGap)
+                            {
+                                acted.Add($"{button} → {dotJob} (ran {(ctx.Utc - ran).TotalMinutes:0} min ago: later)");
+                                continue;
+                            }
                             // Its job now: the timer that would have waited is cleared.
                             switch (dotJob)
                             {

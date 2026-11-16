@@ -587,7 +587,11 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                     {
                         var last = _missionWins.GetValueOrDefault(run.Target.Id);
                         _missionWins[run.Target.Id] = (progress, last.Progress == progress ? last.Stale + 1 : 0);
-                        if (_missionWins[run.Target.Id].Stale >= MaxQuestRowLosses)
+                        // Not while a quest of another tab still needs the row (2026-11-16, Smasher8465: "Beat a Dungeon Boss 15 times" at 3/15 and the
+                        // any-dungeon row held for the day after 3 Dragon's Lair wins): those count each win.
+                        var othersNeed = ctx.QuestNeeds.Any(n => n.Tab != "Mission" && n.Playable && n.Remaining > 0 && n.Kind == QuestNeedKind.DungeonBoss
+                            && run.Target.Id == $"quest-dungeon-{n.Region ?? "any"}");
+                        if (_missionWins[run.Target.Id].Stale >= MaxQuestRowLosses && !othersNeed)
                             ctx.Hold($"{AreaId}:mission:{run.Target.Id}", ClanBossRules.NextReset(ctx.Utc), $"{where}: the mission did not move after {MaxQuestRowLosses + 1} wins; left for today");
                     }
                 }

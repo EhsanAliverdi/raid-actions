@@ -154,4 +154,21 @@ public class ChoresActivityTests
         for (var i = 0; i < 2; i++) await chores.RunTurnAsync(ctx, CancellationToken.None);
         Assert.False(chores.Full(ctx));
     }
+
+    [Fact]
+    public async Task A_dot_that_stays_lit_does_not_bring_its_job_back_within_the_hour()
+    {
+        // 2026-11-16: the Shop's dot stays lit; each look brought the free-offer job again and broke every Brutal push chain.
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Chores = new ChoresSettings { Enabled = true, ClanCheckIn = false, Cleanup = new() { Enabled = false } } } };
+        var game = new Game();
+        game.Dots.Add(("ShopButton", "Indicator_h"));
+        var chores = new ChoresActivity(game);
+        var ctx = new PlayContext(host.Settings, new FakeArenaGame(() => host.UtcNow), host, false, host.Events.Add);
+        for (var i = 0; i < 12 && chores.Full(ctx); i++) await chores.RunTurnAsync(ctx, CancellationToken.None);  // the look, then the jobs due (the Shop's among them)
+        Assert.False(chores.Full(ctx));
+        host.UtcNow += TimeSpan.FromMinutes(45);
+        await chores.RunTurnAsync(ctx, CancellationToken.None);                                                       // a look while the dot is still lit
+        Assert.Contains(host.Events, e => e.Kind == "reddot" && e.Text.Contains("later", StringComparison.Ordinal));
+        Assert.False(chores.Full(ctx));
+    }
 }

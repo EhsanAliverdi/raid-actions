@@ -1145,6 +1145,17 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         await DismissLevelUp(ct);
         await CloseChestWindow(ct);
         await CloseWebPages(ct);
+        // The Shop on a heavy tab can be too big to read (2026-11-16: BankOverlay's subtree of 20,629 nodes, no target at all, its close included):
+        // its own close first, else Esc.
+        for (var k = 0; k < 2 && Top(await ReadState(ct)) == PlayTargets.ShopView; k++)
+        {
+            try { await Back(PlayTargets.ShopView, ct); }
+            catch (PlayStopException)
+            {
+                if (Game.Window.GameWindow.Find().Window is { } w && Input.MouseInput.SendEscape(w) is null) log("autoplay: the Shop could not be read: Esc sent");
+            }
+            await Pause(1200, ct);
+        }
         var s = await ReadState(ct);
         // A window over the result (a champion's info, 2026-11-03) is closed by its own button, then the result.
         if (s.Active.Select(v => v.Name).FirstOrDefault(n => n.StartsWith("BattleFinish", StringComparison.Ordinal)) is { } result && !InLiveMatch(s))

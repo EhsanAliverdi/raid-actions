@@ -696,7 +696,10 @@ public sealed partial class LivePlayGame : IChoresGame
             claimed += await ClaimShopFree(dryRun, ct);
             foreach (var tab in (await Read(ct)).Targets.Where(t => t.Kind == "shop-subtab").Select(t => t.Id).ToList())
             {
-                await Click("shop-subtab", t => t.Id == tab, (_, _) => true, $"{section} tab {tab}", ct);
+                // A tab read with the section can be gone by its turn (2026-11-16: the Daily tabs scrolled; "not on screen"): skipped.
+                if (!(await Read(ct)).Targets.Any(t => t.Kind == "shop-subtab" && t.Id == tab)) { log($"autoplay: the Shop's {section} tab {tab} is not on screen: skipped"); continue; }
+                try { await Click("shop-subtab", t => t.Id == tab, (_, _) => true, $"{section} tab {tab}", ct); }
+                catch (PlayStopException e) when (e.Message.Contains("not on screen", StringComparison.Ordinal)) { log($"autoplay: the Shop's {section} tab {tab}: {e.Message}"); continue; }
                 await Pause(1200, ct);
                 claimed += await ClaimShopFree(dryRun, ct);
             }

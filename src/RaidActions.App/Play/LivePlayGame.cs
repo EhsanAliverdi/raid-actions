@@ -96,7 +96,11 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 continue;
             }
             if (Has(s, PlayTargets.ArenaResultView)) { await LeaveResult(ct); continue; }
-            if (OnArena(s)) return await Board(ct);
+            if (OnArena(s))
+            {
+                await EnsureArenaDefence(ct);
+                return await Board(ct);
+            }
             if (Top(s) == PlayTargets.TeamView) { await Back(PlayTargets.TeamView, ct); continue; }
             if (Has(s, PlayTargets.ArenaMapView) && Top(s) is PlayTargets.ArenaMapView or PlayTargets.ArenaHudView)
             {
@@ -112,6 +116,69 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             await Click("village-battle", null, (s2, _) => Has(s2, PlayTargets.BattleMenuView) || Has(s2, PlayTargets.ArenaMapView), "the battle menu opens", ct);
         }
         throw new PlayStopException("Could not reach the Classic Arena in 8 steps.");
+    }
+
+    /// <summary>Whether the Classic Arena's defence may be filled (a real run; a dry run only looks).</summary>
+    public bool SetsDefence { get; init; }
+
+    private bool _defenceChecked;
+
+    /// <summary>
+    /// A defence with empty slots filled (2026-11-16, killer8465: one champion of four, power 2,694, so "up to my power" let no opponent through and 10 tokens
+    /// sat full; Ehsan: "you can't even setup defend team"): the strongest geared champions (the area's saved team when there is one), once a run. A full
+    /// defence is never changed (BlackLord65's own).
+    /// </summary>
+    private async Task EnsureArenaDefence(CancellationToken ct)
+    {
+        if (_defenceChecked) return;
+        _defenceChecked = true;
+        var (_, tabs, _) = await Read(ct);
+        if (!tabs.Any(t => t.Kind == "arena-tab" && t.Id == 2)) { log("autoplay: the arena's Defence tab is not found: the defence is left"); return; }
+        try
+        {
+            await Click("arena-tab", t => t.Id == 2, (_, lazy) => true, "the Defence tab opens", ct);
+            await Settled(ct);
+            var (_, targets, _) = await Read(ct);
+            var slots = targets.Where(t => t.Kind == "arena-defence-slot").ToList();
+            var filled = slots.Count(t => t.Note == "filled");
+            if (slots.Count == 0) { log("autoplay: the arena defence's slots were not read: left"); return; }
+            if (filled >= slots.Count) { log($"autoplay: the arena defence is full ({filled} of {slots.Count}): left as it is"); return; }
+            var (data, _, _, _) = await Account(ct);
+            var champions = data.Champions.Where(c => !_unpickable.Contains(c.Id)).ToList();
+            if (TeamRules.Resolve(TeamsOf(ClassicArenaAreaId), TeamVariant.Default, [], champions, slots: slots.Count, fillEmpty: true).Team is not { Count: > 0 } team)
+            {
+                log("autoplay: no team for the arena defence on this account: left");
+                return;
+            }
+            log($"autoplay: STEP the arena defence has {filled} of {slots.Count}: setting {string.Join(", ", team.Select(Who))}");
+            var empty = slots.First(t => t.Note == "empty");
+            await Click("arena-defence-slot", t => t.Id == empty.Id, (s2, _) => Top(s2) == PlayTargets.ArenaDefencePickView, "the defence picker opens", ct);
+            try { await SetTeam(team, ct, PlayTargets.ArenaDefencePickView, vault: null); }
+            catch (LockedHeroException e)
+            {
+                _unpickable.Add(e.HeroId);
+                log($"autoplay: {Who(e.HeroId)} cannot be put in the arena defence (state {e.State}): the defence is tried again next run");
+                _defenceChecked = false;
+                await Back(PlayTargets.ArenaDefencePickView, ct);
+                return;
+            }
+            await Click("defence-save", null, (s2, _) => Top(s2) != PlayTargets.ArenaDefencePickView, "the defence is saved", ct);
+            _myArenaPower = default;
+            var power = await MyArenaPower(ct);
+            log($"autoplay: arena defence set: {string.Join(", ", team.Select(Who))}; defence power now {power:N0}");
+        }
+        catch (PlayStopException e)
+        {
+            log($"autoplay: the arena defence was not set ({e.Message})");
+            var s = await Settled(ct);
+            if (Top(s) == PlayTargets.ArenaDefencePickView) await Back(PlayTargets.ArenaDefencePickView, ct);
+        }
+        finally
+        {
+            // Back on the battle tab for the board.
+            try { await Click("arena-tab", t => t.Id == 0, (_, lazy) => true, "the Battle tab opens", ct); await Settled(ct); }
+            catch (PlayStopException e) { log($"autoplay: the arena's Battle tab: {e.Message}"); }
+        }
     }
 
     public Task<BattleOutcome> FightArenaOpponentAsync(long userId, bool dryRun, CancellationToken ct) => FightArena(userId, dryRun, TeamVariant.Default, ct);

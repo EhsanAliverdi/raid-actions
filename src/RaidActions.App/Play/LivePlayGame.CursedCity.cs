@@ -583,7 +583,8 @@ public sealed partial class LivePlayGame : ICursedCityGame
                 _ccLastTeam = [.. team];
                 return;
             }
-            var pick = (play.Picks ?? []).FirstOrDefault(p => p.HeroId == missing);
+            // A shown, clickable entry first (2026-11-16: the arena defence picker holds a hidden copy of the list, and the first #3 was that one).
+            var pick = (play.Picks ?? []).Where(p => p.HeroId == missing).OrderBy(p => p.Pick is { NotClickable: null } ? 0 : 1).FirstOrDefault();
             // Food is a pool, not a name (Ehsan 2026-11-06: "if you want a level 1 champion any level one can sit in that spot"): a stand-in the list shows
             // takes the place of one it does not, no scrolling.
             if (pick?.Pick is not { NotClickable: null } && standIn?.Invoke(missing, play.Picks ?? [], team) is { } sub && sub != missing)

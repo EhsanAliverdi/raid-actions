@@ -98,7 +98,11 @@ public static partial class PlayTargets
         return double.TryParse(t.TrimEnd('K', 'M'), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var v) ? (long)(v * scale) : 0;
     }
 
-    public static bool IsTeamView(string view) => view.StartsWith("HeroesSelectionDialog", StringComparison.Ordinal) || view.EndsWith("HeroesSelectionDialog", StringComparison.Ordinal) || view == "LiveArenaDraftDialog";
+    public static bool IsTeamView(string view) => view.StartsWith("HeroesSelectionDialog", StringComparison.Ordinal) || view.EndsWith("HeroesSelectionDialog", StringComparison.Ordinal) || view == "LiveArenaDraftDialog"
+        || view == ArenaDefencePickView;
+
+    /// <summary>The Classic Arena's defence picker (seen 2026-11-16: the Defence tab's slot opens it; 4 slots under "Squad", the compact list, BTN_2 saves).</summary>
+    public const string ArenaDefencePickView = "PickArenaDefenceOverlay";
 
     private const string BattleMapButton = "Client.ViewModel.Contextes.Village.HUD.BattleMapButtonContext";
     private const string InboxButton = "Client.ViewModel.Contextes.InboxButtonContext";
@@ -226,7 +230,7 @@ public static partial class PlayTargets
         "mode-clan", "clan-quickjoin", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-collect", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-reward", "resource-add", "refill-use", "live-state", "live-phase", "live-slot", "live-confirm",
         "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "menu-open", "menu-item", "reward-claim", "reward-tab", "event-card", "event-claimall", "event-close", "challenge-confirm", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "shop-section", "shop-subtab", "village-pass", "village-challenges", "village-clan", "clan-tab", "clan-checkin", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
-        "arena-tag", "tag-opponent", "tag-refresh",
+        "arena-tag", "tag-opponent", "tag-refresh", "arena-defence-slot", "defence-save",
     };
 
     [GeneratedRegex(@"Vault|Storage", RegexOptions.IgnoreCase)] private static partial Regex VaultName();
@@ -834,16 +838,19 @@ public static partial class PlayTargets
                         Try(() => StringValue(g, g.Ref(c.Address, PveResult, "_stageName")), null, notes, "BattleFinishPveDialogContext._stageName"),
                         Try(() => BoolValue(g, g.Ref(c.Address, PveResult, "_nextStageAvailable")), null, notes, "BattleFinishPveDialogContext._nextStageAvailable"));
                     break;
-                case var slotClass when (slotClass == SelectionSlot || slotClass.EndsWith(".SelectableHeroSlotContext", StringComparison.Ordinal))
-                    && IsTeamView(t.View) && (UnderBinding(i, "MySquad") || UnderBinding(i, "UserSquads")):
+                case var slotClass when (slotClass == SelectionSlot || slotClass.EndsWith(".SelectableHeroSlotContext", StringComparison.Ordinal)
+                        || t.View == ArenaDefencePickView && slotClass.EndsWith(".HeroSlotContext", StringComparison.Ordinal))
+                    && IsTeamView(t.View) && (UnderBinding(i, "MySquad") || UnderBinding(i, "UserSquads") || t.View == ArenaDefencePickView):
                 {
+                    // The defence picker's slot class is its own (its fields read through it); the other screens' through HeroSlotContext.
+                    var slotType = t.View == ArenaDefencePickView ? slotClass : SelectionSlot;
                     // Our team's slots (seen 2026-10-29: the team screen's own HeroSlotContext under the group bound to MySquad; the enemy's
                     // under EnemySquad): the champion is the slot's Hero avatar's entity id; an empty slot is not filled.
-                    var filled = Try(() => BoolValue(g, g.Ref(c.Address, SelectionSlot, "_filled")), null, notes, "HeroSlotContext._filled");
+                    var filled = Try(() => BoolValue(g, g.Ref(c.Address, slotType, "_filled")), null, notes, "HeroSlotContext._filled");
                     // Every shown slot, filled or empty: how many champions an empty team screen takes (2026-11-09; four on a five-slot Doom Tower
                     // screen did nothing, 2026-11-07).
                     if (n.ActiveInHierarchy) teamSlots = (teamSlots ?? 0) + 1;
-                    var avatar = Try(() => g.Ref(c.Address, SelectionSlot, "Hero"), 0UL, notes, "HeroSlotContext.Hero");
+                    var avatar = Try(() => g.Ref(c.Address, slotType, "Hero"), 0UL, notes, "HeroSlotContext.Hero");
                     var hero = avatar == 0 ? null : Try(() => (int?)g.Int(avatar, HeroAvatar, "_EntityId_k__BackingField"), null, notes, "HeroAvatarContext._EntityId");
                     if (filled != false && hero is > 0 && n.ActiveInHierarchy)
                     {
@@ -1449,6 +1456,24 @@ public static partial class PlayTargets
             for (var k = 0; k < toggles.Count; k++)
                 targets.Add(Make("arena-tab", $"arena: tab {k}", toggles[k], toggles[k], toggles[k].IsOn == true ? "on" : "off", id: k));
         }
+
+        // The Classic Arena's Defence tab (2026-11-16, killer8465: one champion of four, defence power 2,694, so no opponent was ever under "up to my
+        // power"): each slot (HeroInfo bound to Hero1..Hero4), filled when its Filled_h shows; a click opens the defence picker.
+        if (t.View == ArenaDialogView)
+            for (var i = 0; i < nodes.Count; i++)
+            {
+                var x = nodes[i];
+                if (x.Name != "HeroInfo" || !x.ActiveInHierarchy || x.BindingPath is not { } hb || !hb.StartsWith("Hero", StringComparison.Ordinal)
+                    || !int.TryParse(hb.AsSpan(4), out var slot)) continue;
+                var below = SelfAndBelow(i).ToList();
+                var filledNode = below.FirstOrDefault(y => y.Name == "Filled_h" && y.ActiveInHierarchy && y.Screen is not null);
+                var button = filledNode ?? below.FirstOrDefault(y => y.Name == "Panel" && y.ActiveInHierarchy && y.Screen is not null);
+                if (button is null) continue;
+                targets.Add(Make("arena-defence-slot", $"arena defence: slot {slot}", x, button, filledNode is not null ? "filled" : "empty", id: slot));
+            }
+        if (t.View == ArenaDefencePickView)
+            foreach (var x in nodes.Where(x => x.Name == "BTN_2" && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+                targets.Add(Make("defence-save", "arena defence: Save", x, x, null));
 
         // Every red dot (the game's indicators: Indicator_h, RewardIndicator_h, UpdatedIndicator_h, HasItemsIndicator_h, HasNewHeroIndicator_h, ...).
         var redDots = nodes.Where(x => x.ActiveInHierarchy && RedDot(x.Name))

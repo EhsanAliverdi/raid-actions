@@ -130,7 +130,7 @@ public static class AutoplayCommand
             var folder = Path.Combine(outDir, "autoplay", DateTime.Now.ToString("yyyyMMdd-HHmmss"));
             Directory.CreateDirectory(folder);
             var policy = Game.Window.WindowPolicy.Load(GameCommands.WindowConfig);
-            var game = new LivePlayGame(live, ui, folder, policy, l => Print($"{DateTime.Now:HH:mm:ss} {l}"), GameCommands.LivePaths(outDir).RaidExtractorRoot, outDir);
+            var game = new LivePlayGame(live, ui, folder, policy, l => Print($"{DateTime.Now:HH:mm:ss} {l}"), GameCommands.LivePaths(outDir).RaidExtractorRoot, outDir) { SetsDefence = !dry };
             var fwActivity = new FactionWarsActivity(game);
             fwActivity.Restore(LiveAutoplayHost.Today(dir), DateOnly.FromDateTime(DateTime.UtcNow));
             var ccActivity = new CursedCityActivity(game);

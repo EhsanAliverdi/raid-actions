@@ -190,6 +190,9 @@ public sealed partial class LivePlayGame : IFactionWarsGame
 
     private bool _cryptAgain;
 
+    /// <summary>The push already ran for this crypt battle (it opens the crypt again after; never twice in a row).</summary>
+    private bool _pushedHere;
+
     public async Task<BattleOutcome> FightCryptAsync(CryptPlan crypt, int stage, bool dryRun, CancellationToken ct, bool superRaid = false)
     {
         var started = DateTime.UtcNow;
@@ -247,6 +250,24 @@ public sealed partial class LivePlayGame : IFactionWarsGame
             {
                 log($"autoplay: STEP {crypt.Name}: the leader with an aura first: {string.Join(", ", led.Select(Who))}");
                 wanted = led;
+            }
+        }
+        // The push on the team that will fight (Ehsan 2026-11-17: "you still do Faction Wars with level-1 champions": the gearing step had run earlier in the
+        // day, and the team chosen here is not always the geared one): a member below the push level is brewed first, then the crypt opened again.
+        if (!dryRun && !_pushedHere && AutoplaySettings.Load(ExtractorOutput).FactionWars.Push is { Enabled: true } push)
+        {
+            var (pd, _, _, _) = await Account(ct);
+            if (wanted.Any(id => pd.Champions.FirstOrDefault(c => c.Id == id) is { } c && push.TargetFor(c.Rarity, c.Rank, c.Level) is not null))
+            {
+                await Back(PlayTargets.FwTeamView, ct);
+                _pushedHere = true;
+                try
+                {
+                    var pushed = await PushTeamAsync(wanted, dryRun, ct);
+                    log($"autoplay: {crypt.Name}: push before the battle: {pushed ?? "nothing could be levelled"}");
+                    return await FightCryptAsync(crypt, stage, dryRun, ct, superRaid);
+                }
+                finally { _pushedHere = false; }
             }
         }
         // A member in a vault (2026-11-13 23:58, BlackLord65: Umetogi, Chani, Vagabond, Odachi in the reserve vault, no gear: the crypt's team screen does

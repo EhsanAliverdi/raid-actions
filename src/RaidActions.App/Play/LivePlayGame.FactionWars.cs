@@ -191,9 +191,10 @@ public sealed partial class LivePlayGame : IFactionWarsGame
             try { return await FightCryptAsync(crypt, stage, dryRun, ct, superRaid); }
             finally { _cryptAgain = false; }
         }
-        if (shown.Count > 0 && !shown.ToHashSet().SetEquals(wanted))
+        // Empty slots too (2026-11-16: every referral account's crypt opened with no team; Start did nothing all day and 12 keys a crypt sat full).
+        if (!shown.ToHashSet().SetEquals(wanted))
         {
-            // Another team in the slots (2026-10-30: the last one played by hand): the crypt team is set here (Cursed City's routine).
+            // Another team in the slots (2026-10-30: the last one played by hand), or none: the crypt team is set here (Cursed City's routine).
             log($"autoplay: STEP setting {crypt.Name}'s crypt team: {string.Join(", ", wanted.Select(Who))}");
             try { await SetTeam(wanted, ct, PlayTargets.FwTeamView); }
             catch (LockedHeroException e)

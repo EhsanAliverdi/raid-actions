@@ -404,12 +404,14 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
         // full too and first in the order): an urgent one, or a full one while this area is not full or comes after it.
         var me = enabled.FirstOrDefault(a => a.Id == self);
         var meFull = me?.Full(ctx) == true;
+        // An urgent chain (energy piled far over its cap) is broken only by another urgent area, not by a full one.
+        var meUrgent = me?.Urgent(ctx) == true;
         var myIndex = me is null ? int.MaxValue : enabled.ToList().IndexOf(me);
         foreach (var (a, i) in enabled.Select((a, i) => (a, i)).Where(x => x.a.Id != self))
         {
             if (ctx.Held(a.Id) is not null) continue;
             var d = a.Decide(ctx);
-            if (d.Act && (a.Urgent(ctx) || a.Full(ctx) && (!meFull || i < myIndex))) return $"{a.Name}: {d.Why}";
+            if (d.Act && (a.Urgent(ctx) || !meUrgent && a.Full(ctx) && (!meFull || i < myIndex))) return $"{a.Name}: {d.Why}";
         }
         return null;
     }

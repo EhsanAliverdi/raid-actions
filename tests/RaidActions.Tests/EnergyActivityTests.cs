@@ -140,6 +140,20 @@ public class EnergyActivityTests
     }
 
     [Fact]
+    public async Task Energy_piled_far_over_its_cap_goes_first_and_a_full_area_does_not_end_its_chain()
+    {
+        // 2026-11-16: KaelStormVex sat on 561 energy while chores and full areas took each turn.
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 }, Energy = On(Row("farm", "Hard")) } };
+        var game = new FakeEnergyGame(() => host.UtcNow) { Energy = 561, Chain = true };
+        host.OnDelay = h => { if (game.Calls.Count(c => c.StartsWith("run", StringComparison.Ordinal)) >= 12) h.Stop = true; };
+        // The full area comes first in the order: without the pile it would take the first turn and break each chain.
+        var engine = new AutoplayEngine([new FullLooking(), new EnergyActivity(game)], new FakeArenaGame(() => host.UtcNow) { Energy = 561 }, host, false);
+        await engine.RunAsync(once: false, Limit());
+        Assert.DoesNotContain(host.Events, e => e.Kind == "chain");
+        Assert.Equal(EnergyActivity.AreaId, host.Events.First(e => e.Kind == "turn").Area);
+    }
+
+    [Fact]
     public async Task A_row_without_its_own_team_or_without_the_setting_gets_no_gear_review()
     {
         var (_, game, engine) = Make(On(Row("a", "Hard") with { GearEveryHours = 2 }, Row("b") with { Team = [1] }), stopAfter: TimeSpan.FromHours(1));

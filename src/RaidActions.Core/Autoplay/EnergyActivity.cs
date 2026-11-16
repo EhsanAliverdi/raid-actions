@@ -364,6 +364,12 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     // Before the cap, not at it: a turn elsewhere can last minutes, and energy above the cap stops regenerating (Ehsan 2026-11-01).
     public bool Full(PlayContext ctx) => ctx.LastResources is { } r && r.Energy >= (r.EnergyCap ?? 124) - ctx.Settings.Rules.EnergyMargin;
 
+    /// <summary>
+    /// A pile of energy far over the cap (gifts, quest rewards: 2026-11-16, KaelStormVex at 561 and Smasher8465 at 375 while chores and the other areas
+    /// took most of each 30-minute turn; Ehsan: "all the energy build up"): energy goes first, and only another urgent area breaks its chain.
+    /// </summary>
+    public bool Urgent(PlayContext ctx) => ctx.LastResources is { } r && r.Energy >= 2 * (r.EnergyCap ?? 124);
+
     public Decision Decide(PlayContext ctx)
     {
         NewDay(ctx);

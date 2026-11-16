@@ -1097,7 +1097,11 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     /// <summary>A web page on top (an event's, the tournaments'): its X, a few taps (the page takes a moment to answer).</summary>
     private async Task CloseWebPages(CancellationToken ct)
     {
-        for (var i = 0; i < 6 && Top(await ReadState(ct)) is { } top && top.EndsWith("WebView", StringComparison.Ordinal); i++)
+        // Any web page open, on top or not (2026-11-16: a tournament page left open covered the game while the game named a gift popup under it as
+        // the top screen: three taps on the popup's close did nothing and Free rewards paused).
+        static string? Web(UiState s) => Top(s) is { } t && t.EndsWith("WebView", StringComparison.Ordinal) ? t
+            : s.Active.Select(v => v.Name).FirstOrDefault(n => n.EndsWith("WebView", StringComparison.Ordinal));
+        for (var i = 0; i < 6 && Web(await ReadState(ct)) is { } top; i++)
         {
             await Click("event-close", null, (_, _) => true, $"{top}'s X", ct);
             await Pause(1500, ct);

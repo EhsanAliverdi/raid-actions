@@ -400,9 +400,12 @@ public sealed partial class LivePlayGame : IChoresGame
         // HeroSelectionItemState: 0 free, 1 in this slot, 3 at max level, 4 blocked.
         var inSlot = items.FirstOrDefault(t => t.Kind == "pit-hero" && t.Note == "state 1");
         string? put = null;
-        if (inSlot is null)
+        var (data, _, _, _) = await Account(ct);
+        // A champion at its rank's maximum (rank 1: 10, rank 2: 20, ...) trains no more (Ehsan 2026-11-17: "make sure it is not empty"): swapped for the next.
+        var maxed = inSlot?.Id is { } here && data.Champions.FirstOrDefault(c => c.Id == here) is { } cur && cur.Level >= FwPushSettings.RankMax(cur.Rank);
+        if (maxed) log($"autoplay: Sparring Pit: {Who(inSlot!.Id!.Value)} is at its rank's maximum: swapped for the next");
+        if (inSlot is null || maxed)
         {
-            var (data, _, _, _) = await Account(ct);
             var offered = items.Where(t => t.Kind == "pit-hero" && t.Note == "state 0" && t.Id is > 0).Select(t => t.Id!.Value).ToList();
             var settings = AutoplaySettings.Load(ExtractorOutput);
             if (ChoreRules.PitPick(offered, data.Champions, settings.Energy.Food, [.. settings.Energy.Food.ExtraIds]) is { } id)

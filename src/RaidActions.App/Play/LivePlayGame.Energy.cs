@@ -131,7 +131,9 @@ public sealed partial class LivePlayGame : IEnergyGame
             // A champion already in the team stays until it is maxed, food or not (Ehsan 2026-11-06: "you keep removing existing champions from campaign
             // heroes even if not maxed"; "I am trying to level up an epic and you remove it"): the planned food only fills the slots that are empty or hold
             // a maxed champion. The row's own team (the farmers chosen in the settings, Kael and Pelops) always plays. Every Campaign row, the 3-star sweep too.
-            if (run.Target.Food || run.Target.Area == "Story")
+            // Not on a 3-star row without food (Ehsan 2026-11-16: "kael and pelops you should be able to push ... 3 star"): the food left in the slots
+            // died and every Brutal 5-1 win had 1 star; only the row's own team plays there.
+            if (run.Target.Food || run.Target.Area == "Story" && !(run.Target.ThreeStars && run.Target.Progress))
             {
                 var slots = EnergyPlaces.Slots(run.Target.Area);
                 var farmers = team.Where(run.Target.Team.Contains).ToList();

@@ -147,6 +147,44 @@ public sealed partial class LivePlayGame : IFactionWarsGame
                 var now = (await Account(ct)).Data.Champions.FirstOrDefault(x => x.Id == id)?.Level;
                 done.Add($"{Who(id)} to level {now} ({brews} brew(s))");
             }
+            // Ascension: Rare champions only (Ehsan 2026-11-17: "ascend only rare"), as far as the owned potions pay (MAX); never Epic or Legendary.
+            if (push.AscendRareOnly && !dryRun && (await Account(ct)).Data.Champions.FirstOrDefault(x => x.Id == id) is { Rarity: "Rare" } rare && rare.Ascension < rare.Rank)
+            {
+                try
+                {
+                    await OpenTavernLevel(ct);
+                    await SelectInTavern(id, ct);
+                    await Click("ascend-tab", null, (_, _) => true, "the Ascend tab", ct);
+                    await Pause(1200, ct);
+                    var (_, at, _) = await Read(ct);
+                    if (at.FirstOrDefault(t => t.Kind == "ascend-go") is { NotClickable: null } && at.Any(t => t.Kind == "ascend-max" && t.NotClickable is null))
+                    {
+                        await Click("ascend-max", null, (_, _) => true, "MAX", ct);
+                        await Pause(600, ct);
+                        await Click("ascend-go", null, (_, _) => true, "Ascend", ct);
+                        await Pause(2500, ct);
+                        // The result (2026-11-17: the new stars and stats over the Tavern, its panel moved off to the right; a tap anywhere closes it), a
+                        // confirmation (its second button) or another window, then the Tavern as it was.
+                        for (var k = 0; k < 4; k++)
+                        {
+                            var top = Top(await Settled(ct));
+                            if (top == UiState.MessageBoxView) { await Click("battle-giveup-yes", null, (s2, _) => Top(s2) != UiState.MessageBoxView, "the ascension confirmed", ct); continue; }
+                            if (top is { } other && other != PlayTargets.TavernView) { await Back(other, ct); await Pause(1000, ct); continue; }
+                            var (w, why) = Game.Window.GameWindow.Find();
+                            if (w is null) throw new PlayStopException(why!);
+                            var (_, rt, _) = await Read(ct);
+                            if (rt.FirstOrDefault(t => t.Kind == "ascend-tab")?.Rect is not { } tab || tab.X < w.Client.Width * 0.95f) break;
+                            if (Input.MouseInput.Click(w, w.Client.Width * 0.5f, w.Client.Height * 0.4f, new Random()) is { } notSent) throw new PlayStopException(notSent);
+                            await Pause(1500, ct);
+                        }
+                        var asc = (await Account(ct)).Data.Champions.FirstOrDefault(x => x.Id == id)?.Ascension ?? rare.Ascension;
+                        if (asc > rare.Ascension) done.Add($"{Who(id)} ascended {rare.Ascension}→{asc}");
+                        else log($"autoplay: push: {Who(id)} was not ascended (still {rare.Ascension}). Screen dump: {DumpScreen("push ascend")}");
+                    }
+                    else log($"autoplay: push: {Who(id)} cannot ascend now (no potions for it)");
+                }
+                catch (PlayStopException e) { log($"autoplay: push: ascending {Who(id)}: {e.Message}"); }
+            }
         }
         if (done.Count > 0) await HomeAsync(Action("from the Tavern"), ct);
         return done.Count == 0 ? null : string.Join(", ", done);

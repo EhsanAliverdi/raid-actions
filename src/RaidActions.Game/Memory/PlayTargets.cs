@@ -236,7 +236,7 @@ public static partial class PlayTargets
         "mode-clan", "clan-quickjoin", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-collect", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-reward", "resource-add", "refill-use", "live-state", "live-phase", "live-slot", "live-confirm",
         "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "menu-open", "menu-item", "reward-claim", "reward-tab", "event-card", "event-claimall", "event-close", "challenge-confirm", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "shop-section", "shop-subtab", "village-pass", "village-challenges", "village-clan", "clan-tab", "clan-checkin", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
-        "arena-tag", "tag-opponent", "tag-refresh", "arena-defence-slot", "defence-save", "noaura-confirm", "tag-tab", "pit-levelup", "brew-open", "brew-grade", "brew-item", "brew-hero", "brew-upgrade", "brew-close",
+        "arena-tag", "tag-opponent", "tag-refresh", "arena-defence-slot", "defence-save", "noaura-confirm", "tag-tab", "pit-levelup", "brew-open", "brew-grade", "brew-item", "brew-hero", "brew-upgrade", "brew-close", "ascend-tab", "ascend-max", "ascend-go",
     };
 
     [GeneratedRegex(@"Vault|Storage", RegexOptions.IgnoreCase)] private static partial Regex VaultName();
@@ -1471,6 +1471,10 @@ public static partial class PlayTargets
             foreach (var x in nodes.Where(x => x.ActiveInHierarchy && x.Screen is not null && x.Interactable is not null))
             {
                 if (x.Name == "0_LevelUpTabButton") targets.Add(Make("tavern-level-tab", "tavern: Upgrade Level tab", x, x, x.IsOn == true ? "on" : "off"));
+                // The Ascend tab (2026-11-17): its MAX (the ascension the owned potions pay for) and Ascend; never the potions' "+" (they buy) nor the Potion Mixer.
+                else if (x.Name == "3_AscendTabButton") targets.Add(Make("ascend-tab", "tavern: Ascend tab", x, x, x.IsOn == true ? "on" : "off"));
+                else if (x.Name == "MaxButton" && x.Path.Contains("3_AscendTab_h", StringComparison.Ordinal)) targets.Add(Make("ascend-max", "ascend: MAX", x, x, null));
+                else if (x.Name == "AscendButton") targets.Add(Make("ascend-go", "ascend: Ascend", x, x, null));
                 else if (x.Name == "DeselectButton_h") targets.Add(Make("tavern-deselect", "tavern: empty the main slot", x, x, null));
                 else if (x.Name == "LevelUpButton") targets.Add(Make("tavern-levelup", "tavern: Upgrade", x, x, null));
             }

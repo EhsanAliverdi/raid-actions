@@ -708,7 +708,14 @@ public sealed partial class LivePlayGame : IChoresGame
                 claimed += await ClaimShopFree(dryRun, ct);
             }
         }
-        await Back(PlayTargets.ShopView, ct);
+        // A Shop too big to read has no close to find (2026-11-16): Esc, as on the way home.
+        try { await Back(PlayTargets.ShopView, ct); }
+        catch (PlayStopException)
+        {
+            if (Top(await ReadState(ct)) != PlayTargets.ShopView) throw;
+            if (Game.Window.GameWindow.Find().Window is { } w && Input.MouseInput.SendEscape(w) is null) log("autoplay: the Shop could not be read: Esc sent");
+            await Pause(1200, ct);
+        }
         return claimed;
     }
 

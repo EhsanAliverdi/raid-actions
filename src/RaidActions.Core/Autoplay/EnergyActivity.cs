@@ -558,7 +558,11 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 _stageResults[sk] = outcome.Result == BattleResult.Victory ? (sw + 1, sl) : (sw, sl + 1);
                 ctx.Event(AreaId, "battle", $"{outcome.Result} {where} [row {run.Target.Id}]. {outcome.Text}");
                 if (outcome.Result == BattleResult.Defeat && run.Target.Progress)
-                    ctx.Hold(PushKey(run.Target), ctx.Utc + TimeSpan.FromMinutes(45), $"{where} was lost: the rows below play, tried again in 45 minutes");
+                {
+                    // The row's own wait (a dungeon push: a day), else 45 minutes.
+                    var wait = run.Target.LossWaitHours is > 0 and var h ? TimeSpan.FromHours(h) : TimeSpan.FromMinutes(45);
+                    ctx.Hold(PushKey(run.Target), ctx.Utc + wait, $"{where} was lost: the rows below play, tried again in {(wait.TotalHours >= 1 ? $"{wait.TotalHours:0} hour(s)" : $"{wait.TotalMinutes:0} minutes")}");
+                }
                 // A farm row that keeps losing wastes the energy (2026-11-12 17:37-18:05, killer8465: 9 defeats in 11 at 12-3 Hard): three in a row and the
                 // row waits until the reset; the rows below play.
                 _defeatsInRow[run.Target.Id] = outcome.Result == BattleResult.Defeat ? _defeatsInRow.GetValueOrDefault(run.Target.Id) + 1 : 0;

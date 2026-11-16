@@ -314,16 +314,19 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         if (teams?.Default is { Mode: TeamMode.BotChooses } && BotTeams.Pick(data, gd, extractorRoot, contentArea, pickSize) is { Count: > 0 } best)
         {
             // A pick shorter than the screen (2026-11-17, Smasher8465's Tag Team Arena: the fight's needs gave 2 of 12, and Start did nothing): topped up with
-            // the strongest others, geared first, then levelled, one of each type.
-            if (best.Count < pickSize)
+            // the strongest others, geared first, then levelled, one of each type; again after each pick without a refused champion.
+            List<int> TopUp(List<int> pick, IReadOnlyCollection<int> refusedNow)
             {
-                var types = best.Select(id => data.Champions.FirstOrDefault(c => c.Id == id)?.BaseTypeId).ToHashSet();
-                var more = data.Champions.Where(c => !best.Contains(c.Id) && !_unpickable.Contains(c.Id) && !c.InBathhouse && !types.Contains(c.BaseTypeId)
-                        && (c.Artifacts.Count > 0 || c.Level > 1 || c.Rank > 1))
+                if (pick.Count >= pickSize) return pick;
+                var types = pick.Select(id => data.Champions.FirstOrDefault(c => c.Id == id)?.BaseTypeId).ToHashSet();
+                var more = data.Champions.Where(c => !pick.Contains(c.Id) && !refusedNow.Contains(c.Id) && !_unpickable.Contains(c.Id) && !c.InBathhouse
+                        && !types.Contains(c.BaseTypeId) && (c.Artifacts.Count > 0 || c.Level > 1 || c.Rank > 1))
                     .OrderByDescending(c => c.Artifacts.Count > 0).ThenByDescending(RaidExtractor.Autoplay.ArenaAffinityTeam.Strength)
-                    .DistinctBy(c => c.BaseTypeId).Take(pickSize - best.Count).Select(c => c.Id).ToList();
-                if (more.Count > 0) { log($"autoplay: {area}: the pick has {best.Count} of {pickSize}: {more.Count} more added"); best = [.. best, .. more]; }
+                    .DistinctBy(c => c.BaseTypeId).Take(pickSize - pick.Count).Select(c => c.Id).ToList();
+                if (more.Count > 0) log($"autoplay: {area}: the pick has {pick.Count} of {pickSize}: {more.Count} more added");
+                return [.. pick, .. more];
             }
+            best = TopUp(best, []);
             // A champion this screen will not take (2026-11-13 23:56, BlackLord65's Hydra: Dorothy, used there already, and the whole pick refused): left out
             // and the bot picks again without it, up to five times.
             var refused = new HashSet<int>();
@@ -343,7 +346,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                     log($"autoplay: {area}: not taken here: {string.Join(", ", refused.Select(Who))}; the bot picks again without them");
                     var left = data with { Champions = [.. data.Champions.Where(c => !refused.Contains(c.Id))] };
                     if (BotTeams.Pick(left, gd, extractorRoot, contentArea, pickSize) is not { Count: > 0 } next) { await Back(teamView, ct); return false; }
-                    best = next;
+                    best = TopUp(next, refused);
                     shown = (await Read(ct)).Play.TeamIds ?? [];
                 }
                 catch (LockedHeroException)

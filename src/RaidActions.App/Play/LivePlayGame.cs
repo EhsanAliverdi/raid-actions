@@ -144,21 +144,28 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             if (slots.Count == 0) { log("autoplay: the arena defence's slots were not read: left"); return; }
             if (filled >= slots.Count) { log($"autoplay: the arena defence is full ({filled} of {slots.Count}): left as it is"); return; }
             var (data, _, _, _) = await Account(ct);
-            var champions = data.Champions.Where(c => !_unpickable.Contains(c.Id)).ToList();
-            if (TeamRules.Resolve(TeamsOf(ClassicArenaAreaId), TeamVariant.Default, [], champions, slots: slots.Count, fillEmpty: true).Team is not { Count: > 0 } team)
-            {
-                log("autoplay: no team for the arena defence on this account: left");
-                return;
-            }
-            log($"autoplay: STEP the arena defence has {filled} of {slots.Count}: setting {string.Join(", ", team.Select(Who))}");
             var empty = slots.First(t => t.Note == "empty");
             await Click("arena-defence-slot", t => t.Id == empty.Id, (s2, _) => Top(s2) == PlayTargets.ArenaDefencePickView, "the defence picker opens", ct);
-            try { await SetTeam(team, ct, PlayTargets.ArenaDefencePickView, vault: null); }
-            catch (LockedHeroException e)
+            List<int>? team = null;
+            // A locked champion (2026-11-17, Smasher8465: Gliseah, state 3, training): every one the list shows locked is left out and the team built again.
+            for (var attempt = 0; attempt < 4; attempt++)
             {
-                _unpickable.Add(e.HeroId);
-                log($"autoplay: {Who(e.HeroId)} cannot be put in the arena defence (state {e.State}): the defence is tried again next run");
-                _defenceChecked = false;
+                var champions = data.Champions.Where(c => !_unpickable.Contains(c.Id)).ToList();
+                team = TeamRules.Resolve(TeamsOf(ClassicArenaAreaId), TeamVariant.Default, [], champions, slots: slots.Count, fillEmpty: true).Team;
+                if (team is not { Count: > 0 }) break;
+                log($"autoplay: STEP the arena defence has {filled} of {slots.Count}: setting {string.Join(", ", team.Select(Who))}");
+                try { await SetTeam(team, ct, PlayTargets.ArenaDefencePickView, vault: null); break; }
+                catch (LockedHeroException e)
+                {
+                    foreach (var (id, _) in e.Shown.Where(x => x.State >= 3)) _unpickable.Add(id);
+                    _unpickable.Add(e.HeroId);
+                    log($"autoplay: {Who(e.HeroId)} cannot be put in the arena defence (state {e.State}): left out, the team built again");
+                    team = null;
+                }
+            }
+            if (team is not { Count: > 0 })
+            {
+                log("autoplay: no team for the arena defence could be set on this account: left");
                 await Back(PlayTargets.ArenaDefencePickView, ct);
                 return;
             }

@@ -99,10 +99,13 @@ public static partial class PlayTargets
     }
 
     public static bool IsTeamView(string view) => view.StartsWith("HeroesSelectionDialog", StringComparison.Ordinal) || view.EndsWith("HeroesSelectionDialog", StringComparison.Ordinal) || view == "LiveArenaDraftDialog"
-        || view == ArenaDefencePickView;
+        || view == ArenaDefencePickView || view == TagDefencePickView;
 
     /// <summary>The Classic Arena's defence picker (seen 2026-11-16: the Defence tab's slot opens it; 4 slots under "Squad", the compact list, BTN_2 saves).</summary>
     public const string ArenaDefencePickView = "PickArenaDefenceOverlay";
+
+    /// <summary>Tag Team Arena's dialog and its defence picker (seen 2026-11-17: 3 squads of 4 under "Squads", the compact list, SaveButton).</summary>
+    public const string TagDialogView = "Arena3x3Dialog", TagDefencePickView = "PickArena3x3DefenceOverlay";
 
     /// <summary>"The leader has no aura skill: start anyway?" after a team's Start (seen 2026-11-17 on a Faction Wars crypt).</summary>
     public const string NoAuraView = "NoAuraSkillConfirmationOverlay";
@@ -233,7 +236,7 @@ public static partial class PlayTargets
         "mode-clan", "clan-quickjoin", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-collect", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-reward", "resource-add", "refill-use", "live-state", "live-phase", "live-slot", "live-confirm",
         "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "menu-open", "menu-item", "reward-claim", "reward-tab", "event-card", "event-claimall", "event-close", "challenge-confirm", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "shop-section", "shop-subtab", "village-pass", "village-challenges", "village-clan", "clan-tab", "clan-checkin", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
-        "arena-tag", "tag-opponent", "tag-refresh", "arena-defence-slot", "defence-save", "noaura-confirm",
+        "arena-tag", "tag-opponent", "tag-refresh", "arena-defence-slot", "defence-save", "noaura-confirm", "tag-tab",
     };
 
     [GeneratedRegex(@"Vault|Storage", RegexOptions.IgnoreCase)] private static partial Regex VaultName();
@@ -842,11 +845,11 @@ public static partial class PlayTargets
                         Try(() => BoolValue(g, g.Ref(c.Address, PveResult, "_nextStageAvailable")), null, notes, "BattleFinishPveDialogContext._nextStageAvailable"));
                     break;
                 case var slotClass when (slotClass == SelectionSlot || slotClass.EndsWith(".SelectableHeroSlotContext", StringComparison.Ordinal)
-                        || t.View == ArenaDefencePickView && slotClass.EndsWith(".HeroSlotContext", StringComparison.Ordinal))
-                    && IsTeamView(t.View) && (UnderBinding(i, "MySquad") || UnderBinding(i, "UserSquads") || t.View == ArenaDefencePickView):
+                        || t.View is ArenaDefencePickView or TagDefencePickView && slotClass.EndsWith(".HeroSlotContext", StringComparison.Ordinal))
+                    && IsTeamView(t.View) && (UnderBinding(i, "MySquad") || UnderBinding(i, "UserSquads") || t.View is ArenaDefencePickView or TagDefencePickView):
                 {
-                    // The defence picker's slot class is its own (its fields read through it); the other screens' through HeroSlotContext.
-                    var slotType = t.View == ArenaDefencePickView ? slotClass : SelectionSlot;
+                    // The defence pickers' slot class is their own (its fields read through it); the other screens' through HeroSlotContext.
+                    var slotType = t.View is ArenaDefencePickView or TagDefencePickView ? slotClass : SelectionSlot;
                     // Our team's slots (seen 2026-10-29: the team screen's own HeroSlotContext under the group bound to MySquad; the enemy's
                     // under EnemySquad): the champion is the slot's Hero avatar's entity id; an empty slot is not filled.
                     var filled = Try(() => BoolValue(g, g.Ref(c.Address, slotType, "_filled")), null, notes, "HeroSlotContext._filled");
@@ -1462,7 +1465,14 @@ public static partial class PlayTargets
 
         // The Classic Arena's Defence tab (2026-11-16, killer8465: one champion of four, defence power 2,694, so no opponent was ever under "up to my
         // power"): each slot (HeroInfo bound to Hero1..Hero4), filled when its Filled_h shows; a click opens the defence picker.
-        if (t.View == ArenaDialogView)
+        // Tag Team Arena's left tabs by name (Battle, BattleLog, Defence, ...; seen 2026-11-17), id 0 Battle, 2 Defence.
+        if (t.View == TagDialogView)
+        {
+            string[] tagTabs = ["Battle", "BattleLog", "Defence"];
+            foreach (var x in nodes.Where(x => tagTabs.Contains(x.Name) && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is { } sc && sc.X < 50))
+                targets.Add(Make("tag-tab", $"tag arena: {x.Name} tab", x, x, null, id: Array.IndexOf(tagTabs, x.Name)));
+        }
+        if (t.View is ArenaDialogView or TagDialogView)
             for (var i = 0; i < nodes.Count; i++)
             {
                 var x = nodes[i];
@@ -1481,8 +1491,8 @@ public static partial class PlayTargets
                 && !System.Text.RegularExpressions.Regex.IsMatch(x.Name, "close|cancel|back|^x$", System.Text.RegularExpressions.RegexOptions.IgnoreCase)).ToList();
             if (buttons.Count == 1) targets.Add(Make("noaura-confirm", $"no aura: {buttons[0].Name}", buttons[0], buttons[0], null));
         }
-        if (t.View == ArenaDefencePickView)
-            foreach (var x in nodes.Where(x => x.Name == "BTN_2" && x.ActiveInHierarchy && x.Screen is not null).Take(1))
+        if (t.View is ArenaDefencePickView or TagDefencePickView)
+            foreach (var x in nodes.Where(x => (t.View == ArenaDefencePickView ? x.Name == "BTN_2" : x.Name == "SaveButton") && x.ActiveInHierarchy && x.Screen is not null).Take(1))
                 targets.Add(Make("defence-save", "arena defence: Save", x, x, null));
 
         // Every red dot (the game's indicators: Indicator_h, RewardIndicator_h, UpdatedIndicator_h, HasItemsIndicator_h, HasNewHeroIndicator_h, ...).

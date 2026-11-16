@@ -91,7 +91,10 @@ public sealed partial class LivePlayGame : ITagArenaGame
         if (Top(after) == SetDefenceView)
         {
             await Back(SetDefenceView, ct);
-            throw new AreaLockedException("Tag Team Arena asks for its defence teams first (the bot does not set them yet)");
+            // Set here (2026-11-17, Ehsan: "you can't even setup defend team"): the Defence tab, a slot opens the picker, 3 squads of 4, Save.
+            if (dryRun || !await SetTagDefence(ct))
+                throw new AreaLockedException("Tag Team Arena asks for its defence teams first" + (dryRun ? " (a dry run does not set them)" : " (they could not be set: see the log)"));
+            return new BattleOutcome(BattleResult.NotStarted, "the defence teams were set; the battles from the next turn");
         }
         if (Top(after) == PlayTargets.RefillView)
         {
@@ -157,6 +160,66 @@ public sealed partial class LivePlayGame : ITagArenaGame
         await Pause(800, ct);
         var (_, _, now) = await Read(ct);
         return now.Tag is { } b ? TagBoard(b) : null;
+    }
+
+    /// <summary>
+    /// Tag Team Arena's defence teams set from the strongest champions (the area's saved teams when there are), 3 squads of 4 in the order the picker fills
+    /// them; true when saved. Run only when the game asks for them, so a defence set by hand is never changed.
+    /// </summary>
+    private async Task<bool> SetTagDefence(CancellationToken ct)
+    {
+        try
+        {
+            await Click("tag-tab", t => t.Id == 2, (_, _) => true, "the Defence tab opens", ct);
+            await Settled(ct);
+            var (_, targets, _) = await Read(ct);
+            var slot = targets.FirstOrDefault(t => t.Kind == "arena-defence-slot" && t.View == PlayTargets.TagDialogView);
+            if (slot is null) { log($"autoplay: Tag Team defence: no slot read. Screen dump: {DumpScreen("tag defence slots")}"); return false; }
+            var (data, _, _, _) = await Account(ct);
+            await Click("arena-defence-slot", t => t.Id == slot.Id && t.View == PlayTargets.TagDialogView, (s2, _) => Top(s2) == PlayTargets.TagDefencePickView, "the defence picker opens", ct);
+            List<int>? team = null;
+            // A locked champion (2026-11-17, Smasher8465: Gliseah, state 3, training): every one the list shows locked is left out and the team built again.
+            for (var attempt = 0; attempt < 4; attempt++)
+            {
+                var champions = data.Champions.Where(c => !_unpickable.Contains(c.Id)).ToList();
+                team = TeamRules.Resolve(TeamsOf("tag-arena"), TeamVariant.Default, [], champions, slots: 12, fillEmpty: true).Team;
+                if (team is not { Count: > 0 }) break;
+                log($"autoplay: STEP Tag Team defence: {string.Join(", ", team.Select(Who))}");
+                try { await SetTeam(team, ct, PlayTargets.TagDefencePickView, vault: null); break; }
+                catch (LockedHeroException e)
+                {
+                    foreach (var (id, _) in e.Shown.Where(x => x.State >= 3)) _unpickable.Add(id);
+                    _unpickable.Add(e.HeroId);
+                    log($"autoplay: {Who(e.HeroId)} cannot be put in the Tag Team defence (state {e.State}): left out, the teams built again");
+                    team = null;
+                }
+            }
+            if (team is not { Count: > 0 })
+            {
+                log("autoplay: Tag Team defence: no team could be set on this account");
+                await Back(PlayTargets.TagDefencePickView, ct);
+                return false;
+            }
+            // The picker stays open after its Save (seen 2026-11-17: the teams were saved): closed here, then the Defence tab's slots say whether it took.
+            await Click("defence-save", t => t.View == PlayTargets.TagDefencePickView, (_, _) => true, "the defence teams are saved", ct);
+            await Pause(1500, ct);
+            if (Top(await Settled(ct)) == PlayTargets.TagDefencePickView) await Back(PlayTargets.TagDefencePickView, ct);
+            var (_, after, _) = await Read(ct);
+            var filled = after.Count(t => t.Kind == "arena-defence-slot" && t.View == PlayTargets.TagDialogView && t.Note == "filled");
+            log($"autoplay: Tag Team defence {(filled > 0 ? "set" : "NOT saved")}: {string.Join(", ", team.Select(Who))} ({filled} slot(s) of the first team filled)");
+            return filled > 0;
+        }
+        catch (PlayStopException e)
+        {
+            log($"autoplay: the Tag Team defence was not set ({e.Message})");
+            if (Top(await Settled(ct)) == PlayTargets.TagDefencePickView) await Back(PlayTargets.TagDefencePickView, ct);
+            return false;
+        }
+        finally
+        {
+            try { await Click("tag-tab", t => t.Id == 0, (_, _) => true, "the Battle tab opens", ct); await Settled(ct); }
+            catch (PlayStopException e) { log($"autoplay: Tag Team's Battle tab: {e.Message}"); }
+        }
     }
 
     /// <summary>The popup the game shows on an attack while the Tag Team Arena's defence teams are not set.</summary>

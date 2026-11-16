@@ -595,6 +595,9 @@ public sealed partial class LivePlayGame : IChoresGame
         var dots = (await Read(ct)).Play.RedDots ?? [];
         var list = dots.Where(d => d.View == PlayTargets.VillageHudView).Select(d => (d.Button, d.Dot)).Distinct().ToList();
         log($"autoplay: red dots on the village: {(list.Count == 0 ? "none" : string.Join(", ", list.Select(d => d.Button)))}");
+        // A dot no rule knows: its full path, so it can be told apart (2026-11-16: a bare "Image" button).
+        foreach (var d in dots.Where(d => d.View == PlayTargets.VillageHudView && RaidActions.Autoplay.RedDots.For(d.Button, d.Dot) is { Job: null, Ignore: null }).DistinctBy(d => d.Path))
+            log($"autoplay: red dot not known: {d.Button} ({d.Dot}) at {d.Path}");
         return list;
     }
 

@@ -371,6 +371,21 @@ public sealed partial class LivePlayGame : IChoresGame
         }
         else await Click("village-academy", null, (s2, _) => Top(s2) == "AcademyDialog", "the Guardian Ring opens", ct, within: TimeSpan.FromSeconds(10));
         await Pause(1500, ct);
+        // "Level Ready" (the Guardian Ring's red dot; Ehsan 2026-11-17: "you need to click that whenever the champion reaches the top level"): its Level Up,
+        // as many times as the game offers it.
+        var levelled = 0;
+        for (var k = 0; k < 10; k++)
+        {
+            var (_, lt, _) = await Read(ct);
+            if (lt.FirstOrDefault(t => t.Kind == "pit-levelup" && t.NotClickable is null) is null) break;
+            if (dryRun) { log("autoplay: Sparring Pit: Level Up shown (dry run: not pressed)"); break; }
+            await Click("pit-levelup", null, (_, _) => true, "the champion levels up", ct);
+            await Pause(1500, ct);
+            var top = Top(await Settled(ct));
+            if (top != "AcademyDialog" && top is { } overlay && overlay.EndsWith("Overlay", StringComparison.Ordinal)) await Back(overlay, ct);
+            levelled++;
+        }
+        if (levelled > 0) log($"autoplay: Sparring Pit: levelled up {levelled} time(s)");
         // A filled slot does not open the list (2026-11-03): its champion is training, nothing to do.
         try { await Click("pit-slot", null, (s2, _) => Top(s2) == "TrainingCampHeroSelectionOverlay", "the Sparring Pit's list opens", ct, within: TimeSpan.FromSeconds(10)); }
         catch (PlayStopException e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal))
@@ -378,7 +393,7 @@ public sealed partial class LivePlayGame : IChoresGame
             log("autoplay: the Sparring Pit's slot is filled: training");
             await Back("AcademyDialog", ct);
             await Pause(1000, ct);
-            return null;
+            return levelled > 0 ? $"levelled up {levelled} time(s)" : null;
         }
         await Pause(1000, ct);
         var (_, items, _) = await Read(ct);

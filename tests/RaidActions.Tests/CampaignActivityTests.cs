@@ -48,7 +48,8 @@ public class CampaignActivityTests
         Assert.Contains(game.Calls, c => c.StartsWith("summon", StringComparison.Ordinal));
         Assert.DoesNotContain(runs, r => r.Contains(",50", StringComparison.Ordinal));  // the Rare is never food
         Assert.Contains(game.Champions!, c => c.Id == 50 && c.Rank == 3);              // ... nor ranked up
-        Assert.Contains(game.Champions!, c => c.Rarity == "Common" && c.Rank == 3);  // 1★ food became 2★, then 3★ food
+        // 1★ food became 2★ food. Since every free slot takes food (Ehsan 2026-11-17), level-1 eaters are levelled too, so with 2 shards the 3★ comes later.
+        Assert.Contains(game.Champions!, c => c.Rarity == "Common" && c.Rank >= 2);
         Assert.Contains(host.Events, e => e.Kind == "rankup");
         Assert.Equal(0, game.MysteryShards);
     }

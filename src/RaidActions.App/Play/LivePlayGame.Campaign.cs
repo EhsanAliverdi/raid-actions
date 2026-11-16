@@ -148,6 +148,14 @@ public sealed partial class LivePlayGame
     /// </summary>
     private async Task WheelIntoView(string kind, int id, CancellationToken ct)
     {
+        // A row the game has just added (2026-11-16: an untick in Fast Rank Up re-pairs, and the champion that was food becomes a new row) is
+        // "not active" until the list is laid out again: waited for before any scrolling (all the rows fitted on the screen; scrolling did nothing).
+        for (var w0 = 0; w0 < 6; w0++)
+        {
+            var (_, t0, _) = await Read(ct);
+            if (t0.FirstOrDefault(t => t.Kind == kind && t.Id == id) is not { NotClickable: "not active" }) break;
+            await Task.Delay(500, ct);
+        }
         for (var i = 0; i < 8; i++)
         {
             var (_, targets, _) = await Read(ct);
@@ -158,10 +166,20 @@ public sealed partial class LivePlayGame
             if (w is null) throw new PlayStopException(why!);
             // The wheel near the list's left edge, not its centre (2026-11-16: Fast Rank Up's food filter panel stays drawn over the middle of the list
             // after Apply and took the wheel; #210 never came into view and the food rank-ups paused three times).
-            var (cx, cy) = (shown.Min(x => x.X) + 40, shown.Average(x => x.Center.Y));
+            // Near the rows' right end: clear of the filter panel over the middle and of the tick boxes on the left.
+            var (cx, cy) = (shown.Max(x => x.X + x.Width) - 60, shown.Average(x => x.Center.Y));
             var down = r.Center.Y > cy;
-            if (Input.MouseInput.Wheel(w, cx, cy, down ? -2 : 2) is { } notSent) throw new PlayStopException("Not scrolled: " + notSent);
-            log($"autoplay: scrolled the list {(down ? "down" : "up")} to bring #{id} into view");
+            if (i % 2 == 0)
+            {
+                if (Input.MouseInput.Wheel(w, cx, cy, down ? -2 : 2) is { } notSent) throw new PlayStopException("Not scrolled: " + notSent);
+            }
+            else
+            {
+                // The wheel did not move it: a drag (up to show what is below).
+                var (top, bottom) = (shown.Min(x => x.Y) + 20, shown.Max(x => x.Y + x.Height) - 20);
+                if (Input.MouseInput.Drag(w, cx, down ? bottom : top, cx, down ? top : bottom) is { } notSent) throw new PlayStopException("Not scrolled: " + notSent);
+            }
+            log($"autoplay: scrolled the list {(down ? "down" : "up")} ({(i % 2 == 0 ? "wheel" : "drag")}) to bring #{id} into view");
             await Task.Delay(400, ct);
         }
     }

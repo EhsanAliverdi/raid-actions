@@ -242,7 +242,8 @@ public sealed partial class LivePlayGame : IFactionWarsGame
             if (Top(await ReadState(ct)) == PlayTargets.NoAuraView)
             {
                 log($"autoplay: {crypt.Name}: the game asks to start without an aura; started anyway. Screen dump: {DumpScreen("no aura confirmation")}");
-                await Click("noaura-confirm", null, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) != PlayTargets.NoAuraView,
+                // Its "Continue" starts the battle a few seconds later (2026-11-17 02:47: the team screen showed first, then the battle).
+                await Click("noaura-confirm", null, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)),
                     "the battle starts", ct, within: TimeSpan.FromSeconds(25), shot: true);
             }
         }

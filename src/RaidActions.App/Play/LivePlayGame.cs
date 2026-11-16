@@ -309,8 +309,21 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         var (data, gd, _, _) = await Account(ct);
         // The bot's pick (Content teams, vaults included) for a team set to "the bot picks the best".
         var pickSize = play.TeamSlots is > 0 and var slots ? slots : Math.Max(4, shown.Count);
+        // Tag Team Arena: three teams of four.
+        if (area == "tag-arena") pickSize = Math.Max(pickSize, 12);
         if (teams?.Default is { Mode: TeamMode.BotChooses } && BotTeams.Pick(data, gd, extractorRoot, contentArea, pickSize) is { Count: > 0 } best)
         {
+            // A pick shorter than the screen (2026-11-17, Smasher8465's Tag Team Arena: the fight's needs gave 2 of 12, and Start did nothing): topped up with
+            // the strongest others, geared first, then levelled, one of each type.
+            if (best.Count < pickSize)
+            {
+                var types = best.Select(id => data.Champions.FirstOrDefault(c => c.Id == id)?.BaseTypeId).ToHashSet();
+                var more = data.Champions.Where(c => !best.Contains(c.Id) && !_unpickable.Contains(c.Id) && !c.InBathhouse && !types.Contains(c.BaseTypeId)
+                        && (c.Artifacts.Count > 0 || c.Level > 1 || c.Rank > 1))
+                    .OrderByDescending(c => c.Artifacts.Count > 0).ThenByDescending(RaidExtractor.Autoplay.ArenaAffinityTeam.Strength)
+                    .DistinctBy(c => c.BaseTypeId).Take(pickSize - best.Count).Select(c => c.Id).ToList();
+                if (more.Count > 0) { log($"autoplay: {area}: the pick has {best.Count} of {pickSize}: {more.Count} more added"); best = [.. best, .. more]; }
+            }
             // A champion this screen will not take (2026-11-13 23:56, BlackLord65's Hydra: Dorothy, used there already, and the whole pick refused): left out
             // and the bot picks again without it, up to five times.
             var refused = new HashSet<int>();

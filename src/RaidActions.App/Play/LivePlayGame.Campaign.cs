@@ -226,6 +226,13 @@ public sealed partial class LivePlayGame
                     log($"autoplay: {Who(wrong.HeroId)} stayed ticked: trying once more");
                     await Pause(1000, ct);
                 }
+                // The row gone or not clickable (2026-11-16 23:39, BlackLord65: Tunnel Steward, just ranked up, re-paired on the grade above with two new
+                // champions; the untick found no row and the rank-ups paused for an hour): this grade is left (nothing pressed: the check below sees it).
+                catch (Exception e) when (e.Message.Contains("fastrankup-item: not", StringComparison.Ordinal))
+                {
+                    log($"autoplay: {Who(wrong.HeroId)} could not be unticked ({e.Message}): grade {grade} is left");
+                    break;
+                }
             }
             // More ticked than planned: the ones not planned are unticked (each a champion the plan keeps for later, or one it does not need now).
             for (var i = 0; i < 12; i++)
@@ -245,6 +252,13 @@ public sealed partial class LivePlayGame
                 {
                     log($"autoplay: {Who(extra.HeroId)} stayed ticked: trying once more");
                     await Pause(1000, ct);
+                }
+                // The row gone or not clickable (2026-11-16 23:39, BlackLord65: Tunnel Steward, just ranked up, re-paired on the grade above with two new
+                // champions; the untick found no row and the rank-ups paused for an hour): this grade is left (nothing pressed: the check below sees it).
+                catch (Exception e) when (e.Message.Contains("fastrankup-item: not", StringComparison.Ordinal))
+                {
+                    log($"autoplay: {Who(extra.HeroId)} could not be unticked ({e.Message}): grade {grade} is left");
+                    break;
                 }
             }
             var (_, targets, now) = await Read(ct);

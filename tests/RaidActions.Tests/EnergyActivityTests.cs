@@ -167,6 +167,19 @@ public class EnergyActivityTests
     }
 
     [Fact]
+    public async Task A_lost_push_stage_waits_until_the_team_is_stronger()
+    {
+        // Ehsan 2026-11-17: the stage lost 3 days ago is not tried again unless the team is 10% stronger.
+        var push = new EnergyTarget { Id = "push-dragon", Area = "Dungeon", Region = "DragonsLair", Difficulty = "Normal", Stage = 20, Progress = true, LossWaitHours = 24, RetryPowerPercent = 10 };
+        var (host, game, engine) = Make(On(push, Row("farm")), stopAfter: TimeSpan.FromHours(1));
+        game.Energy = 100;
+        game.PushLossBook[PushLosses.Key("push-dragon", "DragonsLair", "Normal", 20)] = new PushLoss(Start.AddDays(-3), 100_000);
+        await engine.RunAsync(once: false, Limit());
+        Assert.True(!host.Events.Any(e => e.Kind == "battle" && e.Text.Contains("[row push-dragon]")), string.Join(" / ", host.Events.Select(e => $"{e.Kind}: {e.Text}")));
+        Assert.Contains(host.Events, e => e.Kind == "hold" && e.Text.Contains("needs +10%"));
+    }
+
+    [Fact]
     public async Task A_row_without_its_own_team_or_without_the_setting_gets_no_gear_review()
     {
         var (_, game, engine) = Make(On(Row("a", "Hard") with { GearEveryHours = 2 }, Row("b") with { Team = [1] }), stopAfter: TimeSpan.FromHours(1));

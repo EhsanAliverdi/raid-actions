@@ -27,6 +27,10 @@ public sealed partial class LivePlayGame : IEnergyGame
 
     public void SaveThreeStars(IReadOnlyDictionary<string, ThreeStarState> states) => AutoplayJson.WriteAtomic(ThreeStarState.PathIn(ExtractorOutput), states);
 
+    public Dictionary<string, PushLoss> LoadPushLosses() => PushLosses.Load(ExtractorOutput);
+
+    public void SavePushLosses(IReadOnlyDictionary<string, PushLoss> losses) => AutoplayJson.WriteAtomic(PushLosses.PathIn(ExtractorOutput), losses);
+
     public FarmBook LoadFarm() => FarmBook.Load(ExtractorOutput);
 
     public void SaveFarm(FarmBook book) => AutoplayJson.WriteAtomic(FarmBook.PathIn(ExtractorOutput), book);

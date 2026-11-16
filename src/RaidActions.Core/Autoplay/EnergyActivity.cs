@@ -77,6 +77,11 @@ public interface IEnergyGame : IGearDropGame
     /// <summary>Saves the 3-star rows' sweeps (kept across a restart and for days: a sweep through a difficulty takes many).</summary>
     void SaveThreeStars(IReadOnlyDictionary<string, ThreeStarState> states) { }
 
+    /// <summary>The lost push stages (<see cref="PushLosses"/>); none by default.</summary>
+    Dictionary<string, PushLoss> LoadPushLosses() => [];
+
+    void SavePushLosses(IReadOnlyDictionary<string, PushLoss> losses) { }
+
     /// <summary>The farm judge's book (<see cref="FarmBook"/>: each farm stage's measured XP and time, the XP per level learnt); empty when none is saved.</summary>
     FarmBook LoadFarm() => new();
 
@@ -526,6 +531,17 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                         return "";
                     }
                 }
+                // A lost push stage again only when the team got stronger (RetryPowerPercent; Ehsan 2026-11-17): else the row waits its LossWaitHours.
+                var lossKey = PushLosses.Key(run.Target.Id, run.Region, run.AtDifficulty ?? run.Target.Difficulty, run.Number);
+                var powerNow = PushLosses.TeamPower(run.Target, _account.Champions ?? []);
+                if (run.Target is { Progress: true, RetryPowerPercent: > 0 and var pct } && game.LoadPushLosses().TryGetValue(lossKey, out var lost) && !PushLosses.MayRetry(lost, powerNow, pct))
+                {
+                    var waitFor = TimeSpan.FromHours(run.Target.LossWaitHours is > 0 and var lh ? lh : 24);
+                    var why = $"{EnergyPlanner.Describe(run)}: lost on {lost.Utc.ToLocalTime():MMM d} with team power {lost.Power:N0}; now {powerNow:N0}, needs +{pct}% ({lost.Power * (1 + pct / 100.0):N0}): looked at again in {waitFor.TotalHours:0} hour(s)";
+                    ctx.Hold(PushKey(run.Target), ctx.Utc + waitFor, why);
+                    ctx.Event(AreaId, "hold", why);
+                    return "";
+                }
                 var before = _account.Resources.GetValueOrDefault(run.Resource);
                 var rosterBefore = _account.Champions;
                 await ctx.ThinkAsync(ct);
@@ -557,6 +573,14 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 var (sw, sl) = _stageResults.GetValueOrDefault(sk);
                 _stageResults[sk] = outcome.Result == BattleResult.Victory ? (sw + 1, sl) : (sw, sl + 1);
                 ctx.Event(AreaId, "battle", $"{outcome.Result} {where} [row {run.Target.Id}]. {outcome.Text}");
+                // The push's loss record (RetryPowerPercent): the team's power when it lost; a win clears it.
+                if (run.Target is { Progress: true, RetryPowerPercent: > 0 } && outcome.Result is BattleResult.Defeat or BattleResult.Victory)
+                {
+                    var losses = game.LoadPushLosses();
+                    if (outcome.Result == BattleResult.Defeat) losses[lossKey] = new PushLoss(ctx.Utc, powerNow);
+                    else losses.Remove(lossKey);
+                    game.SavePushLosses(losses);
+                }
                 if (outcome.Result == BattleResult.Defeat && run.Target.Progress)
                 {
                     // The row's own wait (a dungeon push: a day), else 45 minutes.

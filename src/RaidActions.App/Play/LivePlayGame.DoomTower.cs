@@ -33,8 +33,10 @@ public sealed partial class LivePlayGame : IDoomTowerGame
             var status = t.Note is { } n && System.Text.RegularExpressions.Regex.Match(n, @"status (\d)") is { Success: true } m ? m.Groups[1].Value[0] - '0' : 0;
             var id = g.Key;
             return new DtStage(id, DoomTowerRules.KindOf(id, false), status, DoomTowerRules.FloorOf(id), false);
-        }).Where(s => s.Kind == DtKind.Boss && s.Floor == FinalBoss).ToList();
-        log($"autoplay: the tower: floor {FinalBoss} " + (stages.Count == 0 ? "not read" : $"status {stages[0].Status}"));
+        }).Where(s => s.Kind == DtKind.Boss && (s.Floor == FinalBoss || s.Beaten)).ToList();
+        // The beaten bosses too (Ehsan 2026-11-17: silver keys on the last boss beaten, with Super Raid; BlackLord65 sat on 9 silver keys): the map's
+        // floors have no rectangles, so they are found on the screen (FindTowerFloor).
+        log($"autoplay: the tower: floor {FinalBoss} {stages.FirstOrDefault(x => x.Floor == FinalBoss)?.Status.ToString() ?? "not read"}; beaten bosses: {string.Join(", ", stages.Where(x => x.Beaten && x.Floor != FinalBoss).Select(x => x.Floor))}");
         var r = data.Account.Resources;
         return new DoomTowerMap(stages, r.GetValueOrDefault(DoomTowerRules.Gold), r.GetValueOrDefault(DoomTowerRules.Silver));
     }
@@ -52,6 +54,20 @@ public sealed partial class LivePlayGame : IDoomTowerGame
             5, gearChoice?.Default, dryRun, ct);
         log($"autoplay: STEP Doom Tower {name}");
         await OpenDoomTower(ct);
+        if (stage.Floor != FinalBoss)
+        {
+            // A beaten boss replayed with silver keys: found on the map (its stage id checked on the team screen), Super Raid on.
+            await SelectTowerDifficulty(diffName, ct);
+            var (fd, _, _, _) = await Account(ct);
+            var raw = fd.Progress?.DoomTower?.StageIndicatorRaw.Values.FirstOrDefault() ?? 0;
+            var want = raw > 0 ? raw / 10_000 * 10_000 + (stage.Hard ? 2 : 1) * 1000 + stage.Floor : 0;
+            if (await FindTowerFloor(diffName, stage.Floor, want, ct) is { } notFound) return new BattleOutcome(BattleResult.NotStarted, notFound);
+            var teamView = Top(await Settled(ct)) ?? "";
+            try { await SetSuperRaid(!dryRun, teamView, ct); }
+            catch (PlayStopException e) { log($"autoplay: Doom Tower {name}: Super Raid not set ({e.Message}); a normal run"); }
+            var replayBoss = RaidExtractor.GdTowerBoss.Load(Path.Combine(extractorRoot, "output", "gamedata")).GetValueOrDefault(want)?.Boss;
+            return await PlayTowerTeam(name, started, dryRun, ct, replayBoss);
+        }
         // Choosing a difficulty moves the map, so only when the bot left it on Hard; a miss (Hard left from elsewhere) chooses Normal and tries once more.
         if (_towerOnHard) await SelectTowerDifficulty("Normal", ct);
         try
@@ -83,6 +99,64 @@ public sealed partial class LivePlayGame : IDoomTowerGame
     }
 
     private bool _towerOnHard;
+
+    /// <summary>
+    /// A floor's team screen opened from the map (the floors have no rectangles): the spots seen on the screen (boss portraits, gold banners) tapped and the
+    /// team screen's stage id checked (<paramref name="stageId"/>; 0: not checked); the map dragged towards the floor when a spot opens a lower or higher one.
+    /// Null when its team screen is open; else why not.
+    /// </summary>
+    private async Task<string?> FindTowerFloor(string tower, int floor, int stageId, CancellationToken ct)
+    {
+        var (w, why) = GameWindow.Find();
+        if (w is null) throw new PlayStopException(why!);
+        var sc = w.Client.Width / 1298f;
+        var up = true;   // up the tower first, as the map opens on the current (higher) floors... unless a lower one is seen
+        var tried = 0;
+        for (var view = 0; view < 10; view++)
+        {
+            if (view > 0)
+            {
+                // Up the tower: the finger moves down; down the tower: up.
+                var (y1, y2) = up ? (120 * sc, 640 * sc) : (640 * sc, 120 * sc);
+                if (MouseInput.Drag(w, 650 * sc, y1, 650 * sc, y2) is { } dragFailed) throw new PlayStopException(dragFailed);
+                await Pause(1500, ct);
+            }
+            var (capture, problem) = WindowCapture.Take(w);
+            if (capture is null) throw new PlayStopException($"The tower could not be captured: {problem}");
+            List<(float X, float Y)> spots;
+            using (capture) spots = DoomTowerSpot.Candidates(capture.Image);
+            log($"autoplay: the {tower} map, looking for floor {floor}: {spots.Count} spot(s)");
+            var moved = false;
+            foreach (var at in spots.Take(6))
+            {
+                tried++;
+                if (MouseInput.Click(w, at.X, at.Y, new Random()) is { } notSent) throw new PlayStopException(notSent);
+                var until = DateTime.UtcNow + TimeSpan.FromSeconds(6);
+                while (DateTime.UtcNow < until && !(Top(await ReadState(ct)) is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView))) await Task.Delay(400, ct);
+                var opened = Top(await ReadState(ct));
+                if (opened is null || !PlayTargets.IsTeamView(opened))
+                {
+                    if (opened is not null && opened != "DoomTowerHUD" && opened != "DoomTowerMap") await Back(opened, ct);
+                    if (Top(await ReadState(ct)) is { } now && now != "DoomTowerHUD" && now != "DoomTowerMap") return $"a tap on the {tower} map left the tower ({now})";
+                    continue;
+                }
+                var got = (await Read(ct)).Play.TowerStage;
+                if (stageId > 0 && got is { } g && g != stageId)
+                {
+                    log($"autoplay: ({at.X:0},{at.Y:0}) opened floor {g % 1000}, not {floor}: back");
+                    await Back(opened, ct);
+                    await Pause(800, ct);
+                    up = g % 1000 < floor;
+                    moved = true;
+                    break;
+                }
+                log($"autoplay: the {tower} floor {floor} opened at ({at.X:0},{at.Y:0})");
+                return null;
+            }
+            _ = moved;
+        }
+        return $"floor {floor} not found on the {tower} map ({tried} spot(s) tried)";
+    }
 
     /// <summary>A boss's Content teams fight ("Dark Fae" → dt-darkfae).</summary>
     private static string TowerContent(string boss) => "dt-" + new string([.. boss.ToLowerInvariant().Where(char.IsLetter)]).Replace("celestial", "", StringComparison.Ordinal);

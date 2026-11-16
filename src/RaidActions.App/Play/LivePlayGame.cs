@@ -121,6 +121,12 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     /// <summary>The last arena fight's 4-affinity quest: the team could not be built (the normal team fought), or its champions came out of a vault.</summary>
     private bool _affinityFailed, _affinityRetry;
 
+    /// <summary>
+    /// Champions the team list refused for the quest team (2026-11-16, Smasher8465: Gliseah, in no vault, "cannot be picked" (state 3; likely training
+    /// in the Sparring Pit): Classic Arena paused twice); left out of the quest team for the rest of this bot's run.
+    /// </summary>
+    private readonly HashSet<int> _unpickable = [];
+
     /// <summary>Whether the last arena fight really used the 4-affinity team (read once by the arena area, then reset).</summary>
     public bool TookAffinityTeam()
     {
@@ -316,6 +322,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         if (quest)
         {
             var (data0, _, _, _) = await Account(ct);
+            data0 = data0 with { Champions = [.. data0.Champions.Where(c => !_unpickable.Contains(c.Id))] };
             questTeam = TeamRules.Resolve(TeamsOf(ClassicArenaAreaId), variant, shownTeam, data0.Champions, fillEmpty: true).Team;
             // No team of four affinities on this account (2026-11-11: KaelStormVex's only Void champions are in the Bathhouse): the fight is played with
             // the arena team, so the arena goes on (it was an error that paused Classic Arena for an hour, twice a turn).
@@ -355,7 +362,16 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 File.WriteAllText(ArenaTeamFile, System.Text.Json.JsonSerializer.Serialize(shownTeam));
             }
             log($"autoplay: STEP the {variant} team for the quest: {string.Join(", ", team.Select(i => $"#{i}"))} (the arena team was {string.Join(", ", shownTeam.Select(i => $"#{i}"))})");
-            await SetArenaTeam(team, ct);
+            try { await SetArenaTeam(team, ct); }
+            catch (LockedHeroException e)
+            {
+                // That champion out, the team built again next turn (the arena is not paused for it).
+                _unpickable.Add(e.HeroId);
+                log($"autoplay: #{e.HeroId} cannot be picked for the {variant} team (state {e.State}: busy, such as training in the Sparring Pit): left out, the team built again next turn");
+                await Back(PlayTargets.TeamView, ct);
+                _affinityRetry = true;
+                return new BattleOutcome(BattleResult.Retry, $"#{e.HeroId} cannot be picked: the {variant} team without it next turn");
+            }
             if (dryRun) await SetArenaTeam(shownTeam, ct);
         }
         else if (restore is { Count: > 0 } && !restore.ToHashSet().SetEquals(shownTeam))
@@ -485,6 +501,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 continue;
             }
             _inboxTaken++;
+            if (Top(s3) == "GachaChestOverlay") { await CloseChestWindow(ct); s3 = await ReadState(ct); }
             if (Top(s3) is { } top && top != PlayTargets.InboxView && top.EndsWith("Overlay", StringComparison.Ordinal)) await Back(top, ct);
         }
         await GoHomeAsync(ct);
@@ -1108,9 +1125,25 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         }
     }
 
+    /// <summary>
+    /// A chest's opening window (GachaChestOverlay) has no close: it waits, then Esc (as the Clan Boss chests, 2026-11-13). 2026-11-16: a tournament
+    /// chest collected from the inbox opened one and going home failed ("no back/close element").
+    /// </summary>
+    private async Task CloseChestWindow(CancellationToken ct)
+    {
+        for (var k = 0; k < 4 && Top(await ReadState(ct)) == "GachaChestOverlay"; k++)
+        {
+            await Pause(1500, ct);
+            if (Top(await ReadState(ct)) != "GachaChestOverlay") break;
+            if (Game.Window.GameWindow.Find().Window is { } w && Input.MouseInput.SendEscape(w) is null) log("autoplay: the chest's window: Esc sent");
+            await Pause(1200, ct);
+        }
+    }
+
     private async Task<List<string>> HomeAsync(UiAction a, CancellationToken ct, string? stopAt = null)
     {
         await DismissLevelUp(ct);
+        await CloseChestWindow(ct);
         await CloseWebPages(ct);
         var s = await ReadState(ct);
         // A window over the result (a champion's info, 2026-11-03) is closed by its own button, then the result.

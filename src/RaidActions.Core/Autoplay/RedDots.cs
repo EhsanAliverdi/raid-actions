@@ -20,6 +20,7 @@ public static class RedDots
         "CollectionButton" => new(null, "Index: a new champion not looked at (nothing to claim)"),
         "HeroesButton" => new(null, "a champion's masteries, relic or blessing (not built yet)"),
         "RaidShow_h" => new(null, "the Raid Show banner"),
+        "QuestButton" => new(null, "a quest to claim: the Free rewards area claims the quests"),
         _ => new(null, null),
     };
 }

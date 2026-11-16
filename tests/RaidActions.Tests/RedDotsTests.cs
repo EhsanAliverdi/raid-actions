@@ -14,6 +14,9 @@ public class RedDotsTests
     [InlineData("PlariumProgram_h", "Indicator_h", "pass")]
     [InlineData("EventsButton", "Indicator_h", "pass")]          // the events: only the cards with a dot are claimed
     [InlineData("GuardianRingButton", null, "pit")]
+    [InlineData("Academy", "Indicator", "pit")]          // the village scene: the Guardian Ring's building
+    [InlineData("Market", "RefreshAvailableIndicator", "market")]
+    [InlineData("GemMine", "Indicator", "free")]
     public void A_dot_brings_its_job_forward(string button, string? dot, string job) => Assert.Equal(job, RedDots.For(button, dot).Job);
 
     [Fact]

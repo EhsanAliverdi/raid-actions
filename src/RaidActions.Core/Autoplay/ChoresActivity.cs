@@ -228,6 +228,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
                             switch (dotJob)
                             {
                                 case "inbox": _inboxAt = ctx.Utc; break;
+                                case "market": _marketAt = ctx.Utc; break;
                                 case "free": _freeAt = ctx.Utc; break;
                                 case "checkin": _checkInNext = ctx.Utc; break;
                                 case "pass": _passAt = ctx.Utc; break;

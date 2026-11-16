@@ -17,7 +17,14 @@ public static class RedDots
         // The side menu's Plarium Points and Progression Rewards are claimed by the pass job (ClaimMenuRewardsAsync).
         // The Events button's dot (2026-11-17): the pass job ends with the events, and claims only on the cards with a dot.
         "BattlePass_h" or "ChallengesButton_h" or "PlariumProgram_h" or "MilestoneReward" or "EventsButton" => new("pass", null),
-        "AcademyButton" or "GuardianRingButton" => new("pit", null),
+        // The village scene's buildings (2026-11-17), by their BuildingUI binding: Academy is the Guardian Ring (its Sparring Pit).
+        "AcademyButton" or "GuardianRingButton" or "Academy" => new("pit", null),
+        "Market" => new("market", null),
+        "Capitol" => new(null, "the Great Hall: an upgrade can be bought (not built: it spends)"),
+        "Portal" => new(null, "the Portal: a summon is possible (shards are opened for food by the energy area)"),
+        "AltarOfSouls" => new(null, "the Altar of Souls (not built yet)"),
+        "GemMine" => new("free", null),        // the free job collects the mine's gems
+        "Forge" or "Tavern" => new(null, "a building's own notice"),
         "PlayerAvatarContainer" => new(null, "a new player-card background (cosmetic)"),
         "ReferralProgram_h" => new(null, "use your referral link (nothing to claim)"),
         "CollectionButton" => new(null, "Index: a new champion not looked at (nothing to claim)"),

@@ -622,10 +622,12 @@ public sealed partial class LivePlayGame : IChoresGame
         static string Named(RedDotRead d) => d.Button is not "Image" ? d.Button
             : d.Path.Split('/').Reverse().Skip(2).FirstOrDefault() ?? d.Button;   // the node right above the Image (MilestoneReward has no _h)
         dots = [.. dots.Select(d => d with { Button = Named(d) })];
-        var list = dots.Where(d => d.View == PlayTargets.VillageHudView).Select(d => (d.Button, d.Dot)).Distinct().ToList();
+        // The village's bar and buttons (VillageHUD) and its buildings (the Village scene: Academy, Market, ...).
+        static bool OnVillage(RedDotRead d) => d.View is PlayTargets.VillageHudView or "Village";
+        var list = dots.Where(OnVillage).Select(d => (d.Button, d.Dot)).Distinct().ToList();
         log($"autoplay: red dots on the village: {(list.Count == 0 ? "none" : string.Join(", ", list.Select(d => d.Button)))}");
         // A dot no rule knows: its full path, so it can be told apart (2026-11-16: a bare "Image" button).
-        foreach (var d in dots.Where(d => d.View == PlayTargets.VillageHudView && RaidActions.Autoplay.RedDots.For(d.Button, d.Dot) is { Job: null, Ignore: null }).DistinctBy(d => d.Path))
+        foreach (var d in dots.Where(d => OnVillage(d) && RaidActions.Autoplay.RedDots.For(d.Button, d.Dot) is { Job: null, Ignore: null }).DistinctBy(d => d.Path))
             log($"autoplay: red dot not known: {d.Button} ({d.Dot}) at {d.Path}");
         return list;
     }

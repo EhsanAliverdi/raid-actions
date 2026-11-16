@@ -1518,12 +1518,25 @@ public static partial class PlayTargets
                 targets.Add(Make("defence-save", "arena defence: Save", x, x, null));
 
         // Every red dot (the game's indicators: Indicator_h, RewardIndicator_h, UpdatedIndicator_h, HasItemsIndicator_h, HasNewHeroIndicator_h, ...).
-        var redDots = nodes.Where(x => x.ActiveInHierarchy && RedDot(x.Name))
-            .Select(x =>
+        // In the village scene (the "Village" view) a building's dot sits under its BuildingUI, bound to the building's name (2026-11-17: Academy is the Guardian
+        // Ring, Market, Capitol, Portal, AltarOfSouls): named by that binding.
+        string? Building(int i)
+        {
+            var depth = nodes[i].Depth;
+            for (var k = i - 1; k >= 0; k--)
+                if (nodes[k].Depth < depth)
+                {
+                    if (nodes[k].Name == "BuildingUI" && nodes[k].BindingPath is { Length: > 0 } b) return b;
+                    depth = nodes[k].Depth;
+                }
+            return null;
+        }
+        var redDots = nodes.Select((x, i) => (x, i)).Where(p => p.x.ActiveInHierarchy && RedDot(p.x.Name))
+            .Select(p =>
             {
-                var parts = x.Path.Split('/');
-                var button = parts.Length >= 2 ? parts[^2] : "";
-                return new RedDotRead(t.View, button, x.Name, x.Path);
+                var parts = p.x.Path.Split('/');
+                var button = t.View == "Village" && Building(p.i) is { } b ? b : parts.Length >= 2 ? parts[^2] : "";
+                return new RedDotRead(t.View, button, p.x.Name, p.x.Path);
             }).DistinctBy(d => d.Path).ToList();
 
         if (rows is not null || free is not null || tab is not null) arena = new ArenaBoardRead(rows ?? [], free, freeText, loading, tab);

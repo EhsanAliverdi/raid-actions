@@ -540,8 +540,14 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     private int _inboxTaken;
 
     /// <summary>Collects every inbox entry <paramref name="match"/> takes; what the account gained of <paramref name="resource"/>.</summary>
-    private async Task<double> CollectInbox(Func<InboxEntry, bool> match, string resource, string what, bool dryRun, CancellationToken ct)
+    /// <summary>A booster in the inbox (XP, Silver, Energy, ...: its icon or text says "Booster" or "Boost").</summary>
+    internal static bool IsBooster(InboxEntry e) => System.Text.RegularExpressions.Regex.IsMatch($"{e.Title} {e.Message} {e.Icon}", "boost", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+
+    private async Task<double> CollectInbox(Func<InboxEntry, bool> asked, string resource, string what, bool dryRun, CancellationToken ct)
     {
+        // Never a booster with time left (Ehsan 2026-11-17: XP boosters with 70+ days were claimed on BlackLord65; a claimed booster starts running): only in its
+        // last day, whatever the caller asked for.
+        bool match(InboxEntry e) => asked(e) && (!IsBooster(e) || ChoreRules.ExpiresWithinADay(e.Expires));
         _inboxTaken = 0;
         var before = (await game.Account.ReadAsync(ct)).Account.Resources.GetValueOrDefault(resource);
         await GoHomeAsync(ct);

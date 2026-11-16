@@ -195,9 +195,10 @@ public sealed partial class LivePlayGame : IChoresGame
         // The entries taken, not the token counts that rose (2026-11-10 09:36: one left at the over-the-cap warning was reported claimed, the regen counted).
         await CollectInbox(Soon, "Token", "tokens expiring within a day", dryRun, ct);
         var taken = _inboxTaken;
-        // Every other gift too (Ehsan 2026-11-16: the inbox's red dot is new items to claim; free gifts, quest and playtime rewards were never taken):
-        // all but tokens and energy, which their areas take when they need them.
-        await CollectInbox(e => !PlayTargets.IsAnyTokens(e) && !PlayTargets.IsEnergy(e), "Silver", "gifts", dryRun, ct);
+        // Other gifts only in their last day (Ehsan 2026-11-17: "you claimed xp banners which had 70 days plus to expire": every gift was collected on
+        // BlackLord65, and a booster starts running when claimed). Nothing with more time left, nor one whose time cannot be read, is ever taken; tokens and
+        // energy are their areas' (taken when needed).
+        await CollectInbox(e => !PlayTargets.IsAnyTokens(e) && !PlayTargets.IsEnergy(e) && ChoreRules.ExpiresWithinADay(e.Expires), "Silver", "gifts in their last day", dryRun, ct);
         return taken + _inboxTaken;
     }
 

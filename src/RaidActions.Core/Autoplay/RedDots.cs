@@ -8,7 +8,8 @@ public sealed record RedDotAction(string? Job, string? Ignore);
 /// <summary>The village's red dots by the button they sit on (seen 2026-11-16 on Smasher8465).</summary>
 public static class RedDots
 {
-    public static RedDotAction For(string button) => button switch
+    // The Shop is the game's "Bank" (BankOverlay): its dot can sit on a bare "Indicator" node (2026-11-16), so the dot's own name counts too.
+    public static RedDotAction For(string button, string? dot = null) => dot == "BankIndicator_h" ? new("free", null) : button switch
     {
         "InboxButton" => new("inbox", null),
         "ShopButton" => new("free", null),

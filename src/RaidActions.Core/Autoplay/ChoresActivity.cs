@@ -207,7 +207,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
                     var acted = new List<string>();
                     foreach (var (button, dot) in dots)
                     {
-                        var what = RedDots.For(button);
+                        var what = RedDots.For(button, dot);
                         if (what.Job is { } dotJob)
                         {
                             // Its job now: the timer that would have waited is cleared.

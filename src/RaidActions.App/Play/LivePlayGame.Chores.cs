@@ -513,7 +513,13 @@ public sealed partial class LivePlayGame : IChoresGame
     {
         var (s, _, _) = await Read(ct);
         if (Top(s) != PlayTargets.VillageHudView) await ToVillage(ct);
-        if (!(await Read(ct)).Targets.Any(t => t.Kind == "event-card" && t.Id == -1)) return 0;
+        // Only when the village's Events button has its red dot, and then only the cards with theirs (Ehsan 2026-11-17: "you should not go to every event.
+        // just the one has red dot and claim if there is anything to claim").
+        if ((await Read(ct)).Targets.FirstOrDefault(t => t.Kind == "event-card" && t.Id == -1) is not { Note: "open dot" })
+        {
+            log("autoplay: events: no red dot on the Events button: not opened");
+            return 0;
+        }
         await Click("event-card", t => t.Id == -1, (s2, _) => Top(s2) is "SoloEventsDialog" or "SoloEventInfoWebView", "the events open", ct, within: TimeSpan.FromSeconds(8));
         await Pause(1500, ct);
         // One event left (2026-11-03): the button opens its page straight away.
@@ -526,10 +532,13 @@ public sealed partial class LivePlayGame : IChoresGame
             log("autoplay: events: Claim All tapped on the one event");
             return 0;
         }
-        var cards = (await Read(ct)).Targets.Count(t => t.Kind == "event-card" && t.Id >= 0);
+        var dotted = (await Read(ct)).Targets.Where(t => t.Kind == "event-card" && t.Id >= 0 && t.Note == "dot").Select(t => t.Id!.Value).ToList();
+        log($"autoplay: events: {(dotted.Count == 0 ? "no card has a red dot" : $"red dot on card(s) {string.Join(", ", dotted.Select(k => k + 1))}")}");
         var tapped = 0;
-        for (var k = 0; k < cards; k++)
+        foreach (var k in dotted)
         {
+            // A card below the shown part of the list is brought into view first.
+            await DragIntoView("event-card", ct, t => t.Id == k);
             await Click("event-card", t => t.Id == k, (s2, _) => Top(s2) is "SoloEventInfoWebView" or CoalitionView, $"event {k + 1} opens", ct, within: TimeSpan.FromSeconds(8));
             // The Demon Coalition (a co-op Demon Lord event, its own screen): not built yet (docs/TODO.md); left, the next event (2026-11-16: it stopped
             // the whole round, no other event was claimed).

@@ -1082,7 +1082,9 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                     {
                         var tree = ui.Read(view, name, w.Client.Width, w.Client.Height);
                         lines.Add($"== {name}");
-                        foreach (var n in tree.Nodes.Where(n => n.ActiveInHierarchy && (n.Interactable is not null || n.Context is not null || n.BindingPath is not null)))
+                        // Red dots too (plain images: 2026-11-17, an event card's dot was not in the dump).
+                        foreach (var n in tree.Nodes.Where(n => n.ActiveInHierarchy && (n.Interactable is not null || n.Context is not null || n.BindingPath is not null
+                            || PlayTargets.RedDot(n.Name) || n.Name.Contains("Dot", StringComparison.OrdinalIgnoreCase) || n.Name.Contains("Notif", StringComparison.OrdinalIgnoreCase))))
                             lines.Add($"{new string(' ', Math.Min(n.Depth, 30))}{n.Name}  binding '{n.BindingPath}'  ctx {n.Context?.Class.Split('.')[^1]}  {n.Screen}  {(n.Interactable is { } ia ? (ia ? "CLICKABLE" : "disabled") : "")}");
                     }
                     catch (Exception e) when (e is UiReadException or RaidExtractor.ReadCheckException) { lines.Add($"== {name}: {e.Message}"); }

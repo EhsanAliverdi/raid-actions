@@ -15,7 +15,8 @@ public static class RedDots
         "ShopButton" => new("free", null),
         "AllianceButton" => new("checkin", null),
         // The side menu's Plarium Points and Progression Rewards are claimed by the pass job (ClaimMenuRewardsAsync).
-        "BattlePass_h" or "ChallengesButton_h" or "PlariumProgram_h" or "MilestoneReward" => new("pass", null),
+        // The Events button's dot (2026-11-17): the pass job ends with the events, and claims only on the cards with a dot.
+        "BattlePass_h" or "ChallengesButton_h" or "PlariumProgram_h" or "MilestoneReward" or "EventsButton" => new("pass", null),
         "AcademyButton" or "GuardianRingButton" => new("pit", null),
         "PlayerAvatarContainer" => new(null, "a new player-card background (cosmetic)"),
         "ReferralProgram_h" => new(null, "use your referral link (nothing to claim)"),

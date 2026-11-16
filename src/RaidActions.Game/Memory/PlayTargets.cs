@@ -1303,8 +1303,15 @@ public static partial class PlayTargets
             foreach (var x in nodes.Where(x => x.Name is "MilestoneReward" or "PlariumProgram_h" or "MonthlyGifts_h" or "AdventCalendar_h" or "Loyalty14DayProgram_h"
                 && x.Path.Contains("/HiddenMenu/", StringComparison.Ordinal) && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null))
                 targets.Add(Make("menu-item", $"side menu: {x.Name}", x, x, x.Name));
-            foreach (var x in nodes.Where(x => x.Name == "EventsButton" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
-                targets.Add(Make("event-card", "village: Events", x, x, "open", id: -1));
+            // Its red dot in the note (2026-11-17, Ehsan: "just the one has red dot and claim if there is anything to claim").
+            for (var i = 0; i < nodes.Count; i++)
+            {
+                var x = nodes[i];
+                if (x.Name != "EventsButton" || x.Interactable is null || !x.ActiveInHierarchy || x.Screen is null) continue;
+                var dot = SelfAndBelow(i).Any(y => y.ActiveInHierarchy && RedDot(y.Name));
+                targets.Add(Make("event-card", "village: Events", x, x, dot ? "open dot" : "open", id: -1));
+                break;
+            }
         }
         // A challenge's own window (Ehsan's claims, recorded 2026-11-03): the card's Claim opens it, its Claim (BTN_2) takes the reward.
         if (t.View == "ChallengeQuestOverlay")
@@ -1326,7 +1333,17 @@ public static partial class PlayTargets
         if (t.View == "SoloEventsDialog")
         {
             var cards = nodes.Where(x => x.Name == "Background_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).OrderBy(x => x.Screen!.Value.Y).ToList();
-            for (var k = 0; k < cards.Count; k++) targets.Add(Make("event-card", $"events: card {k + 1}", cards[k], cards[k], null, id: k));
+            // A card's red dot (Indicator_h, a sibling of its Background_h under the SoloEventItemContext; seen 2026-11-17 on Gear Hunters): "dot" in its note.
+            for (var k = 0; k < cards.Count; k++)
+            {
+                var at = -1;
+                for (var q = 0; q < nodes.Count; q++) if (ReferenceEquals(nodes[q], cards[k])) { at = q; break; }
+                var item = at;
+                while (item > 0 && nodes[item].Context?.Class.EndsWith("SoloEventItemContext", StringComparison.Ordinal) != true) item--;
+                var dot = item >= 0 && nodes[item].Context?.Class.EndsWith("SoloEventItemContext", StringComparison.Ordinal) == true
+                    && SelfAndBelow(item).Any(y => y.ActiveInHierarchy && RedDot(y.Name));
+                targets.Add(Make("event-card", $"events: card {k + 1}", cards[k], cards[k], dot ? "dot" : null, id: k));
+            }
         }
         // Any web page's X (events, tournaments): Ehsan's taps closed it at about 95.7% across, 3% down (recorded 2026-11-03).
         if (t.View.EndsWith("WebView", StringComparison.Ordinal))

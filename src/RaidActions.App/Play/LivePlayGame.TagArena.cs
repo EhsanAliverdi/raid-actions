@@ -182,7 +182,7 @@ public sealed partial class LivePlayGame : ITagArenaGame
             for (var attempt = 0; attempt < 4; attempt++)
             {
                 var champions = data.Champions.Where(c => !_unpickable.Contains(c.Id)).ToList();
-                team = TeamRules.Resolve(TeamsOf("tag-arena"), TeamVariant.Default, [], champions, slots: 12, fillEmpty: true).Team;
+                team = DefencePick(TeamsOf("tag-arena"), champions, 12);
                 if (team is not { Count: > 0 }) break;
                 log($"autoplay: STEP Tag Team defence: {string.Join(", ", team.Select(Who))}");
                 try { await SetTeam(team, ct, PlayTargets.TagDefencePickView, vault: null); break; }

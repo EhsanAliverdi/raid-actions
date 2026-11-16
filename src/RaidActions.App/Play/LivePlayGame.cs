@@ -118,6 +118,18 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         throw new PlayStopException("Could not reach the Classic Arena in 8 steps.");
     }
 
+    /// <summary>
+    /// A defence: the area's saved team when the Teams card has one, else the most powerful champions by the game's own power (level and gear in it; 2026-11-17:
+    /// "geared first" put a level-1 Dorothy in KaelStormVex's defence), one of each type, none in a vault or the Bathhouse.
+    /// </summary>
+    private static List<int>? DefencePick(AreaTeams? teams, IReadOnlyList<RaidExtractor.ChampionOut> champions, int size)
+    {
+        if (teams?.Default is { Mode: TeamMode.Saved, Ids.Count: > 0 }) return TeamRules.Resolve(teams, TeamVariant.Default, [], champions, slots: size, fillEmpty: true).Team;
+        var team = champions.Where(c => !c.InVault && !c.InBathhouse && (c.Level > 1 || c.Artifacts.Count > 0))
+            .OrderByDescending(RaidExtractor.Autoplay.ArenaAffinityTeam.Strength).DistinctBy(c => c.BaseTypeId).Take(size).Select(c => c.Id).ToList();
+        return team.Count > 0 ? team : null;
+    }
+
     /// <summary>Whether the Classic Arena's defence may be filled (a real run; a dry run only looks).</summary>
     public bool SetsDefence { get; init; }
 
@@ -151,7 +163,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             for (var attempt = 0; attempt < 4; attempt++)
             {
                 var champions = data.Champions.Where(c => !_unpickable.Contains(c.Id)).ToList();
-                team = TeamRules.Resolve(TeamsOf(ClassicArenaAreaId), TeamVariant.Default, [], champions, slots: slots.Count, fillEmpty: true).Team;
+                team = DefencePick(TeamsOf(ClassicArenaAreaId), champions, slots.Count);
                 if (team is not { Count: > 0 }) break;
                 log($"autoplay: STEP the arena defence has {filled} of {slots.Count}: setting {string.Join(", ", team.Select(Who))}");
                 try { await SetTeam(team, ct, PlayTargets.ArenaDefencePickView, vault: null); break; }

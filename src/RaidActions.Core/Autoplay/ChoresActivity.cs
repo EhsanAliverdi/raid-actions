@@ -250,7 +250,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
                 case "inbox":
                     _inboxAt = ctx.Utc + TimeSpan.FromMinutes(Math.Max(30, s.InboxEveryMinutes));
                     var tokens = await game.CollectExpiringTokensAsync(ctx.DryRun, ct);
-                    return tokens > 0 ? Report(ctx, "inbox", $"claimed {tokens} expiring token item(s)") : "";
+                    return tokens > 0 ? Report(ctx, "inbox", $"claimed {tokens} inbox item(s) in their last day (tokens, gifts)") : "";
                 case "masteries":
                     return Report(ctx, "masteries", await game.ApplyMasteriesAsync(ct));
                 case "pit":

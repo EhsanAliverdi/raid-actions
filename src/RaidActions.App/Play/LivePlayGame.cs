@@ -547,7 +547,8 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     {
         // Never a booster with time left (Ehsan 2026-11-17: XP boosters with 70+ days were claimed on BlackLord65; a claimed booster starts running): only in its
         // last day, whatever the caller asked for.
-        bool match(InboxEntry e) => asked(e) && (!IsBooster(e) || ChoreRules.ExpiresWithinADay(e.Expires));
+        // A collected entry stays listed for a moment, no longer valid (2026-11-16: "did not take it" was logged while the game had taken it): not counted.
+        bool match(InboxEntry e) => e.Valid != false && asked(e) && (!IsBooster(e) || ChoreRules.ExpiresWithinADay(e.Expires));
         _inboxTaken = 0;
         var before = (await game.Account.ReadAsync(ct)).Account.Resources.GetValueOrDefault(resource);
         await GoHomeAsync(ct);
@@ -599,6 +600,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 continue;
             }
             _inboxTaken++;
+            log($"autoplay: inbox: collected [{entry.Title}|{entry.Message}|{entry.Icon}|{entry.Expires}] ({what})");
             if (Top(s3) == "GachaChestOverlay") { await CloseChestWindow(ct); s3 = await ReadState(ct); }
             if (Top(s3) is { } top && top != PlayTargets.InboxView && top.EndsWith("Overlay", StringComparison.Ordinal)) await Back(top, ct);
         }

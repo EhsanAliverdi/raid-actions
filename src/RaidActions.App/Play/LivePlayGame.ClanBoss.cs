@@ -188,6 +188,8 @@ public sealed partial class LivePlayGame : IClanBossGame
             await Back(teamView, ct);
             return new BattleOutcome(BattleResult.NotStarted, start?.NotClickable is null && start is not null ? "Start shown, not pressed" : $"Start not identified: {start?.Note ?? "no team-start target"}");
         }
+        // The team that fights, for the calibration record (Ehsan 2026-11-17: every Clan Boss fight recorded to calibrate the simulator).
+        var fightTeam = (await Read(ct)).Play.TeamIds?.ToList() ?? [];
         await Click("team-start", t => t.View == teamView, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView or "AllianceBossQuickBattleConfirmOverlay" or "ChimeraQuickBattleConfirmOverlay" or QuickResult or ChimeraQuickResult,
             "the battle starts", ct, within: TimeSpan.FromSeconds(25), shot: true);
         // The game asks before a normal battle where Quick Battle is open (seen 2026-11-01): its one action is Continue.
@@ -217,9 +219,46 @@ public sealed partial class LivePlayGame : IClanBossGame
         log($"autoplay: {label} {difficulty} started");
         var result = await WaitBattle(ct, resultView);
         var damage = result?.ClanDamage;
+        // The result screen dumped whole (its per-champion damage, taken and healing are read from it once their places are known) and the fight recorded.
+        try { await RecordClanFight(label, difficulty, fightTeam, damage, DateTime.UtcNow - started, DumpScreen($"{label} {difficulty} result"), ct); }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException or PlayStopException) { log($"autoplay: the {label} fight was not recorded: {e.Message}"); }
         await LeaveResult(ct, resultView);
         // An alliance boss is never "won": the battle ends when the team falls or the turns run out; its result is the damage.
         return new BattleOutcome(BattleResult.Victory, $"damage {damage?.Replace(" Damage Dealt", "", StringComparison.OrdinalIgnoreCase) ?? "?"}, {(DateTime.UtcNow - started).TotalSeconds:0} s");
+    }
+
+    /// <summary>
+    /// A Clan Boss / Hydra / Chimera fight's record for calibrating the simulator (raid-extractor config/fights' shape where known): the account, difficulty,
+    /// the boss's affinity today, the team with each champion's stats and gear, the damage and the time, and the result screen's dump. In
+    /// output/accounts/&lt;id&gt;/autoplay/boss-fights/.
+    /// </summary>
+    private async Task RecordClanFight(string label, string difficulty, List<int> team, string? damageText, TimeSpan took, string resultDump, CancellationToken ct)
+    {
+        var (data, _, _, _) = await Account(ct);
+        var ids = team.ToHashSet();
+        var damage = damageText is { } d && System.Text.RegularExpressions.Regex.Match(d.Replace(",", ""), @"([\d.]+)\s*([KMB]?)", System.Text.RegularExpressions.RegexOptions.IgnoreCase) is { Success: true } m
+            ? double.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) * (m.Groups[2].Value.ToUpperInvariant() switch { "K" => 1e3, "M" => 1e6, "B" => 1e9, _ => 1 })
+            : (double?)null;
+        var record = new
+        {
+            utc = DateTime.UtcNow,
+            account = data.Account.Name,
+            accountId = data.Account.Id,
+            boss = label,
+            difficulty,
+            affinity = data.Events?.ClanBoss?.ElementByDifficulty.GetValueOrDefault(difficulty),
+            damageText,
+            total = damage,
+            seconds = (int)took.TotalSeconds,
+            team = team.Select(id => data.Champions.FirstOrDefault(c => c.Id == id)).Where(c => c is not null).ToList(),
+            artifacts = data.Artifacts.Where(a => a.OwnerHeroId is { } o && ids.Contains(o)).ToList(),
+            resultDump,
+        };
+        var dir = Path.Combine(ExtractorOutput, "autoplay", "boss-fights");
+        Directory.CreateDirectory(dir);
+        var file = Path.Combine(dir, $"{DateTime.Now:yyyyMMdd-HHmmss}-{label}-{difficulty}.json");
+        File.WriteAllText(file, System.Text.Json.JsonSerializer.Serialize(record, AutoplayJson.Options));
+        log($"autoplay: {label} {difficulty}: fight recorded ({damageText ?? "damage not read"}, team {string.Join(", ", team.Select(Who))}) → {file}");
     }
 
     /// <summary>An alliance boss's difficulty list on top (the map item <paramref name="mapKind"/>), from wherever the game is.</summary>

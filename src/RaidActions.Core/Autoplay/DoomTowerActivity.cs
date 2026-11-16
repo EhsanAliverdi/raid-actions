@@ -161,7 +161,13 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
         var name = DoomTowerRules.Name(stage);
         if (outcome.Result is BattleResult.NotStarted or BattleResult.Retry)
         {
-            _skip.Add(stage.Id);
+            // Not found on the map (a window over it, the map moved): held for a few hours, not skipped for good (2026-11-17: a dry run's misses left
+            // floors 30 and 20 skipped, and BlackLord65's silver keys went to floor 10). A dry run holds nothing.
+            if (outcome.Text.Contains("not found on the", StringComparison.Ordinal))
+            {
+                if (!ctx.DryRun) ctx.Hold($"{AreaId}:stage:{stage.Id}", ctx.Utc + TimeSpan.FromHours(4), $"{name}: {outcome.Text}; looked for again in 4 hours");
+            }
+            else _skip.Add(stage.Id);
             ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", $"{name}: {outcome.Text}");
             return "";
         }

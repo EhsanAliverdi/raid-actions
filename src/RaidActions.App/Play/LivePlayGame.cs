@@ -355,7 +355,9 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         }
         // An empty team screen with no team saved for it (Ehsan 2026-11-09: "when there is no team setup for an account for specific area, robot can
         // choose the team"): the strongest geared champions, as many as the screen's slots.
-        var pick = TeamRules.Resolve(teams, TeamVariant.Default, shown, data.Champions, slots: play.TeamSlots ?? 0, fillEmpty: play.TeamSlots is > 0);
+        // Champions a screen refused this run left out (2026-11-17, KaelStormVex's Tag Team: Thenasil, locked, refused the whole pick).
+        var pickable = data.Champions.Where(c => !_unpickable.Contains(c.Id) && !_notPickable.Contains(c.Id)).ToList();
+        var pick = TeamRules.Resolve(teams, TeamVariant.Default, shown, pickable, slots: play.TeamSlots ?? 0, fillEmpty: play.TeamSlots is > 0);
         if (shown.Count == 0 && pick.Team is { Count: > 0 } chosen)
             log($"autoplay: {area}: no team on its screen and none saved: the bot chooses the {chosen.Count} strongest geared champions ({play.TeamSlots} slots)");
         if (pick.DontPlay)

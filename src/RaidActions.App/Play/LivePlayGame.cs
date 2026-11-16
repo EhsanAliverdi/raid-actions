@@ -119,14 +119,15 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     }
 
     /// <summary>
-    /// A defence: the area's saved team when the Teams card has one, else the most powerful champions by the game's own power (level and gear in it; 2026-11-17:
-    /// "geared first" put a level-1 Dorothy in KaelStormVex's defence), one of each type, none in a vault or the Bathhouse.
+    /// A defence: the area's saved team when the Teams card has one, else the weakest champions by the game's own power (Ehsan 2026-11-17: "putting weak
+    /// champions is a good strategy: we want to lose the defences so the account does not go so high"), one of each type, none in a vault or the Bathhouse.
+    /// Only a defence with empty slots is ever set, so a full one (BlackLord65's) is never changed.
     /// </summary>
     private static List<int>? DefencePick(AreaTeams? teams, IReadOnlyList<RaidExtractor.ChampionOut> champions, int size)
     {
         if (teams?.Default is { Mode: TeamMode.Saved, Ids.Count: > 0 }) return TeamRules.Resolve(teams, TeamVariant.Default, [], champions, slots: size, fillEmpty: true).Team;
-        var team = champions.Where(c => !c.InVault && !c.InBathhouse && (c.Level > 1 || c.Artifacts.Count > 0))
-            .OrderByDescending(RaidExtractor.Autoplay.ArenaAffinityTeam.Strength).DistinctBy(c => c.BaseTypeId).Take(size).Select(c => c.Id).ToList();
+        var team = champions.Where(c => !c.InVault && !c.InBathhouse)
+            .OrderBy(RaidExtractor.Autoplay.ArenaAffinityTeam.Strength).DistinctBy(c => c.BaseTypeId).Take(size).Select(c => c.Id).ToList();
         return team.Count > 0 ? team : null;
     }
 
@@ -182,9 +183,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 return;
             }
             await Click("defence-save", null, (s2, _) => Top(s2) != PlayTargets.ArenaDefencePickView, "the defence is saved", ct);
-            _myArenaPower = default;
-            var power = await MyArenaPower(ct);
-            log($"autoplay: arena defence set: {string.Join(", ", team.Select(Who))}; defence power now {power:N0}");
+            log($"autoplay: arena defence set: {string.Join(", ", team.Select(Who))} (the game's defence power updates a little later)");
         }
         catch (PlayStopException e)
         {
@@ -404,8 +403,11 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         if (row.Status != 0 || !row.Playable) throw new PlayStopException($"Opponent {row.Name} cannot be fought now (status {row.Status}, playable {row.Playable}).");
         // No defence team (its power reads 0; Ehsan 2026-11-07: "you need to setup defence if defence is not there, otherwise classic arena will not work"):
         // Battle does nothing until one is set. Read fresh (not the 30-minute cache): it is set once and then stays.
-        _myArenaPower = default;
-        if (await MyArenaPower(ct) is 0)
+        // The defence's own power here (the limit uses the attack team's).
+        int? defence = null;
+        try { defence = (await game.Account.ReadAsync(ct)).Progress?.ClassicArena?.DefensePower; }
+        catch (Exception e) when (e is not OperationCanceledException) { log($"autoplay: the arena defence's power not read ({e.Message})"); }
+        if (defence is 0)
             throw new PlayStopException("No Classic Arena defence team is set on this account: Battle does nothing until one is (the arena's Defence tab).");
         await ScrollTo(userId, ct);
         var who = $"{row.Name} ({row.Power:N0})";
@@ -730,7 +732,9 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     {
         var until = DateTime.UtcNow + TimeSpan.FromMinutes(20); // dungeon runs took 9-10 minutes at x1 (2026-10-30)
         // An arena round that stalls (healers on both sides, 2026-11-01: 20 minutes in round 1 of 3) is skipped: a defeat, the rest of the game goes on.
-        var skipMinutes = AutoplaySettings.Load(ExtractorOutput).Rules.ArenaRoundSkipMinutes;
+        // Tag Team Arena its own (Ehsan 2026-11-17: "skip battle if it is more than 2 minutes").
+        var rules = AutoplaySettings.Load(ExtractorOutput).Rules;
+        var skipMinutes = resultView == "BattleFinishArena3x3Dialog" ? rules.TagRoundSkipMinutes : rules.ArenaRoundSkipMinutes;
         var skipAt = skipMinutes > 0 && resultView is PlayTargets.ArenaResultView or "BattleFinishArena3x3Dialog" ? DateTime.UtcNow + TimeSpan.FromMinutes(skipMinutes) : (DateTime?)null;
         var autoTried = false;
         var speedTries = 0;
@@ -815,12 +819,22 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
 
     private (DateTime At, int? Power) _myArenaPower;
 
-    /// <summary>My Classic Arena defense team's power from the account (read at most every 30 minutes; null when it cannot be read).</summary>
+    /// <summary>My Classic Arena attack team's power (read at most every 30 minutes; the defence's when no attack team was seen yet; null when unknown).</summary>
     private async Task<int?> MyArenaPower(CancellationToken ct)
     {
         if (DateTime.UtcNow - _myArenaPower.At < TimeSpan.FromMinutes(30)) return _myArenaPower.Power;
         int? power = null;
-        try { power = (await game.Account.ReadAsync(ct)).Progress?.ClassicArena?.DefensePower; }
+        try
+        {
+            // The attack team's power, not the defence's (Ehsan 2026-11-17: "with up to my power it is not up to defence team power, it is up to attack
+            // team power"; the referral accounts keep weak defences on purpose): the team last seen on the arena's team screen, its champions' power summed.
+            var data = (await Account(ct)).Data;
+            if (TeamsSeen.Load(ExtractorOutput).GetValueOrDefault(ClassicArenaAreaId) is { Count: > 0 } attack
+                && attack.Select(id => data.Champions.FirstOrDefault(c => c.Id == id)?.Power).ToList() is var powers && powers.All(p => p is > 0))
+                power = (int)powers.Sum(p => p!.Value);
+            else
+                power = (await game.Account.ReadAsync(ct)).Progress?.ClassicArena?.DefensePower;   // no attack team seen yet: the defence's, as before
+        }
         catch (Exception e) when (e is not OperationCanceledException) { log($"autoplay: my arena power not read ({e.Message})"); }
         _myArenaPower = (DateTime.UtcNow, power);
         return power;

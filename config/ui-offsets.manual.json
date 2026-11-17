@@ -16,6 +16,54 @@
       "status": "verified",
       "verified": "2026-10-26 08:14: of the active champion tiles exactly one read HeroSlotContext._isSelected = true, Kael's (hero 1), the champion HeroesInfoOverlayContext._heroId named"
     },
+    "Client.ViewModel.Contextes.BattleFinishDialog.HeroBattleStatsContext._dead": {
+      "offset": "0x50",
+      "type": "BoolProperty",
+      "source": "dump/redux/cs/il2cpp.cs (TypeDefIndex 7582/7577; ConfigGen cannot run without dump/cpp2il, and this listing's offsets match ConfigGen's, e.g. BattleFinishAllianceEnemyDialogContext._damageDealt 0x108)",
+      "status": "unverified"
+    },
+    "Client.ViewModel.Contextes.BattleFinishDialog.HeroBattleStatsContext._heroName": {
+      "offset": "0x68",
+      "type": "StringProperty",
+      "source": "dump/redux/cs/il2cpp.cs (TypeDefIndex 7582/7577; ConfigGen cannot run without dump/cpp2il, and this listing's offsets match ConfigGen's, e.g. BattleFinishAllianceEnemyDialogContext._damageDealt 0x108)",
+      "status": "unverified"
+    },
+    "Client.ViewModel.Contextes.BattleFinishDialog.HeroBattleStatsContext._avatar": {
+      "offset": "0x80",
+      "type": "HeroAvatarContext",
+      "source": "dump/redux/cs/il2cpp.cs (TypeDefIndex 7582/7577; ConfigGen cannot run without dump/cpp2il, and this listing's offsets match ConfigGen's, e.g. BattleFinishAllianceEnemyDialogContext._damageDealt 0x108)",
+      "status": "unverified"
+    },
+    "Client.ViewModel.Contextes.BattleFinishDialog.HeroBattleStatsContext._attack": {
+      "offset": "0x90",
+      "type": "HeroBattleStatContext",
+      "source": "dump/redux/cs/il2cpp.cs (TypeDefIndex 7582/7577; ConfigGen cannot run without dump/cpp2il, and this listing's offsets match ConfigGen's, e.g. BattleFinishAllianceEnemyDialogContext._damageDealt 0x108)",
+      "status": "unverified"
+    },
+    "Client.ViewModel.Contextes.BattleFinishDialog.HeroBattleStatsContext._defence": {
+      "offset": "0x98",
+      "type": "HeroBattleStatContext",
+      "source": "dump/redux/cs/il2cpp.cs (TypeDefIndex 7582/7577; ConfigGen cannot run without dump/cpp2il, and this listing's offsets match ConfigGen's, e.g. BattleFinishAllianceEnemyDialogContext._damageDealt 0x108)",
+      "status": "unverified"
+    },
+    "Client.ViewModel.Contextes.BattleFinishDialog.HeroBattleStatsContext._heal": {
+      "offset": "0xA0",
+      "type": "HeroBattleStatContext",
+      "source": "dump/redux/cs/il2cpp.cs (TypeDefIndex 7582/7577; ConfigGen cannot run without dump/cpp2il, and this listing's offsets match ConfigGen's, e.g. BattleFinishAllianceEnemyDialogContext._damageDealt 0x108)",
+      "status": "unverified"
+    },
+    "Client.ViewModel.Contextes.BattleFinishDialog.HeroBattleStatContext._absoluteValue": {
+      "offset": "0x50",
+      "type": "LongProperty",
+      "source": "dump/redux/cs/il2cpp.cs (TypeDefIndex 7582/7577; ConfigGen cannot run without dump/cpp2il, and this listing's offsets match ConfigGen's, e.g. BattleFinishAllianceEnemyDialogContext._damageDealt 0x108)",
+      "status": "unverified"
+    },
+    "Client.MVVM.Base.ViewModel.Properties.LongProperty._value": {
+      "offset": "0x28",
+      "type": "long",
+      "source": "dump/redux/il2cpp.h: LongProperty -> Property_1_System_Int64___Fields { ReadProperty fields (0x10, 0x18); bool _changing 0x20; int64_t _value 0x28 (8-aligned) }",
+      "status": "unverified"
+    },
     "Client.MVVM.Base.ViewModel.Properties.StringProperty._value": {
       "offset": "0x28",
       "type": "string",

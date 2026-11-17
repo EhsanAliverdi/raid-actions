@@ -81,12 +81,13 @@ public sealed partial class LivePlayGame : IFactionWarsGame
     /// <summary>The crypt team prepared by the shared team preparation (the faction's picker: gear up, put back; plan/team-prep.md).</summary>
     public async Task<string> GearTeamAsync(CryptPlan crypt, bool dryRun, CancellationToken ct)
     {
-        // The push first (referral accounts): the team levelled with XP brews, then geared.
+        // Geared first (it also takes the team out of the vaults: 2026-11-17, KaelStormVex's Courtier was skipped by the push while still in one), then the
+        // push (referral accounts) levels it with XP brews.
+        var done = await PrepareTeam($"Faction Wars: {crypt.Name}", "faction-wars", "factionwars", Math.Max(5, crypt.Team.Count), FactionChoice(crypt.Faction), dryRun, ct,
+            team: crypt.Team, faction: crypt.Faction);
         string? pushed = null;
         try { pushed = await PushTeamAsync(crypt.Team, dryRun, ct); }
         catch (PlayStopException e) { log($"autoplay: Faction Wars push: {e.Message}"); await HomeAsync(Action("from the Tavern"), ct); }
-        var done = await PrepareTeam($"Faction Wars: {crypt.Name}", "faction-wars", "factionwars", Math.Max(5, crypt.Team.Count), FactionChoice(crypt.Faction), dryRun, ct,
-            team: crypt.Team, faction: crypt.Faction);
         return (done.Length == 0 ? "already prepared today" : done) + (pushed is null ? "" : $"; push: {pushed}");
     }
 
@@ -156,7 +157,9 @@ public sealed partial class LivePlayGame : IFactionWarsGame
                 done.Add($"{Who(id)} to level {now} ({brews} brew(s))");
             }
             // Ascension: Rare champions only (Ehsan 2026-11-17: "ascend only rare"), as far as the owned potions pay (MAX); never Epic or Legendary.
-            if (push.AscendRareOnly && !dryRun && (await Account(ct)).Data.Champions.FirstOrDefault(x => x.Id == id) is { Rarity: "Rare" } rare && rare.Ascension < rare.Rank)
+            if (push.AscendRareOnly && !dryRun && (await Account(ct)).Data.Champions.FirstOrDefault(x => x.Id == id) is { Rarity: "Rare", InVault: false, InBathhouse: false } rare && rare.Ascension < rare.Rank
+                // Only once the levelling is done (2026-11-17: Courtier at 27 of 30 after a pass's 8 brews was not ascended though Ascend was pressed).
+                && rare.Level >= Math.Min(push.Level, FwPushSettings.RankMax(rare.Rank)))
             {
                 try
                 {

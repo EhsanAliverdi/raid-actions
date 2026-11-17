@@ -237,7 +237,14 @@ public sealed partial class LivePlayGame : IClanBossGame
         var (data, _, _, _) = await Account(ct);
         var ids = team.ToHashSet();
         // Each champion's line on the result screen (damage dealt, taken, healing), as read; the notes show which fields were found.
-        var lines = (await Read(ct)).Targets.Where(t => t.Kind == "boss-hero-stats").Select(t => new { hero = t.Id, read = t.Note }).ToList();
+        static long? Num(string? note, string key) => note is not null && System.Text.RegularExpressions.Regex.Match(note, key + @" (\d+)") is { Success: true } m ? long.Parse(m.Groups[1].Value) : null;
+        var lines = (await Read(ct)).Targets.Where(t => t.Kind == "boss-hero-stats").Select(t => new
+        {
+            hero = t.Id, name = t.Id is { } h ? Who(h) : null, damage = Num(t.Note, "damage"), taken = Num(t.Note, "taken"), healing = Num(t.Note, "heal"),
+            dead = t.Note?.Contains("dead True", StringComparison.Ordinal), read = t.Note,
+        }).ToList();
+        // Checked: the champions' damage adds up to the screen's total (the long offset is unverified until it does).
+        if (lines.Count > 0) log($"autoplay: {label} {difficulty} per champion: {string.Join("; ", lines.Select(l => $"{l.name ?? "?"} {l.damage:N0} dealt, {l.taken:N0} taken, {l.healing:N0} healed{(l.dead == true ? ", dead" : "")}"))} (sum {lines.Sum(l => l.damage ?? 0):N0})");
         var damage = damageText is { } d && System.Text.RegularExpressions.Regex.Match(d.Replace(",", ""), @"([\d.]+)\s*([KMB]?)", System.Text.RegularExpressions.RegexOptions.IgnoreCase) is { Success: true } m
             ? double.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) * (m.Groups[2].Value.ToUpperInvariant() switch { "K" => 1e3, "M" => 1e6, "B" => 1e9, _ => 1 })
             : (double?)null;

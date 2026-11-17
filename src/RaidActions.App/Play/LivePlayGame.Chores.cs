@@ -683,6 +683,36 @@ public sealed partial class LivePlayGame : IChoresGame
         return result;
     }
 
+    /// <summary>
+    /// The mission "Get a Referral Link" (every account's first; Ehsan 2026-11-18: "open referral from the village and create the referral code"): the
+    /// village's Referral Programs (top left), the first slot's Get Referral Link, closed. The game copies the link to the Windows clipboard: what was
+    /// there is put back.
+    /// </summary>
+    public async Task<string> GetReferralLinkAsync(bool dryRun, CancellationToken ct)
+    {
+        log("autoplay: STEP referral: the mission Get a Referral Link");
+        await HomeAsync(Action("to the village"), ct);
+        await Click("village-referral", null, (s2, _) => Top(s2) == "SocialActivityDialog", "the Referral Program opens", ct, within: TimeSpan.FromSeconds(10));
+        await Pause(1200, ct);
+        var button = (await Read(ct)).Targets.FirstOrDefault(t => t.Kind == "referral-getlink" && t.NotClickable is null);
+        string result;
+        if (button is null) result = "no Get Referral Link on the Referral Program";
+        else if (dryRun) { log("autoplay: WOULD CLICK Get Referral Link (dry run)"); result = "dry run"; }
+        else
+        {
+            var clip = Clipboard.Read();
+            // The button stays: the click is checked by the screen staying put, the mission by the next quest read.
+            await Click("referral-getlink", t => t.Path == button.Path, (_, _) => true, "Get Referral Link pressed", ct, within: TimeSpan.FromSeconds(4), shot: true);
+            await Pause(1500, ct);
+            if (clip is not null) Clipboard.Write(clip);
+            result = "got the referral link";
+        }
+        var top = Top(await Settled(ct));
+        if (top is not null && top != "Village" && top != "VillageHUD") await Back(top, ct);
+        await HomeAsync(Action("from the referral program"), ct);
+        return result;
+    }
+
     public async Task<string> JoinClanAsync(bool dryRun, CancellationToken ct)
     {
         var (data, _, _, _) = await Account(ct);

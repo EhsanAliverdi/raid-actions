@@ -44,6 +44,9 @@ public interface IChoresGame
     /// <summary>Those champions' gear off and each back in the vault it came from; what was done.</summary>
     Task<string> PutBackAsync(TimeSpan after, bool dryRun, CancellationToken ct) => Task.FromResult("");
 
+    /// <summary>The mission "Get a Referral Link": village → Referral Programs → Get Referral Link; what was done ("not supported" in the fakes).</summary>
+    Task<string> GetReferralLinkAsync(bool dryRun, CancellationToken ct) => Task.FromResult("not supported");
+
     /// <summary>The clan's Members page: Check in, and the stars' activity chests; what was done ("not supported" until the screen is explored).</summary>
     Task<string> ClanCheckInAsync(bool dryRun, CancellationToken ct) => Task.FromResult("not supported");
 
@@ -124,6 +127,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         // Champions the bot took out of a vault for a fight go back an hour after (their area played meanwhile; Ehsan 2026-11-13).
         if (Open(ctx, "putback") && game.PutBackDue(PutBackAfter).Count > 0) return "putback";
         if (ctx.QuestLeft(QuestNeedKind.Market) > 0 && Open(ctx, "market")) return "market";
+        if (ctx.QuestLeft(QuestNeedKind.ReferralLink) > 0 && Open(ctx, "referral")) return "referral";
         if (s.TavernLevelUps && ctx.QuestLeft(QuestNeedKind.LevelUp) > 0 && Open(ctx, "level")) return "level";
         if (s.ArtifactUpgrades && ctx.QuestLeft(QuestNeedKind.ArtifactAttempts) > 0 && Open(ctx, "attempts")) return "attempts";
         if (s.ArtifactUpgrades && ctx.QuestLeft(QuestNeedKind.ArtifactLevel) > 0 && Open(ctx, "piece")) return "piece";
@@ -182,6 +186,14 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         {
             switch (job)
             {
+                case "referral":
+                {
+                    // Once: the mission counts on the next read; tried again after a day if it did not.
+                    _paused["referral"] = ctx.Utc + TimeSpan.FromDays(1);
+                    var done = await game.GetReferralLinkAsync(ctx.DryRun, ct);
+                    if (done == "got the referral link") Spend(ctx, QuestNeedKind.ReferralLink, 1);
+                    return done == "not supported" ? "" : Report(ctx, "referral", done);
+                }
                 case "clan":
                     // At most every 6 hours (in a clan, the account read answers at once and nothing is opened).
                     _clanAt = ctx.Utc + TimeSpan.FromHours(6);

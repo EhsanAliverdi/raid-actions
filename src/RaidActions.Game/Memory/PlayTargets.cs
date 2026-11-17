@@ -235,6 +235,7 @@ public static partial class PlayTargets
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-quickjoin", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-collect", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-reward", "resource-add", "refill-use", "live-state", "live-phase", "live-slot", "live-confirm",
         "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "menu-open", "menu-item", "reward-claim", "reward-tab", "event-card", "event-claimall", "event-close", "challenge-confirm", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "shop-section", "shop-subtab", "village-pass", "village-challenges", "village-clan", "clan-tab", "clan-checkin", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
+        "village-referral", "referral-getlink",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh", "arena-defence-slot", "defence-save", "noaura-confirm", "tag-tab", "pit-levelup", "brew-open", "brew-grade", "brew-item", "brew-hero", "brew-upgrade", "brew-close", "ascend-tab", "ascend-max", "ascend-go",
     };
@@ -1113,6 +1114,8 @@ public static partial class PlayTargets
                 (VillageHudView, "HeroesInfo") => ("village-heroes", "village: Champions"),
                 (VillageHudView, "HourlyGifts") => ("village-gifts", "village: playtime gifts"),
                 (VillageHudView, "RecommendedQuests") => ("village-missions", "village: Missions"),
+                // The Referral Programs button (seen 2026-11-18, top left): the missions' first step "Get a Referral Link".
+                (VillageHudView, "ReferralProgram") => ("village-referral", "village: Referral Programs"),
                 (VillageHudView, var b) when b.Contains("Portal", StringComparison.OrdinalIgnoreCase) => ("village-portal", "village: Portal"),
                 // The battle menu's Campaign card (AdventureModeContext, field _adventure: binding to confirm live).
                 (BattleMenuView, var b) when b.Contains("Adventure", StringComparison.OrdinalIgnoreCase) || b.Contains("Campaign", StringComparison.OrdinalIgnoreCase)
@@ -1306,6 +1309,12 @@ public static partial class PlayTargets
                 else if (x.Context?.Class.EndsWith(".DailyAndLimitedTabsButtonContext", StringComparison.Ordinal) == true && int.TryParse(x.Name, out var k))
                     targets.Add(Make("shop-subtab", $"shop: tab {k}", x, x, x.Path, id: k));
             }
+
+        // The Referral Program (seen 2026-11-18, SocialActivityDialog): each free friend slot's "Get Referral Link" (SendLinkutton, the game's spelling). It
+        // copies the account's link to the clipboard; that is all "Get a Referral Link" asks (Ehsan 2026-11-18).
+        if (t.View == "SocialActivityDialog")
+            foreach (var x in nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null && x.Name == "SendLinkutton"))
+                targets.Add(Make("referral-getlink", "referral: Get Referral Link", x, x, x.Path));
 
         // The Clan screen (seen 2026-11-16): its tabs (Tab1 Info, Tab2 Members, ...) and, on Members, the account's own row's Check In (the only one
         // shown: the other rows' are inactive). Ehsan: "you always miss the check-in; it is done once a day at the clan's reset".

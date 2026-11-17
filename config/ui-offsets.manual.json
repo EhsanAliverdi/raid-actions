@@ -20,49 +20,69 @@
       "offset": "0x50",
       "type": "BoolProperty",
       "source": "dump/redux/cs/il2cpp.cs (TypeDefIndex 7582/7577; ConfigGen cannot run without dump/cpp2il, and this listing's offsets match ConfigGen's, e.g. BattleFinishAllianceEnemyDialogContext._damageDealt 0x108)",
-      "status": "unverified"
+      "status": "verified",
+      "verified": "2026-11-17 15:42: Smasher8465 Clan Boss Hard result: the 5 champions' _attack summed 3,063,224 against the screen's 3.06M; names and deaths matched the team"
     },
     "Client.ViewModel.Contextes.BattleFinishDialog.HeroBattleStatsContext._heroName": {
       "offset": "0x68",
       "type": "StringProperty",
       "source": "dump/redux/cs/il2cpp.cs (TypeDefIndex 7582/7577; ConfigGen cannot run without dump/cpp2il, and this listing's offsets match ConfigGen's, e.g. BattleFinishAllianceEnemyDialogContext._damageDealt 0x108)",
-      "status": "unverified"
+      "status": "verified",
+      "verified": "2026-11-17 15:42: Smasher8465 Clan Boss Hard result: the 5 champions' _attack summed 3,063,224 against the screen's 3.06M; names and deaths matched the team"
     },
     "Client.ViewModel.Contextes.BattleFinishDialog.HeroBattleStatsContext._avatar": {
       "offset": "0x80",
       "type": "HeroAvatarContext",
       "source": "dump/redux/cs/il2cpp.cs (TypeDefIndex 7582/7577; ConfigGen cannot run without dump/cpp2il, and this listing's offsets match ConfigGen's, e.g. BattleFinishAllianceEnemyDialogContext._damageDealt 0x108)",
-      "status": "unverified"
+      "status": "verified",
+      "verified": "2026-11-17 15:42: Smasher8465 Clan Boss Hard result: the 5 champions' _attack summed 3,063,224 against the screen's 3.06M; names and deaths matched the team"
     },
     "Client.ViewModel.Contextes.BattleFinishDialog.HeroBattleStatsContext._attack": {
       "offset": "0x90",
       "type": "HeroBattleStatContext",
       "source": "dump/redux/cs/il2cpp.cs (TypeDefIndex 7582/7577; ConfigGen cannot run without dump/cpp2il, and this listing's offsets match ConfigGen's, e.g. BattleFinishAllianceEnemyDialogContext._damageDealt 0x108)",
-      "status": "unverified"
+      "status": "verified",
+      "verified": "2026-11-17 15:42: Smasher8465 Clan Boss Hard result: the 5 champions' _attack summed 3,063,224 against the screen's 3.06M; names and deaths matched the team"
     },
     "Client.ViewModel.Contextes.BattleFinishDialog.HeroBattleStatsContext._defence": {
       "offset": "0x98",
       "type": "HeroBattleStatContext",
       "source": "dump/redux/cs/il2cpp.cs (TypeDefIndex 7582/7577; ConfigGen cannot run without dump/cpp2il, and this listing's offsets match ConfigGen's, e.g. BattleFinishAllianceEnemyDialogContext._damageDealt 0x108)",
-      "status": "unverified"
+      "status": "verified",
+      "verified": "2026-11-17 15:42: Smasher8465 Clan Boss Hard result: the 5 champions' _attack summed 3,063,224 against the screen's 3.06M; names and deaths matched the team"
     },
     "Client.ViewModel.Contextes.BattleFinishDialog.HeroBattleStatsContext._heal": {
       "offset": "0xA0",
       "type": "HeroBattleStatContext",
       "source": "dump/redux/cs/il2cpp.cs (TypeDefIndex 7582/7577; ConfigGen cannot run without dump/cpp2il, and this listing's offsets match ConfigGen's, e.g. BattleFinishAllianceEnemyDialogContext._damageDealt 0x108)",
-      "status": "unverified"
+      "status": "verified",
+      "verified": "2026-11-17 15:42: Smasher8465 Clan Boss Hard result: the 5 champions' _attack summed 3,063,224 against the screen's 3.06M; names and deaths matched the team"
     },
     "Client.ViewModel.Contextes.BattleFinishDialog.HeroBattleStatContext._absoluteValue": {
       "offset": "0x50",
       "type": "LongProperty",
       "source": "dump/redux/cs/il2cpp.cs (TypeDefIndex 7582/7577; ConfigGen cannot run without dump/cpp2il, and this listing's offsets match ConfigGen's, e.g. BattleFinishAllianceEnemyDialogContext._damageDealt 0x108)",
+      "status": "verified",
+      "verified": "2026-11-17 15:42: Smasher8465 Clan Boss Hard result: the 5 champions' _attack summed 3,063,224 against the screen's 3.06M; names and deaths matched the team"
+    },
+    "Client.ViewModel.Contextes.Generic.Items.RequiredItemContext._requiredCount": {
+      "offset": "0x58",
+      "type": "IntProperty",
+      "source": "dump/redux/cs/il2cpp.cs (Client.ViewModel.Contextes.Generic.Items.RequiredItemContext, TypeDefIndex 6628; this listing's offsets match ConfigGen's)",
+      "status": "unverified"
+    },
+    "Client.ViewModel.Contextes.Generic.Items.RequiredItemContext._isEnough": {
+      "offset": "0x60",
+      "type": "BoolProperty",
+      "source": "dump/redux/cs/il2cpp.cs (Client.ViewModel.Contextes.Generic.Items.RequiredItemContext, TypeDefIndex 6628; this listing's offsets match ConfigGen's)",
       "status": "unverified"
     },
     "Client.MVVM.Base.ViewModel.Properties.LongProperty._value": {
       "offset": "0x28",
       "type": "long",
       "source": "dump/redux/il2cpp.h: LongProperty -> Property_1_System_Int64___Fields { ReadProperty fields (0x10, 0x18); bool _changing 0x20; int64_t _value 0x28 (8-aligned) }",
-      "status": "unverified"
+      "status": "verified",
+      "verified": "2026-11-17 15:42: Smasher8465 Clan Boss Hard result: the 5 champions' _attack summed 3,063,224 against the screen's 3.06M; names and deaths matched the team"
     },
     "Client.MVVM.Base.ViewModel.Properties.StringProperty._value": {
       "offset": "0x28",

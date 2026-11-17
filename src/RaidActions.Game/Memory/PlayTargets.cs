@@ -866,6 +866,16 @@ public static partial class PlayTargets
                     }
                     break;
                 }
+                case "Client.ViewModel.Contextes.Generic.Items.RequiredItemContext":
+                {
+                    // A required item (the Tavern's Ascend tab, 2026-11-17: four potions, each with a "+" that buys): whether the account has enough. Read
+                    // only, never clicked: Ascend is pressed only when every one is enough.
+                    const string Req = "Client.ViewModel.Contextes.Generic.Items.RequiredItemContext";
+                    var enough = Try(() => BoolValue(g, g.Ref(c.Address, Req, "_isEnough")), null, notes, "RequiredItemContext._isEnough");
+                    var count = Try(() => IntValue(g, g.Ref(c.Address, Req, "_requiredCount")), null, notes, "RequiredItemContext._requiredCount");
+                    targets.Add(Make("required-item", $"required item {count}", n, n, $"enough {enough}; need {count}"));
+                    break;
+                }
                 case var statsClass when statsClass.EndsWith(".HeroBattleStatsContext", StringComparison.Ordinal):
                 {
                     // A champion's line on a boss's result screen (2026-11-17): its damage dealt (_attack), taken (_defence) and healing (_heal), each a

@@ -172,6 +172,16 @@ public sealed partial class LivePlayGame : IFactionWarsGame
                     {
                         await Click("ascend-max", null, (_, _) => true, "MAX", ct);
                         await Pause(600, ct);
+                        // Every required potion there (2026-11-17: Courtier and Valerie were not ascended though Ascend was pressed: their potions were short;
+                        // the "+" beside each buys, never pressed).
+                        var (_, need, _) = await Read(ct);
+                        var reqs = need.Where(t => t.Kind == "required-item").ToList();
+                        if (reqs.Count > 0 && reqs.Any(t => t.Note?.Contains("enough True", StringComparison.Ordinal) != true))
+                        {
+                            log($"autoplay: push: {Who(id)} cannot ascend: potions short ({string.Join(", ", reqs.Select(t => t.Note))})");
+                            await HomeAsync(Action("from the Tavern"), ct);
+                            goto ascended;
+                        }
                         await Click("ascend-go", null, (_, _) => true, "Ascend", ct);
                         await Pause(2500, ct);
                         // The result (2026-11-17: the new stars and stats over the Tavern, its panel moved off to the right; a tap anywhere closes it), a
@@ -193,6 +203,7 @@ public sealed partial class LivePlayGame : IFactionWarsGame
                         else log($"autoplay: push: {Who(id)} was not ascended (still {rare.Ascension}). Screen dump: {DumpScreen("push ascend")}");
                     }
                     else log($"autoplay: push: {Who(id)} cannot ascend now (no potions for it)");
+                    ascended:;
                 }
                 catch (PlayStopException e) { log($"autoplay: push: ascending {Who(id)}: {e.Message}"); }
             }

@@ -240,7 +240,9 @@ public sealed partial class LivePlayGame : IClanBossGame
         static long? Num(string? note, string key) => note is not null && System.Text.RegularExpressions.Regex.Match(note, key + @" (\d+)") is { Success: true } m ? long.Parse(m.Groups[1].Value) : null;
         var lines = (await Read(ct)).Targets.Where(t => t.Kind == "boss-hero-stats").Select(t => new
         {
-            hero = t.Id, name = t.Id is { } h ? Who(h) : null, damage = Num(t.Note, "damage"), taken = Num(t.Note, "taken"), healing = Num(t.Note, "heal"),
+            // The avatar's id is the champion's type (2026-11-17: Razelvarg read 7850, its TypeId): the team's champion of that type.
+            hero = data.Champions.FirstOrDefault(c => ids.Contains(c.Id) && c.TypeId == t.Id)?.Id, typeId = t.Id,
+            name = data.Champions.FirstOrDefault(c => ids.Contains(c.Id) && c.TypeId == t.Id)?.Name, damage = Num(t.Note, "damage"), taken = Num(t.Note, "taken"), healing = Num(t.Note, "heal"),
             dead = t.Note?.Contains("dead True", StringComparison.Ordinal), read = t.Note,
         }).ToList();
         // Checked: the champions' damage adds up to the screen's total (the long offset is unverified until it does).
@@ -266,8 +268,34 @@ public sealed partial class LivePlayGame : IClanBossGame
         };
         var dir = Path.Combine(ExtractorOutput, "autoplay", "boss-fights");
         Directory.CreateDirectory(dir);
-        var file = Path.Combine(dir, $"{DateTime.Now:yyyyMMdd-HHmmss}-{label}-{difficulty}.json");
+        var stamp = $"{DateTime.Now:yyyyMMdd-HHmmss}-{label}-{difficulty}";
+        var file = Path.Combine(dir, stamp + ".json");
         File.WriteAllText(file, System.Text.Json.JsonSerializer.Serialize(record, AutoplayJson.Options));
+        // The same fight for the simulator's calibration (raid-extractor config/fights' shape; `cb-calibrate fight=<this file>`): the team by id, the
+        // account, and the history export from just before the fight (the gear it fought with). Demon Lord only: the simulator is the Clan Boss's.
+        if (label == "Clan Boss" && lines.Count > 0 && lines.All(l => l.name is not null && l.damage is not null))
+        {
+            var startedLocal = DateTime.Now - took;
+            var export = Directory.Exists(Path.Combine(ExtractorOutput, "history"))
+                ? Directory.GetFiles(Path.Combine(ExtractorOutput, "history"), "*.json.gz").Select(f => Path.GetFileName(f)[..^".json.gz".Length])
+                    .Where(n => DateTime.TryParseExact(n, "yyyyMMdd-HHmmss", System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.None, out var t) && t <= startedLocal)
+                    .OrderBy(n => n, StringComparer.Ordinal).LastOrDefault()
+                : null;
+            var fight = new
+            {
+                name = $"{data.Account.Name} {difficulty} {record.affinity}, {DateTime.Now:d MMM HH:mm} (bot, auto)",
+                difficulty, affinity = record.affinity, preset = "", export, total = damage ?? lines.Sum(l => l.damage ?? 0), lastBossTurn = (int?)null,
+                champions = lines.ToDictionary(l => l.name!, l => new { damage = l.damage, taken = l.taken, healing = l.healing }),
+                team, accountId = data.Account.Id,
+                notes = new[]
+                {
+                    $"Recorded by the bot from the result screen ({damageText}); per-champion values read from memory, their sum {lines.Sum(l => l.damage ?? 0):N0}.",
+                    $"Died: {string.Join(", ", lines.Where(l => l.dead == true).Select(l => l.name))}; death turns and boss turns not read.",
+                    $"Export {export ?? "none"} (the last before the fight's start, {startedLocal:HH:mm:ss}).",
+                },
+            };
+            File.WriteAllText(Path.Combine(dir, stamp + ".fight.json"), System.Text.Json.JsonSerializer.Serialize(fight, AutoplayJson.Options));
+        }
         log($"autoplay: {label} {difficulty}: fight recorded ({damageText ?? "damage not read"}, team {string.Join(", ", team.Select(Who))}) → {file}");
     }
 

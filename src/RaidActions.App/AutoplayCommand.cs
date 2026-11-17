@@ -131,7 +131,14 @@ public static class AutoplayCommand
             var folder = Path.Combine(outDir, "autoplay", DateTime.Now.ToString("yyyyMMdd-HHmmss"));
             Directory.CreateDirectory(folder);
             var policy = Game.Window.WindowPolicy.Load(GameCommands.WindowConfig);
-            var game = new LivePlayGame(live, ui, folder, policy, l => Print($"{DateTime.Now:HH:mm:ss} {l}"), GameCommands.LivePaths(outDir).RaidExtractorRoot, outDir) { SetsDefence = !dry };
+            // Each "STEP …" the game logs is also the status's "now" (Ehsan 2026-11-18: "the bot should always show exactly what it is doing").
+            AutoplayEngine? stepsTo = null;
+            void GameLog(string l)
+            {
+                Print($"{DateTime.Now:HH:mm:ss} {l}");
+                if (l.StartsWith("autoplay: STEP ", StringComparison.Ordinal)) stepsTo?.Now(l["autoplay: STEP ".Length..]);
+            }
+            var game = new LivePlayGame(live, ui, folder, policy, GameLog, GameCommands.LivePaths(outDir).RaidExtractorRoot, outDir) { SetsDefence = !dry };
             var fwActivity = new FactionWarsActivity(game);
             fwActivity.Restore(LiveAutoplayHost.Today(dir), DateOnly.FromDateTime(DateTime.UtcNow));
             var ccActivity = new CursedCityActivity(game);
@@ -177,6 +184,7 @@ public static class AutoplayCommand
                 .Select(p => new QuestNeed(Enum.Parse<QuestNeedKind>(p[0]), p.Length > 1 ? int.Parse(p[1], System.Globalization.CultureInfo.InvariantCulture) : 1, "test: " + p[0], "Test", true,
                     MinStage: p.Length > 2 ? int.Parse(p[2], System.Globalization.CultureInfo.InvariantCulture) : null)).ToList();
             var engine = new AutoplayEngine(activities, game, host, dry) { StartNeeds = testNeeds };
+            stepsTo = engine;
             var why = await engine.RunAsync(once, abort.Token);
             Print($"Stopped after {engine.Turns} turn(s): {why}");
             // The account's turn is over: the game on the next one, and a new bot for it (this one is tied to the old game process).

@@ -235,4 +235,44 @@ public class AutoplayEngineTests
         Assert.True(fine.Turns > 5);
         Assert.DoesNotContain("errors in a row", why);
     }
+
+    /// <summary>An area that logs a step during its turn (as LivePlayGame's "STEP" lines) and notes what the status said then.</summary>
+    private sealed class Stepping(string id, string name, DateTime? waitUntil) : IActivity
+    {
+        public AutoplayEngine? Engine { get; set; }
+        public Func<AutoplayStatus?>? Seen { get; set; }
+        public AutoplayStatus? DuringTurn { get; private set; }
+        public bool Played { get; private set; }
+        public string Id => id;
+        public string Name => name;
+        public bool IsEnabled(AutoplaySettings settings) => true;
+        public Decision Decide(PlayContext ctx) => waitUntil is { } w ? Decision.Wait(w, "a key comes back") : Played ? Decision.Off("done") : Decision.Now("its turn");
+        public Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
+        {
+            Engine!.Now("going to Dragon's Lair stage 12: 14 Energy");
+            DuringTurn = Seen!();
+            Played = true;
+            return Task.FromResult("played");
+        }
+        public AreaStatus Status(PlayContext ctx, Decision decision) => new(Id, Name, true, AreaState.Waiting, decision.Why, null, [], []);
+    }
+
+    [Fact]
+    public async Task The_status_says_what_the_bot_is_doing_now_and_what_comes_next()
+    {
+        // Ehsan 2026-11-18: "the bot should always show exactly what we are going to do now and what is being done".
+        var start = new DateTime(2026, 11, 18, 0, 0, 0, DateTimeKind.Utc);
+        var host = new FakeHost(start) { Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 } } };
+        var playing = new Stepping("energy", "Energy", null);
+        var waiting = new Stepping("clan-boss", "Clan Boss", start.AddMinutes(40));
+        host.OnDelay = h => { if (playing.Played) h.Stop = true; };
+        var engine = new AutoplayEngine([playing, waiting], new FakeArenaGame(() => host.UtcNow), host, false);
+        playing.Engine = engine;
+        playing.Seen = () => host.Last;
+        await engine.RunAsync(once: false, Limit());
+        Assert.Equal("going to Dragon's Lair stage 12: 14 Energy", playing.DuringTurn?.Now);
+        Assert.StartsWith("Clan Boss at ", playing.DuringTurn?.Next);
+        Assert.EndsWith(": a key comes back", playing.DuringTurn?.Next);
+        Assert.Null(host.Last!.Now); // stopped: no step in progress
+    }
 }

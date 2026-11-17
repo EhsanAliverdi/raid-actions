@@ -73,6 +73,8 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     /// <summary>Quests as if read (autoplay --test-quest): to try an area's quest on the live game when no such quest is open.</summary>
     public IReadOnlyList<QuestNeed> StartNeeds { get; init; } = [];
     private string _engine = "starting", _detail = "";
+    private string? _now;
+    private DateTime _nowWritten;
     private DateTime? _next;
     private PlayContext? _ctx;
     private Dictionary<string, Decision> _decisions = [];
@@ -244,6 +246,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 }
 
                 (_engine, _detail, _next) = ("playing", $"{act.Name}: {_decisions[act.Id].Why}", null);
+                _now = null;
                 WriteStatus();
                 try
                 {
@@ -381,12 +384,38 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
         host.Event(e);
     }
 
+    /// <summary>
+    /// The step the bot is on, in its own words (each "STEP …" it logs; Ehsan 2026-11-18): shown as "now" on the app's page; written at most every
+    /// 2 seconds so a burst of steps does not flood the status file.
+    /// </summary>
+    public void Now(string step)
+    {
+        var first = _now is null; // the turn's first step is always shown
+        _now = step.Length > 220 ? step[..217] + "…" : step;
+        if (!first && host.UtcNow - _nowWritten < TimeSpan.FromSeconds(2)) return;
+        WriteStatus();
+    }
+
+    /// <summary>The area due next (the earliest waiting decision of another area) and when.</summary>
+    private string? NextText()
+    {
+        if (_ctx is not { } ctx) return null;
+        var current = _detail;
+        var waiting = activities.Where(a => a.IsEnabled(ctx.Settings) && _decisions.TryGetValue(a.Id, out var d) && d.UntilUtc is not null && !current.StartsWith(a.Name + ":", StringComparison.Ordinal))
+            .OrderBy(a => _decisions[a.Id].UntilUtc).FirstOrDefault();
+        if (waiting is null) return null;
+        var d0 = _decisions[waiting.Id];
+        return $"{waiting.Name} at {d0.UntilUtc!.Value.ToLocalTime():HH:mm}: {d0.Why}";
+    }
+
     private void WriteStatus()
     {
+        _nowWritten = host.UtcNow;
         var ctx = _ctx;
         var areas = ctx is null ? [] : activities.Select(a => a.Status(ctx, _decisions.GetValueOrDefault(a.Id) ?? Decision.Off(a.IsEnabled(ctx.Settings) ? "starting" : "switched off"))).ToList();
         var clocks = ctx is null ? [] : ctx.Clocks.Values.Select(c => c.Out()).OfType<ClockOut>().ToList();
-        host.WriteStatus(new AutoplayStatus(host.UtcNow, host.ProcessId, dryRun, _engine, _detail, _next, clocks, areas, [.. _recent.TakeLast(20)]));
+        host.WriteStatus(new AutoplayStatus(host.UtcNow, host.ProcessId, dryRun, _engine, _detail, _next, clocks, areas, [.. _recent.TakeLast(20)])
+            { Now = _engine == "playing" ? _now : null, Next = NextText() });
     }
 
     private TimeSpan Jitter(int minutes) => TimeSpan.FromMinutes(Math.Max(0, minutes) * (0.75 + 0.5 * host.Random.NextDouble()));

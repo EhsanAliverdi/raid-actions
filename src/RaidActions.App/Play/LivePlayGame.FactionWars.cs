@@ -110,6 +110,8 @@ public sealed partial class LivePlayGame : IFactionWarsGame
             {
                 var (data, _, _, _) = await Account(ct);
                 if (data.Champions.FirstOrDefault(c => c.Id == id) is not { } c || push.TargetFor(c.Rarity, c.Rank, c.Level) is not { } to) break;
+                // In a vault (2026-11-17, Smasher8465: Valerie in the Bathhouse): the Brew screen does not list it; the crypt takes it out, the next push levels it.
+                if (c.InVault || c.InBathhouse) { log($"autoplay: push: {Who(id)} is in a vault: levelled after it comes out"); break; }
                 var affinity = Array.IndexOf(BrewOrder, c.Element);
                 var left = data.Inventory?.Items.GetValueOrDefault($"HeroLevelUpItem{c.Element}") ?? 0;
                 if (affinity < 0 || left <= 0) { log($"autoplay: push: {Who(id)} needs {c.Element} brews, none left"); break; }
@@ -125,6 +127,12 @@ public sealed partial class LivePlayGame : IFactionWarsGame
                 await Click("brew-item", t => t.Id == affinity, (_, _) => true, $"the {c.Element} brew", ct);
                 await Pause(600, ct);
                 await DragIntoView("brew-hero", ct, t => t.Id == id);
+                if (!(await Read(ct)).Targets.Any(t => t.Kind == "brew-hero" && t.Id == id))
+                {
+                    log($"autoplay: push: {Who(id)} is not on the Brew screen's {c.Rank}★ list: left. Screen dump: {DumpScreen("push hero not listed")}");
+                    await Click("brew-close", null, (s2, _) => Top(s2) != BrewView, "the Brew screen closes", ct);
+                    break;
+                }
                 await Click("brew-hero", t => t.Id == id, (_, _) => true, Who(id), ct);
                 await Pause(600, ct);
                 await Click("brew-upgrade", null, (_, _) => true, "Upgrade", ct);

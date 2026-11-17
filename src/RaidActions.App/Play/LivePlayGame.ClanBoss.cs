@@ -236,6 +236,8 @@ public sealed partial class LivePlayGame : IClanBossGame
     {
         var (data, _, _, _) = await Account(ct);
         var ids = team.ToHashSet();
+        // Each champion's line on the result screen (damage dealt, taken, healing), as read; the notes show which fields were found.
+        var lines = (await Read(ct)).Targets.Where(t => t.Kind == "boss-hero-stats").Select(t => new { hero = t.Id, read = t.Note }).ToList();
         var damage = damageText is { } d && System.Text.RegularExpressions.Regex.Match(d.Replace(",", ""), @"([\d.]+)\s*([KMB]?)", System.Text.RegularExpressions.RegexOptions.IgnoreCase) is { Success: true } m
             ? double.Parse(m.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture) * (m.Groups[2].Value.ToUpperInvariant() switch { "K" => 1e3, "M" => 1e6, "B" => 1e9, _ => 1 })
             : (double?)null;
@@ -250,6 +252,7 @@ public sealed partial class LivePlayGame : IClanBossGame
             damageText,
             total = damage,
             seconds = (int)took.TotalSeconds,
+            champions = lines,
             team = team.Select(id => data.Champions.FirstOrDefault(c => c.Id == id)).Where(c => c is not null).ToList(),
             artifacts = data.Artifacts.Where(a => a.OwnerHeroId is { } o && ids.Contains(o)).ToList(),
             resultDump,

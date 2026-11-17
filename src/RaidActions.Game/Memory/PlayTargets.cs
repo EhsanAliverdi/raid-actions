@@ -866,6 +866,31 @@ public static partial class PlayTargets
                     }
                     break;
                 }
+                case var statsClass when statsClass.EndsWith(".HeroBattleStatsContext", StringComparison.Ordinal):
+                {
+                    // A champion's line on a boss's result screen (2026-11-17: Attack, Defence, Heal under the avatar): its damage dealt, taken and its
+                    // healing, for the calibration record. The fields' names are tried in the forms the game uses (BattleFinish's "_damageDealt").
+                    string? Field(params string[] names)
+                    {
+                        foreach (var name in names)
+                            if (Try(() => StringValue(g, g.Ref(c.Address, statsClass, name)), null, notes, null) is { Length: > 0 } v) return v;
+                        foreach (var name in names)
+                            if (Try(() => (long?)g.Int(c.Address, statsClass, name), null, notes, null) is { } n) return n.ToString(System.Globalization.CultureInfo.InvariantCulture);
+                        return null;
+                    }
+                    var avatarNode = SelfAndBelow(i).FirstOrDefault(x => x.BindingPath == "Avatar");
+                    int? hero = null;
+                    foreach (var name in new[] { "_avatar", "_heroAvatar", "_Avatar_k__BackingField", "_HeroAvatar_k__BackingField" })
+                    {
+                        var av = Try(() => g.Ref(c.Address, statsClass, name), 0UL, notes, null);
+                        if (av != 0 && Try(() => (int?)g.Int(av, HeroAvatar, "_EntityId_k__BackingField"), null, notes, null) is { } h) { hero = h; break; }
+                    }
+                    var attack = Field("_attack", "_damage", "_damageDealt", "Attack");
+                    var defence = Field("_defence", "_defense", "_damageTaken", "Defence");
+                    var heal = Field("_heal", "_healing", "Heal");
+                    targets.Add(Make("boss-hero-stats", $"boss result: #{hero}", n, avatarNode ?? n, $"attack {attack}; defence {defence}; heal {heal}", id: hero));
+                    break;
+                }
                 case var brewClass when brewClass.EndsWith(".InstantBrewLevelUpHeroItemContext", StringComparison.Ordinal):
                 {
                     // A champion on the Brew screen: its Hero, found by its offset (0x80, 2026-11-17; the field's name is not known) and accepted only when the

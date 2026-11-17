@@ -736,7 +736,9 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         var rules = AutoplaySettings.Load(ExtractorOutput).Rules;
         var skipMinutes = resultView == "BattleFinishArena3x3Dialog" ? rules.TagRoundSkipMinutes : rules.ArenaRoundSkipMinutes;
         var skipAt = skipMinutes > 0 && resultView is PlayTargets.ArenaResultView or "BattleFinishArena3x3Dialog" ? DateTime.UtcNow + TimeSpan.FromMinutes(skipMinutes) : (DateTime?)null;
-        var autoTried = false;
+        // Auto checked all battle long, not once (Ehsan 2026-11-17: Tag Team ran on manual; each of its three rounds starts with auto off): a few seconds
+        // between tries, the battle never stopped for it.
+        var autoCheckAt = DateTime.MinValue;
         var speedTries = 0;
         while (DateTime.UtcNow < until)
         {
@@ -782,16 +784,19 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 await LeaveResult(ct, other);
                 return play with { Pve = play.Pve ?? new PveResultRead(null, null, null, null) };
             }
-            if (!autoTried && Has(s, PlayTargets.BattleHudView) && !s.UiBlocked)
+            if (DateTime.UtcNow >= autoCheckAt && Has(s, PlayTargets.BattleHudView) && !s.UiBlocked)
             {
+                autoCheckAt = DateTime.UtcNow + TimeSpan.FromSeconds(4);
                 var (_, _, play) = await Read(ct);
                 if (play.AutoOn == false)
                 {
-                    autoTried = true;
-                    await Click("battle-auto", null, (_, lazy) => lazy().AutoOn == true, "auto is on", ct, view: PlayTargets.BattleHudView);
-                    log("autoplay: auto switched on");
+                    try
+                    {
+                        await Click("battle-auto", null, (_, lazy) => lazy().AutoOn == true, "auto is on", ct, view: PlayTargets.BattleHudView);
+                        log("autoplay: auto switched on");
+                    }
+                    catch (PlayStopException e) { log($"autoplay: auto not switched on ({e.Message}); tried again in a moment"); }
                 }
-                else if (play.AutoOn == true) autoTried = true;
             }
             // Battle speed x2 (Ehsan 2026-10-30: the most the game offers); tried twice at most, a battle never stops for it.
             if (speedTries < 2 && Has(s, PlayTargets.BattleHudView) && !s.UiBlocked)

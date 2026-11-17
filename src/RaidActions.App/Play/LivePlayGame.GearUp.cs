@@ -71,7 +71,11 @@ public sealed partial class LivePlayGame
         var steps = due.Select(e => (Entry: e, Step: TeamPrep.Restore(e, data, locks))).ToList();
         foreach (var (e, step) in steps.Where(s => s.Step.Skip is not null))
             log($"autoplay: {Who(e.Id)} is left as it is ({step.Skip})");
-        var go = steps.Where(s => s.Step.Skip is null).ToList();
+        // A champion in a vault now (2026-11-17, killer8465: Incubus) cannot have its gear changed: it waits (kept on the list) and the others go on.
+        var inVault = steps.Where(s => s.Step.Skip is null && s.Step.GearChanged
+            && data.Champions.FirstOrDefault(c => c.Id == s.Entry.Id) is { } c && (c.InVault || c.InBathhouse)).Select(s => s.Entry.Id).ToHashSet();
+        foreach (var id in inVault) log($"autoplay: {Who(id)} is in a vault: its gear is put back after it comes out");
+        var go = steps.Where(s => s.Step.Skip is null && !inVault.Contains(s.Entry.Id)).ToList();
         string[] dry = dryRun ? ["--dry-run"] : [];
         static string N(int id) => id.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
@@ -105,7 +109,7 @@ public sealed partial class LivePlayGame
 
         if (!dryRun)
         {
-            var done = steps.Select(s => s.Entry.Id).ToHashSet();
+            var done = steps.Select(s => s.Entry.Id).Where(id => !inVault.Contains(id)).ToHashSet();
             TeamPrep.Save(ExtractorOutput, [.. TeamPrep.Load(ExtractorOutput).Where(e => !done.Contains(e.Id))]);
         }
         await HomeAsync(Action("after putting back"), ct);

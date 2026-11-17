@@ -268,7 +268,7 @@ public sealed partial class LivePlayGame : IClanBossGame
         };
         var dir = Path.Combine(ExtractorOutput, "autoplay", "boss-fights");
         Directory.CreateDirectory(dir);
-        var stamp = $"{DateTime.Now:yyyyMMdd-HHmmss}-{label}-{difficulty}";
+        var stamp = $"{DateTime.Now:yyyyMMdd-HHmmss}-{label.Replace(' ', '-')}-{difficulty}"; // no spaces: the path is passed on a command line (cb-calibrate fight=...)
         var file = Path.Combine(dir, stamp + ".json");
         File.WriteAllText(file, System.Text.Json.JsonSerializer.Serialize(record, AutoplayJson.Options));
         // The same fight for the simulator's calibration (raid-extractor config/fights' shape; `cb-calibrate fight=<this file>`): the team by id, the

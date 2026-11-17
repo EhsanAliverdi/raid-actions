@@ -69,13 +69,15 @@
       "offset": "0x58",
       "type": "IntProperty",
       "source": "dump/redux/cs/il2cpp.cs (Client.ViewModel.Contextes.Generic.Items.RequiredItemContext, TypeDefIndex 6628; this listing's offsets match ConfigGen's)",
-      "status": "unverified"
+      "status": "verified",
+      "verified": "2026-11-17 17:30: KaelStormVex Courtier's Ascend tab read need 10/2/5/1 with enough False/False/True/True"
     },
     "Client.ViewModel.Contextes.Generic.Items.RequiredItemContext._isEnough": {
       "offset": "0x60",
       "type": "BoolProperty",
       "source": "dump/redux/cs/il2cpp.cs (Client.ViewModel.Contextes.Generic.Items.RequiredItemContext, TypeDefIndex 6628; this listing's offsets match ConfigGen's)",
-      "status": "unverified"
+      "status": "verified",
+      "verified": "2026-11-17 17:30: KaelStormVex Courtier's Ascend tab read need 10/2/5/1 with enough False/False/True/True"
     },
     "Client.MVVM.Base.ViewModel.Properties.LongProperty._value": {
       "offset": "0x28",

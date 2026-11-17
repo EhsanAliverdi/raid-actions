@@ -763,15 +763,27 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 continue;
             }
             if (!s.InBattle) return null; // the battle ended somewhere else (the game moved on)
+            // Between two Tag Team rounds (2026-11-17, BlackLord65: the series' first round ended at 2 minutes and the skip met this screen): the next
+            // round gets its own limit from here.
+            if (skipAt is not null && Top(s) is { } between && between.Contains("BetweenRounds", StringComparison.Ordinal))
+            {
+                skipAt = DateTime.UtcNow + TimeSpan.FromMinutes(skipMinutes);
+                continue;
+            }
             if (skipAt is { } skip && DateTime.UtcNow >= skip && Has(s, PlayTargets.BattleHudView) && !s.UiBlocked)
             {
                 log($"autoplay: this arena round has run {skipMinutes} minutes: skipping it");
                 skipAt = DateTime.UtcNow + TimeSpan.FromMinutes(skipMinutes); // the next round's own limit
-                await Click("battle-pause", null, (s2, _) => Top(s2) == "BattlePauseDialog", "the pause menu", ct, within: TimeSpan.FromSeconds(6));
-                await Task.Delay(500, ct);
-                await Click("battle-giveup", null, (s2, _) => Top(s2) == UiState.MessageBoxView, "Skip Battle", ct, within: TimeSpan.FromSeconds(6));
-                await Task.Delay(500, ct);
-                await Click("battle-giveup-yes", null, (s2, _) => Top(s2) != UiState.MessageBoxView, "the skip confirmed", ct, within: TimeSpan.FromSeconds(6));
+                try
+                {
+                    await Click("battle-pause", null, (s2, _) => Top(s2) == "BattlePauseDialog", "the pause menu", ct, within: TimeSpan.FromSeconds(6));
+                    await Task.Delay(500, ct);
+                    await Click("battle-giveup", null, (s2, _) => Top(s2) == UiState.MessageBoxView, "Skip Battle", ct, within: TimeSpan.FromSeconds(6));
+                    await Task.Delay(500, ct);
+                    await Click("battle-giveup-yes", null, (s2, _) => Top(s2) != UiState.MessageBoxView, "the skip confirmed", ct, within: TimeSpan.FromSeconds(6));
+                }
+                // The round ended under the click (or the pause menu did not open): the battle goes on, watched as before (auto, the result).
+                catch (PlayStopException e) { log($"autoplay: the round was not skipped ({e.Message}); the battle goes on"); }
                 until = DateTime.UtcNow + TimeSpan.FromMinutes(20);
                 continue;
             }

@@ -190,6 +190,8 @@ public sealed partial class LivePlayGame : IClanBossGame
         }
         // The team that fights, for the calibration record (Ehsan 2026-11-17: every Clan Boss fight recorded to calibrate the simulator).
         var fightTeam = (await Read(ct)).Play.TeamIds?.ToList() ?? [];
+        // The boss's affinity as the fight starts (Ehsan 2026-11-18: it changes as the clan's boss loses HP, several in one day, not per day).
+        var affinityAtStart = (await Account(ct)).Data.Events?.ClanBoss?.ElementByDifficulty.GetValueOrDefault(difficulty);
         await Click("team-start", t => t.View == teamView, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView or "AllianceBossQuickBattleConfirmOverlay" or "ChimeraQuickBattleConfirmOverlay" or QuickResult or ChimeraQuickResult,
             "the battle starts", ct, within: TimeSpan.FromSeconds(25), shot: true);
         // The game asks before a normal battle where Quick Battle is open (seen 2026-11-01): its one action is Continue.
@@ -220,7 +222,7 @@ public sealed partial class LivePlayGame : IClanBossGame
         var result = await WaitBattle(ct, resultView);
         var damage = result?.ClanDamage;
         // The result screen dumped whole (its per-champion damage, taken and healing are read from it once their places are known) and the fight recorded.
-        try { await RecordClanFight(label, difficulty, fightTeam, damage, DateTime.UtcNow - started, DumpScreen($"{label} {difficulty} result"), ct); }
+        try { await RecordClanFight(label, difficulty, affinityAtStart, fightTeam, damage, DateTime.UtcNow - started, DumpScreen($"{label} {difficulty} result"), ct); }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException or PlayStopException) { log($"autoplay: the {label} fight was not recorded: {e.Message}"); }
         await LeaveResult(ct, resultView);
         // An alliance boss is never "won": the battle ends when the team falls or the turns run out; its result is the damage.
@@ -232,7 +234,7 @@ public sealed partial class LivePlayGame : IClanBossGame
     /// the boss's affinity today, the team with each champion's stats and gear, the damage and the time, and the result screen's dump. In
     /// output/accounts/&lt;id&gt;/autoplay/boss-fights/.
     /// </summary>
-    private async Task RecordClanFight(string label, string difficulty, List<int> team, string? damageText, TimeSpan took, string resultDump, CancellationToken ct)
+    private async Task RecordClanFight(string label, string difficulty, string? affinityAtStart, List<int> team, string? damageText, TimeSpan took, string resultDump, CancellationToken ct)
     {
         var (data, _, _, _) = await Account(ct);
         var ids = team.ToHashSet();
@@ -257,7 +259,7 @@ public sealed partial class LivePlayGame : IClanBossGame
             accountId = data.Account.Id,
             boss = label,
             difficulty,
-            affinity = data.Events?.ClanBoss?.ElementByDifficulty.GetValueOrDefault(difficulty),
+            affinity = affinityAtStart ?? data.Events?.ClanBoss?.ElementByDifficulty.GetValueOrDefault(difficulty),
             damageText,
             total = damage,
             seconds = (int)took.TotalSeconds,

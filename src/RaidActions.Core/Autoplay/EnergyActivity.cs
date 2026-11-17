@@ -227,7 +227,8 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             var anyBoss = n.Region is null && n.MinStage is null && n.Text.Contains("Boss", StringComparison.OrdinalIgnoreCase);
             // The player's own dungeon row for it (Ehsan 2026-11-13: "you played Dragon's Lair 25, why? we farm Hard 4"): a Hard stage of that dungeon (or of any
             // dungeon, for an "any dungeon" quest) counts, and it is what the energy is for: that row's place, difficulty and stage.
-            if (ctx.Settings.Energy.Targets.FirstOrDefault(t => t.Enabled && t.Area == "Dungeon" && EnergyPlaces.Group(t.Region) is null && t.Stage is not null
+            // Never a climbing row (2026-11-18, killer8465: the dungeon quest took the Dragon's Lair push row and lost its next stage, 11): a quest replays.
+            if (ctx.Settings.Energy.Targets.FirstOrDefault(t => t.Enabled && !t.Progress && t.Area == "Dungeon" && EnergyPlaces.Group(t.Region) is null && t.Stage is not null
                     && (n.Region is null ? t.Difficulty == "Hard" || n.MinStage is null : t.Region == n.Region && (t.Difficulty == "Hard" || n.MinStage is not { } m0 || t.Stage >= m0))) is { } own)
             {
                 rows.Add(own with { Id = id, RunsPerDay = null });

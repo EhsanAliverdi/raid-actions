@@ -845,7 +845,9 @@ public sealed partial class LivePlayGame : IChoresGame
         var protection = GearAdvice.Protection(data, ExtractorOutput);
         var context = AdviceContext.From(data);
         var advice = data.Artifacts.Select(a => GearAdvice.Advise(a, rules, gd, stage.Stage, protection.GetValueOrDefault(a.Id), context: context)).ToList();
-        var pieces = data.Artifacts.ToDictionary(a => a.Id);
+        // A piece worn by a champion in a vault cannot be reached from the champion list (2026-11-18, killer8465: Incubus's weapon): left out.
+        var vaulted = data.Champions.Where(c => c.InVault || c.InBathhouse).Select(c => c.Id).ToHashSet();
+        var pieces = data.Artifacts.Where(a => a.OwnerHeroId is not { } o || !vaulted.Contains(o)).ToDictionary(a => a.Id);
         // A piece whose price would take the silver under the floor is not started (2026-11-02: one went from 500K to 420K).
         var maxSilver = keepSilver > 0 ? data.Account.Resources.GetValueOrDefault("Silver") - keepSilver : double.MaxValue;
         if (ChoreRules.Upgrade(advice, pieces, minLevel, attempts, maxSilver) is not { } pick) return null;

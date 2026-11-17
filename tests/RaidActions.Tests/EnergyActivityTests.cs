@@ -167,6 +167,24 @@ public class EnergyActivityTests
     }
 
     [Fact]
+    public async Task A_dungeon_quest_replays_a_beaten_stage_never_the_push_row_s_next_one()
+    {
+        // 2026-11-18, killer8465: "Beat a Dungeon Boss" took the Dragon's Lair push row and fought its next, unbeaten stage (lost, 12 energy).
+        var push = new EnergyTarget { Id = "push-dragon", Area = "Dungeon", Region = "DragonsLair", Difficulty = "Normal", Stage = 25, Progress = true, LossWaitHours = 24 };
+        var host = new FakeHost(Start)
+        {
+            Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 }, Energy = On(push, Row("farm")), Quests = new QuestSettings { Enabled = true } },
+        };
+        var game = new FakeEnergyGame(() => host.UtcNow) { Energy = 100 };
+        var engine = new AutoplayEngine([new EnergyActivity(game)], new FakeArenaGame(() => host.UtcNow), host, false)
+            { StartNeeds = [new QuestNeed(QuestNeedKind.DungeonBoss, 1, "Beat a Dungeon Boss 15 times", "Weekly", true)] };
+        await engine.RunAsync(once: true, Limit());
+        var quest = host.Events.FirstOrDefault(e => e.Kind == "battle" && e.Text.Contains("[row quest-dungeon-any]"));
+        Assert.True(quest is not null, string.Join(" / ", host.Events.Select(e => $"{e.Kind}: {e.Text}")));
+        Assert.Contains("stage 1:", quest!.Text, StringComparison.Ordinal);   // the cheapest beaten stage, a replay
+    }
+
+    [Fact]
     public async Task A_lost_push_stage_waits_until_the_team_is_stronger()
     {
         // Ehsan 2026-11-17: the stage lost 3 days ago is not tried again unless the team is 10% stronger.

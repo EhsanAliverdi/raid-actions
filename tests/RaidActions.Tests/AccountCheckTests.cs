@@ -49,7 +49,16 @@ public class AccountCheckTests
     }
 
     [Fact]
-    public void Upgraded_piece() => Refused(Check(TestData.Export(With(200, a => a with { Level = 16 }))), IssueCode.ArtifactUpgraded, 2);
+    public void Upgraded_piece_is_kept_with_a_warning()
+    {
+        // 2026-11-18: an upgrade between a plan's champions (the gear upgrade) is the same piece, stronger: a warning, the plan goes on.
+        var r = Check(TestData.Export(With(200, a => a with { Level = 16 })));
+        Assert.True(r.CanStart, string.Join("; ", r.Issues));
+        Assert.Contains(r.Issues, i => i.Code == IssueCode.ArtifactUpgraded && i.Severity == Severity.Warning && i.Step == 2);
+    }
+
+    [Fact]
+    public void A_piece_whose_level_went_down_is_refused() => Refused(Check(TestData.Export(With(200, a => a with { Level = 0 }))), IssueCode.ArtifactUpgraded, 2);
 
     [Fact]
     public void Ascended_piece() => Refused(Check(TestData.Export(With(202, a => a with { AscendLevel = 1 }))), IssueCode.ArtifactUpgraded);
@@ -89,7 +98,7 @@ public class AccountCheckTests
     public void An_upgrade_is_reported_once_even_with_a_fingerprint()
     {
         var r = Check(TestData.Export(With(200, a => a with { Level = 16 })), plan: TestData.Plan(TestData.AddFingerprints));
-        Refused(r, IssueCode.ArtifactUpgraded, 2);
+        Assert.Single(r.Issues, i => i.Code == IssueCode.ArtifactUpgraded);
         Assert.DoesNotContain(r.Issues, i => i.Code == IssueCode.ArtifactRerolled);
     }
 

@@ -59,7 +59,12 @@ public static class AccountCheck
                 continue;
             }
             if (a.Slot != p.Slot) issues.Add(PlanIssue.Error(IssueCode.ArtifactSlotChanged, $"{label} is now a {a.Slot}: not the same piece.", n));
-            if (a.Level != p.Level || a.Rank != p.Rank || a.AscendLevel != p.Ascension)
+            // Only its level went up (same rank and ascension): the same piece, upgraded (2026-11-18: the gear upgrade between a plan's champions made the
+            // runner refuse the rest; Ehsan wants pieces upgraded as the team is geared). A warning: its stats grew, a SPD substat may have rolled.
+            if (a.Level > p.Level && a.Rank == p.Rank && a.AscendLevel == p.Ascension)
+                issues.Add(PlanIssue.Warning(IssueCode.ArtifactUpgraded,
+                    $"{label} was upgraded since the plan (+{p.Level} → +{a.Level}): the same piece, kept; its stats grew (check the speeds after the plan).", n));
+            else if (a.Level != p.Level || a.Rank != p.Rank || a.AscendLevel != p.Ascension)
                 issues.Add(PlanIssue.Error(IssueCode.ArtifactUpgraded,
                     $"{label} changed since the plan: {p.Rank}★ +{p.Level} asc {p.Ascension} → {a.Rank}★ +{a.Level} asc {a.AscendLevel}.", n));
             var upgraded = a.Level != p.Level || a.Rank != p.Rank || a.AscendLevel != p.Ascension; // already reported

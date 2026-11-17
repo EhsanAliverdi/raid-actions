@@ -100,7 +100,8 @@ public class ChoresActivityTests
     {
         var (ctx, game, chores) = Make(Need(QuestNeedKind.Market, 1), Need(QuestNeedKind.LevelUp, 1), Need(QuestNeedKind.ArtifactAttempts, 4), Need(QuestNeedKind.ArtifactLevel, 1, 12));
         for (var i = 0; i < 8; i++) await chores.RunTurnAsync(ctx, CancellationToken.None); // the red dots and the clan check-in (on by default since 2026-11-16) take a turn each
-        Assert.Equal(["market quest=True", "level", "upgrade  True 0", "upgrade  True 0", "upgrade 12 False 0", "inbox"], game.Calls);
+        // Quests' upgrades keep the silver kept from everything too (600K by default, Ehsan 2026-11-17).
+        Assert.Equal(["market quest=True", "level", "upgrade  True 600000", "upgrade  True 600000", "upgrade 12 False 600000", "inbox"], game.Calls);
     }
 
     [Fact]

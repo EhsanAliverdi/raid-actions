@@ -797,6 +797,46 @@ public sealed partial class LivePlayGame : IChoresGame
 
     private NavigatingDriver? _upgrader;
 
+    /// <summary>
+    /// The gear upgrade (Ehsan 2026-11-17; Core <see cref="GearUpgradeSettings"/>): after the bot gears <paramref name="champions"/>, each piece they wear of a
+    /// ticked star count and rarity goes up to the level, the highest-starred first; every attempt keeps the silver above <see cref="AutoplaySettings.KeepSilver"/>
+    /// (its price plus the floor must be there). A dry run only lists them. Empty when there is nothing to do.
+    /// </summary>
+    private async Task<string> UpgradeWornAsync(IReadOnlyCollection<int> champions, string tag, bool dryRun, CancellationToken ct)
+    {
+        var settings = AutoplaySettings.Load(ExtractorOutput);
+        if (settings.GearUpgrade is not { Enabled: true } gu || champions.Count == 0) return "";
+        var (data, gd, _, _) = await Account(ct);
+        if (gd.ArtifactRules is not { } rules) return "";
+        var keep = Math.Max(0, settings.KeepSilver);
+        // A champion in a vault cannot have its gear changed: its pieces wait.
+        var ids = champions.Where(id => data.Champions.FirstOrDefault(c => c.Id == id) is { InVault: false, InBathhouse: false }).ToHashSet();
+        var picks = gu.Picks(data.Artifacts, ids);
+        if (picks.Count == 0) return "";
+        log($"autoplay: STEP gear upgrade for {tag}: {string.Join(", ", picks.Select(p => $"#{p.Piece.Id} {p.Piece.Rank}* {p.Piece.Rarity} {p.Piece.Slot} +{p.Piece.Level} to +{p.Target} ({Who(p.Piece.OwnerHeroId!.Value)})"))}");
+        if (dryRun) return $"gear upgrade: {picks.Count} piece(s) would go to +{gu.Level} (dry run)";
+        _upgrader ??= new NavigatingDriver(game, ui, null, folder, policy, log, upgrade: true);
+        // The floor in the price: an attempt starts only when the silver after it stays at or above what is kept.
+        long? PriceOf(ArtifactOut a) => GearRating.AttemptPrice(a, rules) is { } p ? p + keep : keep;
+        int done = 0, levels = 0;
+        long silver = 0;
+        string? stopped = null;
+        for (var i = 0; i < picks.Count; i++)
+        {
+            var (piece, target) = picks[i];
+            NavigatingDriver.UpgradeResult r;
+            try { r = await _upgrader.UpgradePiece(piece.Id, piece.Slot, target, real: true, PriceOf, i + 1, picks.Count, ct); }
+            catch (NavigatingDriver.StopException e) { stopped = e.Message; log($"autoplay: gear upgrade stopped at #{piece.Id}: {e.Message}"); break; }
+            levels += r.To - r.From;
+            silver += r.SilverSpent;
+            if (r.Done) done++;
+            log($"autoplay: gear upgrade #{piece.Id} {piece.Slot} +{r.From} to +{r.To} (target +{target}): {r.Outcome}, {r.Attempts} attempt(s), {r.SilverSpent:N0} silver");
+            if (r.Outcome.StartsWith("out of silver", StringComparison.Ordinal)) { stopped = $"silver kept at {keep:N0}"; break; }
+        }
+        await HomeAsync(Action("from the gear upgrade"), ct);
+        return $"gear upgrade: {done} of {picks.Count} piece(s) to +{gu.Level}, {levels} level(s), {silver:N0} silver" + (stopped is null ? "" : $" (stopped: {stopped})");
+    }
+
     public async Task<ArtifactOutcome?> UpgradeArtifactAsync(int? minLevel, bool attempts, long keepSilver, bool dryRun, CancellationToken ct)
     {
         var (data, gd, _, _) = await Account(ct);

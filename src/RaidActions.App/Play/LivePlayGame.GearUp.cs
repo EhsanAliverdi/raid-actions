@@ -46,9 +46,10 @@ public sealed partial class LivePlayGame
             foreach (var args in commands ?? []) await RunCommand(args, ct);
         }
         if (choice.PutBack && !dryRun) TeamPrep.Save(ExtractorOutput, TeamPrep.Merge(TeamPrep.Load(ExtractorOutput), snapshot, [.. team], now));
+        var upgraded = await UpgradeWornAsync([.. team], tag, dryRun, ct);
         await HomeAsync(Action("after preparing the team"), ct);
         var pieces = picked.Sum(m => m.Moves.Count);
-        return $"{pieces} piece(s) for {picked.Count} champion(s), {vaulted.Count} out of a vault" + (choice.PutBack ? "; put back after" : "") + (dryRun ? " (dry run)" : "");
+        return $"{pieces} piece(s) for {picked.Count} champion(s), {vaulted.Count} out of a vault" + (choice.PutBack ? "; put back after" : "") + (upgraded.Length > 0 ? $"; {upgraded}" : "") + (dryRun ? " (dry run)" : "");
     }
 
     /// <summary>Your locks (and the Clan Boss team) plus the pieces of champions the bot has out: those stay off other teams until they are put back.</summary>

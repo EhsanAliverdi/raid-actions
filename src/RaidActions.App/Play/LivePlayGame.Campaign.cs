@@ -477,13 +477,21 @@ public sealed partial class LivePlayGame
         var (data, gd, ratings, locks) = await Account(ct);
         var made = Prepare.Make(data, gd, ratings, team, fight, locks: locks);
         var picked = made.Members.Where(m => m.Changes && !m.InVault).ToList();
-        if (picked.Count == 0) return "nothing better in the inventory; the team keeps its gear";
-        var (commands, _, problem) = Prepare.BotCommands(data, gd, fight, picked, ExtractorOutput, dryRun);
-        if (commands is null) return problem ?? "nothing to equip";
-        log($"autoplay: STEP gear review for {fight}: {string.Join(", ", picked.Select(m => $"{m.Name} ({m.Moves.Count} piece(s))"))}");
-        foreach (var args in commands) await RunCommand(args, ct);
-        var pieces = picked.Sum(m => m.Moves.Count);
-        return $"{pieces} piece{(pieces == 1 ? "" : "s")} for {string.Join(", ", picked.Select(m => m.Name))}" + (dryRun ? " (dry run)" : "");
+        string? geared = null;
+        if (picked.Count > 0)
+        {
+            var (commands, _, problem) = Prepare.BotCommands(data, gd, fight, picked, ExtractorOutput, dryRun);
+            if (commands is null) geared = problem ?? "nothing to equip";
+            else
+            {
+                log($"autoplay: STEP gear review for {fight}: {string.Join(", ", picked.Select(m => $"{m.Name} ({m.Moves.Count} piece(s))"))}");
+                foreach (var args in commands) await RunCommand(args, ct);
+                var pieces = picked.Sum(m => m.Moves.Count);
+                geared = $"{pieces} piece{(pieces == 1 ? "" : "s")} for {string.Join(", ", picked.Select(m => m.Name))}" + (dryRun ? " (dry run)" : "");
+            }
+        }
+        var upgraded = await UpgradeWornAsync([.. team], fight, dryRun, ct);
+        return (geared ?? "nothing better in the inventory; the team keeps its gear") + (upgraded.Length > 0 ? $"; {upgraded}" : "");
     }
 
     /// <summary>The clean-up's pieces per sale.</summary>

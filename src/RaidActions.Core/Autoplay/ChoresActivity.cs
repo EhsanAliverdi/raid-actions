@@ -288,7 +288,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
                 case "attempts" or "piece" or "advised":
                     var minLevel = job == "piece" ? ctx.QuestNeeds.FirstOrDefault(q => q.Kind == QuestNeedKind.ArtifactLevel)?.MinStage : null;
                     if (job == "advised") _upgradeAt = ctx.Utc + TimeSpan.FromMinutes(Math.Max(5, s.UpgradeEveryMinutes));
-                    var outcome = await game.UpgradeArtifactAsync(minLevel, job == "attempts", job == "advised" ? s.UpgradeKeepSilver : 0, ctx.DryRun, ct);
+                    var outcome = await game.UpgradeArtifactAsync(minLevel, job == "attempts", job == "advised" ? s.UpgradeKeepSilver : Math.Max(0, ctx.Settings.KeepSilver), ctx.DryRun, ct);
                     if (outcome is null || ctx.DryRun)
                     {
                         _paused[job] = ctx.Utc + Pause;

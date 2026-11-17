@@ -26,7 +26,8 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
 
     public AutoplaySettings LoadSettings()
     {
-        var s = AutoplaySettings.Load(dir);
+        // The silver kept from everything (Ehsan 2026-11-17) raises each area's lower floor as the bot plays; the file keeps each area's own value.
+        var s = AutoplaySettings.Load(dir).WithSilverFloor();
         return overrideSettings is null ? s : overrideSettings(s);
     }
 

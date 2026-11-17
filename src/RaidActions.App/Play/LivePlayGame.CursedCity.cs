@@ -103,8 +103,9 @@ public sealed partial class LivePlayGame : ICursedCityGame
         log($"autoplay: STEP gearing for {CursedCityPlanner.Where(level.Stage)}: {string.Join(", ", picked.Select(m => $"{m.Name} ({m.Moves.Count} piece(s){(m.InVault ? ", out of the vault first" : "")})"))}");
         foreach (var args in commands) await RunCommand(args, ct);
         if (!dryRun) FromVault(picked.Where(m => m.InVault).Select(m => m.ChampionId), data);
+        var upgraded = await UpgradeWornAsync([.. ids], fight, dryRun, ct);
         var pieces = picked.Sum(m => m.Moves.Count);
-        return $"{pieces} piece{(pieces == 1 ? "" : "s")}" + (dryRun ? " (dry run)" : "");
+        return $"{pieces} piece{(pieces == 1 ? "" : "s")}" + (upgraded.Length > 0 ? $"; {upgraded}" : "") + (dryRun ? " (dry run)" : "");
     }
 
     public async Task<string> RemoveGearAsync(IReadOnlyList<int> ids, bool dryRun, CancellationToken ct, bool cursedCity)

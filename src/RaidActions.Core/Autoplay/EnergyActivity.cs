@@ -134,6 +134,18 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     private EnergyPlan? _plan;
     /// <summary>A food step that did nothing (or a dry run that showed it): not tried again until then.</summary>
     private DateTime _rankUpBlockedUntil = DateTime.MinValue, _summonBlockedUntil = DateTime.MinValue;
+
+    // The pauses kept for the next bot on the account (2026-11-18: killer8465's full roster stopped the summon "until tomorrow", and the restarted bot
+    // tried again 20 minutes later).
+    private sealed record Saved(DateTime SummonBlockedUntil, DateTime RankUpBlockedUntil);
+
+    public string? SaveState() => System.Text.Json.JsonSerializer.Serialize(new Saved(_summonBlockedUntil, _rankUpBlockedUntil), AutoplayJson.Options);
+
+    public void LoadState(string json, DateTime utc)
+    {
+        if (System.Text.Json.JsonSerializer.Deserialize<Saved>(json, AutoplayJson.Options) is not { } s) return;
+        (_summonBlockedUntil, _rankUpBlockedUntil) = (s.SummonBlockedUntil, s.RankUpBlockedUntil);
+    }
     private int _rankedUp, _summoned, _sold;
     /// <summary>The 3-star rows' sweeps (<see cref="ThreeStarState"/>), read from the game's store each step.</summary>
     private Dictionary<string, ThreeStarState> _threeStars = [];

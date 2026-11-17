@@ -143,7 +143,7 @@ public static class Cli
             // Marked for the account check (2026-11-10 13:33: the flag was gone, so a game that came up on another pool account stopped the rotation).
             args = [.. args.Where(a => a != "--restart-first"), "--restarted"];
         }
-        if (args.Length > 0 && (args[0].Equals("autoplay", StringComparison.OrdinalIgnoreCase) || args[0].Equals("autoplay-explore", StringComparison.OrdinalIgnoreCase)))
+        if (args.Length > 0 && (args[0].Equals("autoplay", StringComparison.OrdinalIgnoreCase) || args[0].Equals("autoplay-explore", StringComparison.OrdinalIgnoreCase) || args[0].Equals("autoplay-gear-upgrade", StringComparison.OrdinalIgnoreCase)))
         {
             var outIndex = Array.IndexOf(args, "--output");
             var outDir = AppPaths.Resolve(null, outIndex >= 0 && outIndex + 1 < args.Length ? args[outIndex + 1] : null).Output;

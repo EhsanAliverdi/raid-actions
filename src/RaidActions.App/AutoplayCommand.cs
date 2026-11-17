@@ -24,6 +24,7 @@ public static class AutoplayCommand
         void Print(string line) { lock (output) output.WriteLine(line); }
 
         if (args[0].Equals("autoplay-explore", StringComparison.OrdinalIgnoreCase)) return Explore(outDir, Print, args.Contains("--tree", StringComparer.OrdinalIgnoreCase));
+        if (args[0].Equals("autoplay-gear-upgrade", StringComparison.OrdinalIgnoreCase)) return await GearUpgrade(args, outDir, Print);
 
         var dry = args.Contains("--dry-run");
         var once = args.Contains("--once");
@@ -243,6 +244,35 @@ public static class AutoplayCommand
             foreach (var line in game.Explore()) print(line);
             if (tree) print($"element trees: {game.DumpScreenFile("explore --tree")}");
             return Cli.Ok;
+        }
+    }
+
+    /// <summary>
+    /// The gear upgrade on its own (Ehsan 2026-11-17, to test it): the pieces the given champions wear, by the account's Gear upgrade settings and the silver
+    /// kept, exactly as after a gearing. <c>--dry-run</c> only lists them.
+    /// </summary>
+    private static async Task<int> GearUpgrade(string[] args, string outDir, Action<string> print)
+    {
+        var ids = args.Skip(1).Where(a => int.TryParse(a, out _)).Select(int.Parse).ToList();
+        if (ids.Count == 0) { print("autoplay-gear-upgrade <champion id>... [--dry-run]"); return Cli.Failed; }
+        var (live, problem) = LiveGame.Open(GameCommands.LivePaths(outDir));
+        if (live is null) { print(problem!); return Cli.Failed; }
+        using (live)
+        {
+            UnityUi ui;
+            try { ui = live.Ui(UiCommands.NativeLayoutPath); }
+            catch (UiReadException e) { print(e.Message); return Cli.Failed; }
+            var folder = Path.Combine(outDir, "autoplay", DateTime.Now.ToString("yyyyMMdd-HHmmss") + "-gear-upgrade");
+            Directory.CreateDirectory(folder);
+            var policy = Game.Window.WindowPolicy.Load(GameCommands.WindowConfig);
+            var game = new LivePlayGame(live, ui, folder, policy, l => print($"{DateTime.Now:HH:mm:ss} {l}"), GameCommands.LivePaths(outDir).RaidExtractorRoot, outDir);
+            try
+            {
+                var done = await game.UpgradeWornAsync(ids, "gear-upgrade command", args.Contains("--dry-run"), CancellationToken.None);
+                print(done.Length == 0 ? "gear upgrade: nothing to do (off, or no piece matches)" : done);
+                return Cli.Ok;
+            }
+            catch (PlayStopException e) { print($"stopped: {e.Message}"); return Cli.Failed; }
         }
     }
 

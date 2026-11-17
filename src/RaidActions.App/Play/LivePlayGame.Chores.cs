@@ -802,7 +802,7 @@ public sealed partial class LivePlayGame : IChoresGame
     /// ticked star count and rarity goes up to the level, the highest-starred first; every attempt keeps the silver above <see cref="AutoplaySettings.KeepSilver"/>
     /// (its price plus the floor must be there). A dry run only lists them. Empty when there is nothing to do.
     /// </summary>
-    private async Task<string> UpgradeWornAsync(IReadOnlyCollection<int> champions, string tag, bool dryRun, CancellationToken ct)
+    public async Task<string> UpgradeWornAsync(IReadOnlyCollection<int> champions, string tag, bool dryRun, CancellationToken ct)
     {
         var settings = AutoplaySettings.Load(ExtractorOutput);
         if (settings.GearUpgrade is not { Enabled: true } gu || champions.Count == 0) return "";

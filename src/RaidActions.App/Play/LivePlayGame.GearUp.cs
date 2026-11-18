@@ -37,7 +37,16 @@ public sealed partial class LivePlayGame
             await RunCommand(["vault-withdraw", .. vaulted, .. dry], ct);
             (data, gd, ratings, locks) = await Account(ct);
         }
-        var made = Prepare.Make(data, gd, ratings, team, fight, locks: locks);
+        // Faction Wars: Common and Uncommon members are not geared unless the setting says so (Ehsan 2026-11-18).
+        var geared = team;
+        if (area == "faction-wars" && !AutoplaySettings.Load(ExtractorOutput).FactionWars.GearLowRarity)
+        {
+            var rarity = data.Champions.ToDictionary(c => c.Id, c => c.Rarity);
+            geared = [.. team.Where(id => rarity.GetValueOrDefault(id) is not ("Common" or "Uncommon"))];
+            if (geared.Count < team.Count)
+                log($"autoplay: {tag}: not geared (Common/Uncommon): {string.Join(", ", team.Except(geared).Select(Who))}");
+        }
+        var made = Prepare.Make(data, gd, ratings, geared, fight, locks: locks);
         var picked = made.Members.Where(m => m.Changes).ToList();
         if (picked.Count > 0)
         {
@@ -46,7 +55,7 @@ public sealed partial class LivePlayGame
             foreach (var args in commands ?? []) await RunCommand(args, ct);
         }
         if (choice.PutBack && !dryRun) TeamPrep.Save(ExtractorOutput, TeamPrep.Merge(TeamPrep.Load(ExtractorOutput), snapshot, [.. team], now));
-        var upgraded = await UpgradeWornAsync([.. team], tag, dryRun, ct);
+        var upgraded = await UpgradeWornAsync([.. geared], tag, dryRun, ct);
         await HomeAsync(Action("after preparing the team"), ct);
         var pieces = picked.Sum(m => m.Moves.Count);
         return $"{pieces} piece(s) for {picked.Count} champion(s), {vaulted.Count} out of a vault" + (choice.PutBack ? "; put back after" : "") + (upgraded.Length > 0 ? $"; {upgraded}" : "") + (dryRun ? " (dry run)" : "");

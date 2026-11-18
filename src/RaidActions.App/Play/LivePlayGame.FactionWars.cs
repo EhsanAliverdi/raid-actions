@@ -167,11 +167,22 @@ public sealed partial class LivePlayGame : IFactionWarsGame
                     await SelectInTavern(id, ct);
                     await Click("ascend-tab", null, (_, _) => true, "the Ascend tab", ct);
                     await Pause(1200, ct);
-                    var (_, at, _) = await Read(ct);
-                    if (at.FirstOrDefault(t => t.Kind == "ascend-go") is { NotClickable: null } && at.Any(t => t.Kind == "ascend-max" && t.NotClickable is null))
+                    // The tab settles first (2026-11-18: Courtier and Valerie "cannot ascend (no potions)" while their Arcane and affinity potions were there:
+                    // read once at 1.2 s, and MAX demanded though it is only there when more than one star is paid). Ascend alone is enough.
+                    IReadOnlyList<UiTarget> at = [];
+                    for (var r = 0; r < 4; r++)
                     {
-                        await Click("ascend-max", null, (_, _) => true, "MAX", ct);
-                        await Pause(600, ct);
+                        (_, at, _) = await Read(ct);
+                        if (at.FirstOrDefault(t => t.Kind == "ascend-go") is { NotClickable: null }) break;
+                        await Pause(800, ct);
+                    }
+                    if (at.FirstOrDefault(t => t.Kind == "ascend-go") is { NotClickable: null })
+                    {
+                        if (at.Any(t => t.Kind == "ascend-max" && t.NotClickable is null))
+                        {
+                            await Click("ascend-max", null, (_, _) => true, "MAX", ct);
+                            await Pause(600, ct);
+                        }
                         // Every required potion there (2026-11-17: Courtier and Valerie were not ascended though Ascend was pressed: their potions were short;
                         // the "+" beside each buys, never pressed).
                         var (_, need, _) = await Read(ct);
@@ -202,7 +213,7 @@ public sealed partial class LivePlayGame : IFactionWarsGame
                         if (asc > rare.Ascension) done.Add($"{Who(id)} ascended {rare.Ascension}→{asc}");
                         else log($"autoplay: push: {Who(id)} was not ascended (still {rare.Ascension}). Screen dump: {DumpScreen("push ascend")}");
                     }
-                    else log($"autoplay: push: {Who(id)} cannot ascend now (no potions for it)");
+                    else log($"autoplay: push: {Who(id)} cannot ascend now (Ascend not pressable: {string.Join("; ", at.Where(t => t.Kind is "ascend-go" or "ascend-max" or "required-item").Select(t => $"{t.Kind} {t.Note} {t.NotClickable}"))}). Screen dump: {DumpScreen("push ascend")}");
                     ascended:;
                 }
                 catch (PlayStopException e) { log($"autoplay: push: ascending {Who(id)}: {e.Message}"); }

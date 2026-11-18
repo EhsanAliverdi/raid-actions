@@ -540,6 +540,15 @@ public sealed partial class LivePlayGame : ICursedCityGame
         }
         // 2026-11-06: the vaults were ticked for vault food, then unticked here at once, and the food searched for a minute in a list without it.
         // Vaults wanted: checked on this screen every time (2026-11-06: a team screen opened again had the vaults hidden while the bot thought them shown).
+        // The team already as planned: nothing picked, so the filter is left alone (Ehsan 2026-11-18: "why do you filter champions even when you don't
+        // want to change a champion ... only when you want to select one, not when you are happy with the current team").
+        var already = (await Read(ct)).Play.TeamIds ?? [];
+        if (already.Count == team.Count && already.ToHashSet().SetEquals(team) && (leader is null || already[0] == leader))
+        {
+            log($"autoplay: team set: {string.Join(", ", team.Select(i => $"#{i}"))} (already on the screen)");
+            _ccLastTeam = [.. team];
+            return;
+        }
         if (vault is { } v && (_vaultFilter != v || v)) await VaultFilter(v, ct);
         var vaultChecked = vault == true;
         var turns = 0;

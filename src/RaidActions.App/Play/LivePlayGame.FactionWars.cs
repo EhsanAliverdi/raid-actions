@@ -210,7 +210,13 @@ public sealed partial class LivePlayGame : IFactionWarsGame
                         if (asc > rare.Ascension) done.Add($"{Who(id)} ascended {rare.Ascension}→{asc}");
                         else log($"autoplay: push: {Who(id)} was not ascended (still {rare.Ascension}). Screen dump: {DumpScreen("push ascend")}");
                     }
-                    else log($"autoplay: push: {Who(id)} cannot ascend now (Ascend not pressable: {string.Join("; ", at.Where(t => t.Kind is "ascend-go" or "ascend-max" or "required-item").Select(t => $"{t.Kind} {t.Note} {t.NotClickable}"))}). Screen dump: {DumpScreen("push ascend")}");
+                    else
+                    {
+                        // The game's own reason is an alert in the middle of the tab (2026-11-18, Ordinator 3* 30 asc 0: Ascend disabled, no potion list): a
+                        // screenshot of the window keeps it, as the dump has no text.
+                        var shot = at.FirstOrDefault(t => t.Kind == "ascend-go")?.Rect is not null ? Shot($"push: {Who(id)} cannot ascend (the game's alert)", new ClientRect(0, 0, 1298, 732), always: true) : null;
+                        log($"autoplay: push: {Who(id)} cannot ascend now (Ascend not pressable: {string.Join("; ", at.Where(t => t.Kind is "ascend-go" or "ascend-max" or "required-item").Select(t => $"{t.Kind} {t.Note} {t.NotClickable}"))}). Screen dump: {DumpScreen("push ascend")}; screenshot: {shot ?? "none"}");
+                    }
                     ascended:;
                 }
                 catch (PlayStopException e) { log($"autoplay: push: ascending {Who(id)}: {e.Message}"); }

@@ -250,6 +250,10 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             }
             var best = ctx.Settings.Quests.HighestStage;
             var stage = n.MinStage is { } min ? best ? hard ?? Math.Max(min, highest ?? min) : min : anyBoss ? 1 : (int?)null;
+            // A lost quest row goes 3 stages down per loss, never below the quest's own minimum (2026-11-18, Smasher8465: Dragon's Lair 13, its highest
+            // beaten, lost in a Super Raid and replayed at once: 56 Energy on two losses).
+            if (stage is { } s0 && _questRowLosses.GetValueOrDefault(id) is > 0 and var lostTimes)
+                stage = Math.Max(n.MinStage ?? 1, s0 - 3 * lostTimes);
             rows.Add(new EnergyTarget { Id = id, Area = "Dungeon", Region = n.Region ?? "DragonsLair", Difficulty = best && hard is not null ? "Hard" : "Normal", Stage = stage });
             _rowNeed[id] = SuperRaidRules.OfQuest(n.Text);
             if (n.Tab == "Mission") missions.Add(id);

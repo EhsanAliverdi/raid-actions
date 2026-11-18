@@ -178,11 +178,8 @@ public sealed partial class LivePlayGame : IFactionWarsGame
                     }
                     if (at.FirstOrDefault(t => t.Kind == "ascend-go") is { NotClickable: null })
                     {
-                        if (at.Any(t => t.Kind == "ascend-max" && t.NotClickable is null))
-                        {
-                            await Click("ascend-max", null, (_, _) => true, "MAX", ct);
-                            await Pause(600, ct);
-                        }
+                        // One star at a time, never MAX (2026-11-18, Smasher8465: MAX asked for every star at once, 10 of one potion short, and nothing was
+                        // ascended though one star may be paid): the next star on the next pass.
                         // Every required potion there (2026-11-17: Courtier and Valerie were not ascended though Ascend was pressed: their potions were short;
                         // the "+" beside each buys, never pressed).
                         var (_, need, _) = await Read(ct);

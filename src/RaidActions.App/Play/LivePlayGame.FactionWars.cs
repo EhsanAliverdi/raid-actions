@@ -366,11 +366,21 @@ public sealed partial class LivePlayGame : IFactionWarsGame
         {
             // Another team in the slots (2026-10-30: the last one played by hand), or none: the crypt team is set here (Cursed City's routine).
             log($"autoplay: STEP setting {crypt.Name}'s crypt team: {string.Join(", ", wanted.Select(Who))}");
-            try { await SetTeam(wanted, ct, PlayTargets.FwTeamView, leader: wanted.Count > 0 ? wanted[0] : null); }
-            catch (LockedHeroException e)
+            // A member the crypt's list shows locked is left out and the rest set (2026-11-18, killer8465: Sniper locked in Dark Elves, the crypt skipped);
+            // at most two left out, never an empty team.
+            for (var dropped = 0; ; dropped++)
             {
-                await Back(PlayTargets.FwTeamView, ct);
-                throw new PlayStopException($"{crypt.Name}: {Who(e.HeroId)} cannot be put in the crypt team (state {e.State}); nothing started.");
+                try { await SetTeam(wanted, ct, PlayTargets.FwTeamView, leader: wanted.Count > 0 ? wanted[0] : null); break; }
+                catch (LockedHeroException e) when (dropped < 2 && wanted.Count > 1 && wanted.Contains(e.HeroId))
+                {
+                    log($"autoplay: {crypt.Name}: {Who(e.HeroId)} is locked in this crypt (state {e.State}): the team plays without it");
+                    wanted = [.. wanted.Where(id => id != e.HeroId)];
+                }
+                catch (LockedHeroException e)
+                {
+                    await Back(PlayTargets.FwTeamView, ct);
+                    throw new PlayStopException($"{crypt.Name}: {Who(e.HeroId)} cannot be put in the crypt team (state {e.State}); nothing started.");
+                }
             }
             (_, targets, _) = await Read(ct);
         }

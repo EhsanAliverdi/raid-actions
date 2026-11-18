@@ -137,15 +137,24 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
 
     // The pauses kept for the next bot on the account (2026-11-18: killer8465's full roster stopped the summon "until tomorrow", and the restarted bot
     // tried again 20 minutes later).
-    private sealed record Saved(DateTime SummonBlockedUntil, DateTime RankUpBlockedUntil);
+    // The quest rows' losses too, for the day (2026-11-19, Smasher8465: Dragon's Lair 13 lost 4 times across rotations, each new turn starting from 0).
+    private sealed record Saved(DateTime SummonBlockedUntil, DateTime RankUpBlockedUntil, Dictionary<string, int>? QuestRowLosses = null, DateOnly? LossDay = null);
 
-    public string? SaveState() => System.Text.Json.JsonSerializer.Serialize(new Saved(_summonBlockedUntil, _rankUpBlockedUntil), AutoplayJson.Options);
+    public string? SaveState() => System.Text.Json.JsonSerializer.Serialize(
+        new Saved(_summonBlockedUntil, _rankUpBlockedUntil, new(_questRowLosses), _lossDay), AutoplayJson.Options);
 
     public void LoadState(string json, DateTime utc)
     {
         if (System.Text.Json.JsonSerializer.Deserialize<Saved>(json, AutoplayJson.Options) is not { } s) return;
         (_summonBlockedUntil, _rankUpBlockedUntil) = (s.SummonBlockedUntil, s.RankUpBlockedUntil);
+        if (s.LossDay == DateOnly.FromDateTime(utc) && s.QuestRowLosses is { } l)
+        {
+            _lossDay = s.LossDay;
+            foreach (var (k, v) in l) _questRowLosses[k] = v;
+        }
     }
+
+    private DateOnly? _lossDay;
     private int _rankedUp, _summoned, _sold;
     /// <summary>The 3-star rows' sweeps (<see cref="ThreeStarState"/>), read from the game's store each step.</summary>
     private Dictionary<string, ThreeStarState> _threeStars = [];
@@ -252,7 +261,9 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             var stage = n.MinStage is { } min ? best ? hard ?? Math.Max(min, highest ?? min) : min : anyBoss ? 1 : (int?)null;
             // A lost quest row goes 3 stages down per loss, never below the quest's own minimum (2026-11-18, Smasher8465: Dragon's Lair 13, its highest
             // beaten, lost in a Super Raid and replayed at once: 56 Energy on two losses).
-            if (stage is { } s0 && _questRowLosses.GetValueOrDefault(id) is > 0 and var lostTimes)
+            // A row without a stage of its own ("Win 3 Artifacts from clearing the Dungeons") plays the highest beaten one: its losses step down from there.
+            if (_questRowLosses.GetValueOrDefault(id) is > 0 and var lostTimes
+                && (stage ?? EnergyPlanner.HighestBeaten(new EnergyTarget { Area = "Dungeon", Region = n.Region ?? "DragonsLair", Difficulty = "Normal" }, _account?.Progress ?? [])) is { } s0)
                 stage = Math.Max(n.MinStage ?? 1, s0 - 3 * lostTimes);
             rows.Add(new EnergyTarget { Id = id, Area = "Dungeon", Region = n.Region ?? "DragonsLair", Difficulty = best && hard is not null ? "Hard" : "Normal", Stage = stage });
             _rowNeed[id] = SuperRaidRules.OfQuest(n.Text);
@@ -624,7 +635,10 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                     ctx.Event(AreaId, "hold", $"{where}: lost 3 times in a row; the row waits until the reset");
                 }
                 if (outcome.Result != BattleResult.Victory && run.Target.Id.StartsWith("quest-", StringComparison.Ordinal))
+                {
+                    if (_lossDay != DateOnly.FromDateTime(ctx.Utc)) { _questRowLosses.Clear(); _lossDay = DateOnly.FromDateTime(ctx.Utc); }
                     _questRowLosses[run.Target.Id] = _questRowLosses.GetValueOrDefault(run.Target.Id) + 1;
+                }
                 // A win of a mission's row: its missions' progress as read now, against the last win's; the same twice and the row stops.
                 if (outcome.Result == BattleResult.Victory && run.Target.Id.StartsWith("quest-", StringComparison.Ordinal))
                 {

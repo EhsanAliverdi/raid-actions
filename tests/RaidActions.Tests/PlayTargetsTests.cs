@@ -264,4 +264,13 @@ public class PlayTargetsTests
     [Fact]
     public void Loyalty_targets_exist_only_on_the_loyalty_views() =>
         Assert.DoesNotContain(PlayTargets.Scan(Tree("ArenaDialog", N("A/CollectButton", 10, interactable: true)), new Objects()).Targets, t => t.Kind == "loyalty-claim");
+
+    [Fact]
+    public void The_Events_buttons_HasNew_node_is_a_red_dot()
+    {
+        Assert.True(PlayTargets.RedDot("HasNewEventsOrRewards_h"));
+        Assert.True(PlayTargets.RedDot("IndicatorForLimitedButton"));
+        Assert.False(PlayTargets.RedDot("SpiningProgressVisualizer"));
+        Assert.False(PlayTargets.RedDot("NameLabel"));
+    }
 }

@@ -1759,8 +1759,11 @@ public static partial class PlayTargets
     [GeneratedRegex(@"Buy|Purchase|Unlock|Gem|Price|Share|Premium|Skip|Restore|Paid|Pay", RegexOptions.IgnoreCase)] private static partial Regex LoyaltyPaid();
 
     /// <summary>An element that is a red dot: the game's indicator images (not a wizard's pointer, not the menu's controller).</summary>
+    // The Events button's dot is "HasNewEventsOrRewards_h", no "Indicator" in it (2026-11-20: in 88 looks the bot never saw it, and Ehsan saw three event
+    // cards with dots): a "HasNew..." node is a dot too.
     public static bool RedDot(string name) =>
-        name.Contains("Indicator", StringComparison.Ordinal) && !name.Contains("Wizard", StringComparison.Ordinal) && !name.Contains("Controller", StringComparison.Ordinal)
+        (name.Contains("Indicator", StringComparison.Ordinal) || name.StartsWith("HasNew", StringComparison.Ordinal))
+        && !name.Contains("Wizard", StringComparison.Ordinal) && !name.Contains("Controller", StringComparison.Ordinal)
         && !name.Contains("Progress", StringComparison.Ordinal) && !name.Contains("Loading", StringComparison.Ordinal);
 
     /// <summary>An inbox entry that holds Classic Arena tokens (not Tag/Live arena tokens or auto-battle tickets), by its text and icon.</summary>

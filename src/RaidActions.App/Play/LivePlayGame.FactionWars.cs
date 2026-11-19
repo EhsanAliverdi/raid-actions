@@ -267,6 +267,24 @@ public sealed partial class LivePlayGame : IFactionWarsGame
     /// <summary>The push already ran for this crypt battle (it opens the crypt again after; never twice in a row).</summary>
     private bool _pushedHere;
 
+    private static readonly Dictionary<string, int> FactionNumber = new()
+    {
+        ["BannerLords"] = 1, ["HighElves"] = 2, ["SacredOrder"] = 3, ["OgrynTribes"] = 5, ["LizardMen"] = 6, ["Skinwalkers"] = 7, ["Orcs"] = 8,
+        ["Demonspawn"] = 9, ["UndeadHordes"] = 10, ["DarkElves"] = 11, ["KnightsRevenant"] = 12, ["Barbarians"] = 13, ["SylvanWatchers"] = 14,
+        ["Samurai"] = 15, ["Dwarves"] = 16,
+    };
+
+    /// <summary>The push gate: the crypt team, geared as the bot will gear it, simulated on the stage (id 5 + faction 2 digits + 9 + stage 3 digits).</summary>
+    public async Task<StageForecast?> ForecastStageAsync(CryptPlan crypt, int stage, CancellationToken ct)
+    {
+        if (!FactionNumber.TryGetValue(crypt.Faction, out var n) || crypt.Team.Count == 0) return null;
+        var stageId = 5_000_000 + n * 10_000 + 9_000 + stage;
+        var (d, g, r, l) = await Account(ct);
+        var plan = RaidExtractor.Battle.Prepare.Make(d, g, r, crypt.Team, $"Faction Wars: {crypt.Name}", locks: l);
+        var (rate, why) = RaidExtractor.Battle.StageSim.WinRate(d, g, ExtractorOutput, stageId, crypt.Team, gear: plan);
+        return why.Contains("not in the static data", StringComparison.Ordinal) ? null : new StageForecast(rate, why);
+    }
+
     public async Task<BattleOutcome> FightCryptAsync(CryptPlan crypt, int stage, bool dryRun, CancellationToken ct, bool superRaid = false)
     {
         var started = DateTime.UtcNow;
@@ -436,7 +454,7 @@ public sealed partial class LivePlayGame : IFactionWarsGame
         var pve = result?.Pve;
         var outcome = pve?.ResultType switch { 1 => BattleResult.Victory, 2 => BattleResult.Defeat, 3 => BattleResult.Draw, _ => BattleResult.Unknown };
         RecordTry(outcome);
-        return new BattleOutcome(outcome, $"{took.TotalSeconds:0} s" + (superRaid ? "" : NormalRunMark) + (pve?.Stars is { } st && outcome == BattleResult.Victory ? $", {st} star{(st == 1 ? "" : "s")}" : ""));
+        return new BattleOutcome(outcome, $"{took.TotalSeconds:0} s" + (superRaid ? "" : NormalRunMark) + (pve?.Stars is { } st && outcome == BattleResult.Victory ? $", {st} star{(st == 1 ? "" : "s")}" : ""), _fielded);
     }
 
     /// <summary>The crypt's stage list on top: from wherever the game is (village → Battle → Faction Wars → the crypt).</summary>

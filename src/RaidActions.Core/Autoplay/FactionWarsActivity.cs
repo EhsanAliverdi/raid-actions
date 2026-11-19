@@ -16,6 +16,9 @@ public interface IFactionWarsGame : IGearDropGame
 
     /// <summary>One battle of <paramref name="stage"/> in the crypt with the crypt's team (checked on the team screen); a dry run shows Start.</summary>
     Task<BattleOutcome> FightCryptAsync(CryptPlan crypt, int stage, bool dryRun, CancellationToken ct, bool superRaid = false);
+
+    /// <summary>The simulated win rate of the crypt's team (as geared by the bot) on this stage; null: no forecast (the stage is not in the static data).</summary>
+    Task<StageForecast?> ForecastStageAsync(CryptPlan crypt, int stage, CancellationToken ct) => Task.FromResult<StageForecast?>(null);
 }
 
 /// <summary>
@@ -42,6 +45,11 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
     private readonly Dictionary<string, int> _farmAt = [];
     private readonly Dictionary<string, int> _defeatsInARow = [];
     private int _battles, _wins, _losses;
+    /// <summary>Crypt+stage pairs simulated today (the push gate runs once per day for each).</summary>
+    private readonly HashSet<string> _forecast = [];
+
+    /// <summary>The push gate: a new stage is tried only when the simulation gives the team more than 50%.</summary>
+    public const double PushThreshold = 0.5;
 
     public bool IsEnabled(AutoplaySettings settings) => settings.FactionWars.Enabled;
 
@@ -62,6 +70,11 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
                 case "remove": _removed.Add(name); break;
                 // "Demonspawn stage 9: not enough keys ...": the crypt stays done for today after a restart too.
                 case "keys": _dryShown.Add(name.Split(" stage ")[0]); break;
+                // "Demonspawn stage 22: simulated win 49% ...": the crypt stays on its highest beaten stage after a restart too.
+                case "sim" when System.Text.RegularExpressions.Regex.Match(e.Text, @"^(.+) stage (\d+): .*?stays at stage (\d+)") is { Success: true } sm:
+                    _farmAt[sm.Groups[1].Value] = int.Parse(sm.Groups[3].Value, System.Globalization.CultureInfo.InvariantCulture);
+                    _forecast.Add($"{sm.Groups[1].Value}|{sm.Groups[2].Value}");
+                    break;
                 case "battle" when System.Text.RegularExpressions.Regex.Match(e.Text, @"^(\w+) vs (.+) stage (\d+)") is { Success: true } m:
                 {
                     var crypt = m.Groups[2].Value;
@@ -160,6 +173,13 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
                     (stage, super) = (c.HighestPassed / 7 * 7, false);
                     ctx.Event(AreaId, "quest", $"{c.Name}: a quest asks for a boss: stage {stage}");
                 }
+                if (!ctx.DryRun && stage > c.HighestPassed && c.HighestPassed >= 1 && _forecast.Add($"{c.Name}|{stage}")
+                    && await game.ForecastStageAsync(c, stage, ct) is { } fc && fc.WinRate <= PushThreshold)
+                {
+                    _farmAt[c.Name] = c.HighestPassed;
+                    ctx.Event(AreaId, "sim", $"{c.Name} stage {stage}: simulated win {fc.WinRate:P0} (needs over {PushThreshold:P0}), stays at stage {c.HighestPassed} today. {fc.Text}");
+                    return "";
+                }
                 var outcome = await game.FightCryptAsync(c, stage, ctx.DryRun, ct, super);
                 if (outcome.Result == BattleResult.NotStarted && super && !ctx.DryRun)
                 {
@@ -196,7 +216,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
                         _farmAt[c.Name] = Math.Max(1, Math.Min(stage - 1, Math.Max(1, c.HighestPassed)));
                 }
                 var asSuper = super && !outcome.Text.Contains(", normal run", StringComparison.Ordinal);
-                ctx.Event(AreaId, "battle", $"{outcome.Result} vs {c.Name} stage {stage}{(asSuper ? " (Super Raid)" : "")}. {outcome.Text}");
+                ctx.Event(AreaId, "battle", $"{outcome.Result} vs {c.Name} stage {stage}{(asSuper ? " (Super Raid)" : "")}. {outcome.Text}{outcome.TeamTag}");
                 if (outcome.Result == BattleResult.Victory) await game.GearAfterAsync(ctx, AreaId, AreaId, ct);
                 return $"{outcome.Result}: {c.Name} stage {stage}";
             }
@@ -270,7 +290,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
         if (today == _date) return;
         _date = today;
         _stripped = false;
-        _geared.Clear(); _removed.Clear(); _farmAt.Clear(); _noSuper.Clear(); _dryShown.Clear(); _defeatsInARow.Clear();
+        _geared.Clear(); _removed.Clear(); _forecast.Clear(); _farmAt.Clear(); _noSuper.Clear(); _dryShown.Clear(); _defeatsInARow.Clear();
         _battles = _wins = _losses = 0;
         _day = null;
     }

@@ -1,4 +1,4 @@
-using RaidActions.Autoplay;
+﻿using RaidActions.Autoplay;
 using RaidActions.Autoplay.Fake;
 using RaidExtractor.Autoplay;
 
@@ -42,6 +42,33 @@ public class FactionWarsActivityTests
         Assert.Equal(3, host.Events.Count(e => e.Kind == "battle" && e.Text.StartsWith("Victory", StringComparison.Ordinal)));
         Assert.Contains(host.Events, e => e.Kind == "strip" && e.Text.Contains("Old (6)", StringComparison.Ordinal));
         Assert.Equal(AreaState.Waiting, host.Last!.Areas.Single().State); // done for today: the next day's crypts
+    }
+
+    [Theory]
+    [InlineData(0.49, false)]
+    [InlineData(0.51, true)]
+    public async Task A_new_stage_is_tried_only_when_the_simulation_gives_more_than_50_percent(double rate, bool tried)
+    {
+        var (host, game, engine) = Make(stopAfter: TimeSpan.FromHours(2), botTeam: false);
+        game.Forecast = rate;
+        game.Open.Add(new FakeFactionWarsGame.Crypt { Faction = "OgrynTribes", Keys = 1, HighestPassed = 8, Team = [1, 2, 3] });
+        await engine.RunAsync(once: false, Limit());
+        Assert.Equal(tried, game.Calls.Contains("fight OgrynTribes 9"));
+        Assert.Equal(!tried, host.Events.Any(e => e.Kind == "sim" && e.Text.Contains(rate.ToString("P0"), StringComparison.Ordinal)));
+        Assert.Single(game.Forecasts.Where(f => f == "OgrynTribes 9"));
+        if (!tried) Assert.Contains(game.Calls, c => c.StartsWith("fight OgrynTribes 8", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_blocked_stage_is_simulated_again_on_the_next_day_and_the_battle_logs_its_team()
+    {
+        var (host, game, engine) = Make(stopAfter: TimeSpan.FromHours(30), botTeam: false);
+        game.Forecast = 0.4;
+        game.BattleTime = TimeSpan.FromHours(2);
+        game.Open.Add(new FakeFactionWarsGame.Crypt { Faction = "OgrynTribes", Keys = 30, HighestPassed = 8, Team = [1, 2, 3] });
+        await engine.RunAsync(once: false, Limit());
+        Assert.True(game.Forecasts.Count(f => f == "OgrynTribes 9") >= 2, string.Join(";", game.Forecasts));
+        Assert.Contains(host.Events, e => e.Kind == "battle" && e.Text.Contains("[team 1,2,3]", StringComparison.Ordinal));
     }
 
     [Fact]

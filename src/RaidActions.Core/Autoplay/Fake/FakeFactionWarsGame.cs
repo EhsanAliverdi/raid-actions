@@ -24,6 +24,16 @@ public sealed class FakeFactionWarsGame(Func<DateTime> now) : IFactionWarsGame
     public TimeSpan BattleTime { get; set; } = TimeSpan.FromSeconds(60);
     public Func<TimeSpan, CancellationToken, Task>? Delay { get; set; }
 
+    /// <summary>The simulated win rate the push gate sees (null: no forecast).</summary>
+    public double? Forecast { get; set; }
+    public List<string> Forecasts { get; } = [];
+
+    public Task<StageForecast?> ForecastStageAsync(CryptPlan crypt, int stage, CancellationToken ct)
+    {
+        Forecasts.Add($"{crypt.Faction} {stage}");
+        return Task.FromResult(Forecast is { } r ? new StageForecast(r, "fake") : null);
+    }
+
     public Task<FactionWarsDay> PlanDayAsync(CancellationToken ct) => Task.FromResult(new FactionWarsDay(DateOnly.FromDateTime(now()),
         [.. Open.Select(c => new CryptPlan(c.Faction, c.Faction, c.Keys, c.HighestPassed, 21, [.. c.Team], [.. c.Team.Select(i => $"#{i}")], "yours", [],
             [.. c.Team.Except(c.Locked)]))], [.. Strip], []));
@@ -61,6 +71,6 @@ public sealed class FakeFactionWarsGame(Func<DateTime> now) : IFactionWarsGame
         c.Keys -= cost;
         var won = stage <= c.WinsUpTo;
         if (won) c.HighestPassed = Math.Max(c.HighestPassed, stage);
-        return new BattleOutcome(won ? BattleResult.Victory : BattleResult.Defeat, "on auto");
+        return new BattleOutcome(won ? BattleResult.Victory : BattleResult.Defeat, "on auto", c.Team);
     }
 }

@@ -142,7 +142,7 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
             if (BotChooses(ctx)) Rest(ctx.Utc + TimeSpan.FromMinutes(2), $"the {tower} floor was lost: the next team in a moment");
             else Rest(ctx.Utc + TimeSpan.FromDays(1), $"the {tower} floor was lost: tried again in a day");
         }
-        _last = $"{outcome.Result} {tower} tower floor. {outcome.Text}";
+        _last = $"{outcome.Result} {tower} tower floor. {outcome.Text}{outcome.TeamTag}";
         ctx.Event(AreaId, "battle", _last);
         if (outcome.Result == BattleResult.Victory) await game.GearAfterAsync(ctx, AreaId, AreaId, ct);
         _readAt = DateTime.MinValue;
@@ -182,7 +182,7 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
         }
         if (DoomTowerRules.KeyOf(stage) == DoomTowerRules.Silver)
             ctx.QuestNeeds = [.. ctx.QuestNeeds.Select(n => n.Kind == QuestNeedKind.DoomTower ? n with { Remaining = n.Remaining - DoomTowerRules.Cost(stage) } : n).Where(n => n.Remaining > 0)];
-        _last = $"{outcome.Result} {name}. {outcome.Text}";
+        _last = $"{outcome.Result} {name}. {outcome.Text}{outcome.TeamTag}";
         ctx.Event(AreaId, "battle", _last);
         if (outcome.Result == BattleResult.Victory) await game.GearAfterAsync(ctx, AreaId, AreaId, ct);
         _readAt = DateTime.MinValue; // keys and the map changed: read again next turn

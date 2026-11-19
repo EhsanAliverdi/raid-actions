@@ -30,6 +30,22 @@ public class CursedCityActivityTests
         Assert.Equal(1, CursedCityActivity.Cost(new CcLevel(stage with { StartPrice = [], FinishPrice = [] }, "", new CcTeam(1, [], true, null, 0), true, false)));
     }
 
+    [Theory]
+    [InlineData(0.69, false)]
+    [InlineData(0.71, true)]
+    public async Task A_level_not_beaten_is_tried_only_at_70_percent_or_more_in_simulation(double rate, bool tried)
+    {
+        var (host, game, engine) = Make(stopAfter: TimeSpan.FromHours(3));
+        game.Keys = 2;
+        game.Forecast = rate;
+        game.Levels.Add(new FakeCursedCityGame.Level { Number = 6, Team = [(1, false), (2, false)], Open = true });
+        await engine.RunAsync(once: false, Limit());
+        Assert.Equal(tried, game.Calls.Contains("fight 6"));
+        Assert.Equal(!tried, host.Events.Any(e => e.Kind == "sim"));
+        Assert.Single(game.Forecasts);
+        if (tried) Assert.Contains(host.Events, e => e.Kind == "battle" && e.Text.Contains("[team 1,2]", StringComparison.Ordinal));
+    }
+
     [Fact]
     public async Task It_opens_levels_upward_gearing_unused_members_and_stripping_those_the_next_level_does_not_use()
     {

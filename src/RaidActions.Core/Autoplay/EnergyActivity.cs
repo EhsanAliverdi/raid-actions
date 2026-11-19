@@ -249,7 +249,12 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             // The player's own dungeon row for it (Ehsan 2026-11-13: "you played Dragon's Lair 25, why? we farm Hard 4"): a Hard stage of that dungeon (or of any
             // dungeon, for an "any dungeon" quest) counts, and it is what the energy is for: that row's place, difficulty and stage.
             // Never a climbing row (2026-11-18, killer8465: the dungeon quest took the Dragon's Lair push row and lost its next stage, 11): a quest replays.
+            // A quest for artifacts/accessories counts only where gear drops (2026-11-19, BlackLord65: "Win 3 Artifacts/Accessories from clearing the Dungeons"
+            // played Arcane Keep 19 three times, 0/3: the Keeps drop potions, the Minotaur scrolls): only the gear dungeons then.
+            var needsGear = SuperRaidRules.OfQuest(n.Text) == SuperRaidRules.Need.Drops;
+            static bool GearDungeon(string region) => region is "DragonsLair" or "IceGolemCave" or "FireGolemCave" or "SpiderCave";
             if (ctx.Settings.Energy.Targets.FirstOrDefault(t => t.Enabled && !t.Progress && t.Area == "Dungeon" && EnergyPlaces.Group(t.Region) is null && t.Stage is not null
+                    && (!needsGear || GearDungeon(t.Region))
                     && (n.Region is null ? t.Difficulty == "Hard" || n.MinStage is null : t.Region == n.Region && (t.Difficulty == "Hard" || n.MinStage is not { } m0 || t.Stage >= m0))) is { } own)
             {
                 rows.Add(own with { Id = id, RunsPerDay = null });

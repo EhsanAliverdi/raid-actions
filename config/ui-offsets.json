@@ -742,6 +742,61 @@
           "field": "Name",
           "source": "field",
           "status": "direct"
+        },
+        "TeamSetup": {
+          "offset": "0x28",
+          "type": "TeamSetup",
+          "field": "TeamSetup",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "SharedModel.Battle.Core.Setup.HeroSlotSetup": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "Slot": {
+          "offset": "0x1C",
+          "type": "int",
+          "field": "Slot",
+          "source": "field",
+          "status": "direct"
+        },
+        "HeroTypeId": {
+          "offset": "0x28",
+          "type": "int",
+          "field": "HeroTypeId",
+          "source": "field",
+          "status": "direct"
+        },
+        "Grade": {
+          "offset": "0x30",
+          "type": "HeroGrade",
+          "field": "Grade",
+          "source": "field",
+          "status": "direct"
+        },
+        "DoubleAscendGrade": {
+          "offset": "0x34",
+          "type": "DoubleAscendGrade?",
+          "field": "DoubleAscendGrade",
+          "source": "field",
+          "status": "direct"
+        },
+        "Level": {
+          "offset": "0x3C",
+          "type": "int",
+          "field": "Level",
+          "source": "field",
+          "status": "direct"
+        },
+        "EmpowerLevel": {
+          "offset": "0x58",
+          "type": "int",
+          "field": "EmpowerLevel",
+          "source": "field",
+          "status": "direct"
         }
       }
     },

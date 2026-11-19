@@ -137,8 +137,6 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         // The village's red dots (Ehsan 2026-11-16): looked at every 20 minutes; each one brings its job forward, one nothing handles is a warning.
         if (s.RedDots && ctx.Utc >= _dotsAt && Open(ctx, "dots")) return "dots";
         if (s.AutoJoinClan && ctx.Utc >= _clanAt && Open(ctx, "clan")) return "clan";
-        // Clan vs Clan rewards (Ehsan 2026-11-19: "there are Clan vs Clan rewards you can collect"): looked at every 6 hours.
-        if (ctx.Utc >= _cvcAt && Open(ctx, "cvc")) return "cvc";
         // The clan's day does not start at 00:00 UTC (Ehsan: "at the clan's reset"): looked at every 4 hours; the Members page's Check In says whether it is due.
         if (s.ClanCheckIn && ctx.Utc >= _checkInNext && Open(ctx, "checkin")) return "checkin";
         if (s.InboxExpiringTokens && ctx.Utc >= _inboxAt && Open(ctx, "inbox")) return "inbox";
@@ -147,6 +145,8 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         if (s.FreeItems && ctx.Utc >= _freeAt && Open(ctx, "free")) return "free";
         if (s.MarketShards && ctx.Utc >= _marketAt && Open(ctx, "market")) return "market";
         if (s.ArtifactUpgrades && ctx.Utc >= _upgradeAt && Open(ctx, "advised")) return "advised";
+        // Clan vs Clan rewards (Ehsan 2026-11-19: "there are Clan vs Clan rewards you can collect"): looked at every 6 hours, after the other jobs.
+        if (ctx.Utc >= _cvcAt && Open(ctx, "cvc")) return "cvc";
         return null;
     }
 

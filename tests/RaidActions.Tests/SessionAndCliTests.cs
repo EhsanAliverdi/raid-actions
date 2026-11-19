@@ -182,7 +182,9 @@ public class CliTests
     public async Task A_stale_plan_is_refused()
     {
         using var f = new SampleFolder();
-        f.EditPlan(j => j["pieces"]![0]!["level"] = 9); // the plan thinks the helmet was +9
+        // The plan thinks the helmet is +16: the piece is lower now, which no upgrade explains (a level-only increase is only a warning since
+        // 2026-11-18, so a plan made before an upgrade still runs).
+        f.EditPlan(j => j["pieces"]![0]!["level"] = 16);
         var (code, output) = await Cli("", false, Args(f, "run", "--confirm", "sample-0"));
         Assert.Equal(App.Cli.Refused, code);
         Assert.Contains("ArtifactUpgraded", output);

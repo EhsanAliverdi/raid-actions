@@ -121,6 +121,13 @@ public sealed class TagArenaActivity(ITagArenaGame game) : IActivity
             _battles++;
             if (outcome.Result == BattleResult.Victory) _wins++; else _losses++;
             ctx.Event(AreaId, "battle", $"{outcome.Result} vs {o.Name} ({o.Power:N0}). {outcome.Text}");
+            // The Tag Team quest's battle counted (the next quest read has the real progress): at the last one the quests are read at once, so the
+            // reward (the crypt keys) is claimed before Faction Wars starts (Ehsan 2026-11-20).
+            if (ctx.QuestLeft(QuestNeedKind.TagArena) > 0)
+            {
+                ctx.QuestNeeds = [.. ctx.QuestNeeds.Select(n => n.Kind == QuestNeedKind.TagArena ? n with { Remaining = n.Remaining - 1 } : n).Where(n => n.Remaining > 0)];
+                if (ctx.QuestLeft(QuestNeedKind.TagArena) == 0) ctx.QuestsStale = true;
+            }
             _checkedAt = DateTime.MinValue; // the board again next turn
             return $"{outcome.Result} vs {o.Name}";
         }

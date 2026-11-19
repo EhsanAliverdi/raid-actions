@@ -69,6 +69,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
             switch (e.Kind)
             {
                 case "strip": _stripped = true; break;
+                case "quest" when e.Text.StartsWith("no Faction Wars boss beatable", StringComparison.Ordinal): _bossGaveUp = true; break;
                 case "gear": _geared.Add(name); break;
                 case "remove": _removed.Add(name); break;
                 // "Demonspawn stage 9: not enough keys ...": the crypt stays done for today after a restart too.
@@ -99,6 +100,8 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
     public Decision Decide(PlayContext ctx)
     {
         NewDay(ctx);
+        // The daily Tag Team quest first (Ehsan 2026-11-20: its reward is the day's +6 crypt keys; gear the team once, play once).
+        if (ctx.YieldTo?.Invoke(Id) is { } first) return Decision.Wait(ctx.Utc + TimeSpan.FromMinutes(1), first);
         if (_day is null || ctx.Utc - _dayAt > PlanStale || _day.UtcDay != DateOnly.FromDateTime(ctx.Utc)) return Decision.Now("reading today's crypts");
         Sync(ctx);
         if (NeedCvcRead(ctx)) return Decision.Now("reading Clan vs Clan's start");
@@ -115,7 +118,35 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
         Sync(ctx);
         if (NeedCvcRead(ctx)) await ReadCvcAsync(ctx, ct);
         var s = ctx.Settings.FactionWars;
+        await ResolveBossAsync(ctx, ct);
         if (Next(s, ctx.DryRun, ctx.Settings.Teams) is not { } step) return "";
+        var text = await RunStepAsync(ctx, step, s, ct);
+        // The gear once, then every battle of the crypt in a row while its keys last (Ehsan 2026-11-20), back to base only when something more critical is due.
+        if (ctx.DryRun || step.Crypt is not { } crypt || !(step.Kind == "gear" || step.Kind == "fight" && IsBattle(text))) return text;
+        var runs = step.Kind == "fight" ? 1 : 0;
+        while (runs < MaxChain && (runs == 0 || IsBattle(text)) && DateOnly.FromDateTime(ctx.Utc) == _date) // a new UTC day plans again
+        {
+            if (ctx.ChainBreak?.Invoke(Id) is { } why)
+            {
+                ctx.Event(AreaId, "chain", $"{crypt.Name}: back after {runs} battle(s): {why}");
+                break;
+            }
+            if (Next(s, ctx.DryRun, ctx.Settings.Teams) is not { Kind: "fight", Crypt: { } next } more || next.Name != crypt.Name) break;
+            var again = await RunStepAsync(ctx, more, s, ct);
+            if (again.Length == 0) break;
+            text = again;
+            runs++;
+        }
+        return runs > 1 ? $"{text} ({runs} battles in a row)" : text;
+    }
+
+    /// <summary>Battles in one turn, as a safety.</summary>
+    public const int MaxChain = 30;
+
+    private static bool IsBattle(string text) => text.StartsWith("Victory", StringComparison.Ordinal) || text.StartsWith("Defeat", StringComparison.Ordinal);
+
+    private async Task<string> RunStepAsync(PlayContext ctx, Step step, FactionWarsSettings s, CancellationToken ct)
+    {
         await ctx.ThinkAsync(ct);
         switch (step.Kind)
         {
@@ -173,15 +204,14 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
             {
                 var c = step.Crypt!;
                 var (stage, super) = Run(c, s) ?? (Stage(c, s), false);
-                // A quest asks for a Faction Wars boss (Ehsan 2026-10-31: "it should go to the highest boss I beat"): the highest boss stage
-                // already beaten (bosses are stages 7, 14, 21).
-                if (ctx.QuestLeft(QuestNeedKind.FactionWarsBoss) > 0 && c.HighestPassed >= 7)
+                // A quest asks for a Faction Wars boss (stages 7, 14, 21): the highest boss any open crypt's team is simulated to beat (ResolveBossAsync).
+                if (_bossPick is { } bp && bp.Crypt == c.Name && ctx.QuestLeft(QuestNeedKind.FactionWarsBoss) > 0)
                 {
-                    (stage, super) = (c.HighestPassed / 7 * 7, false);
-                    ctx.Event(AreaId, "quest", $"{c.Name}: a quest asks for a boss: stage {stage}");
+                    (stage, super) = (bp.Stage, false);
+                    ctx.Event(AreaId, "quest", $"{c.Name}: a quest asks for a boss: stage {stage} ({bp.Rate:P0})");
                 }
                 if (!ctx.DryRun && stage > c.HighestPassed && c.HighestPassed >= 1 && _forecast.Add($"{c.Name}|{stage}")
-                    && await game.ForecastStageAsync(c, stage, ct) is { } fc && fc.WinRate <= PushThreshold)
+                    && await ForecastAsync(c, stage, ct) is { } fc && fc.WinRate <= PushThreshold)
                 {
                     _farmAt[c.Name] = c.HighestPassed;
                     ctx.Event(AreaId, "sim", $"{c.Name} stage {stage}: simulated win {fc.WinRate:P0} (needs over {PushThreshold:P0}), stays at stage {c.HighestPassed} today. {fc.Text}");
@@ -203,6 +233,10 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
                     return "";
                 }
                 _battles++;
+                // The keys the battle used and the stage beaten, for the next battle of this turn (the next turn plans the day again).
+                var spent = c.Cost(stage) * (super && !outcome.Text.Contains(", normal run", StringComparison.Ordinal) ? SuperRaidMultiplier : 1);
+                if (_day!.Open.IndexOf(c) is var at and >= 0)
+                    _day.Open[at] = c with { Keys = Math.Max(0, c.Keys - spent), HighestPassed = outcome.Result == BattleResult.Victory ? Math.Max(c.HighestPassed, stage) : c.HighestPassed };
                 if (outcome.Result == BattleResult.Victory)
                 {
                     _wins++;
@@ -257,7 +291,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
     {
         if (_day is null) return null;
         var playable = _day.Open.Where(c => c.Keys > KeepFor(c, s) && Run(c, s) is not null && c.Team.Count > 0 && !_dryShown.Contains(c.Name)
-            && _defeatsInARow.GetValueOrDefault(c.Name) < 6).ToList();
+            && _defeatsInARow.GetValueOrDefault(c.Name) < 6).OrderByDescending(c => _bossPick?.Crypt == c.Name).ToList();
         if (s.StripYesterdaysTeams && !_stripped && _day.Strip.Count > 0 && playable.Count > 0)
             return new("strip", null, $"freeing yesterday's gear: {_day.Strip.Count} champion(s) to the Reserve Vault");
         foreach (var c in playable)
@@ -285,6 +319,43 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
 
     private readonly HashSet<string> _noSuper = [];
 
+    private readonly Dictionary<string, StageForecast?> _rates = [];
+    private (string Crypt, int Stage, double Rate)? _bossPick;
+    private bool _bossGaveUp;
+
+    /// <summary>The simulated win rate of a crypt's team at a stage, asked once a day for each pair.</summary>
+    private async Task<StageForecast?> ForecastAsync(CryptPlan c, int stage, CancellationToken ct)
+    {
+        var key = $"{c.Name}|{stage}";
+        if (!_rates.TryGetValue(key, out var fc)) _rates[key] = fc = await game.ForecastStageAsync(c, stage, ct);
+        return fc;
+    }
+
+    /// <summary>
+    /// A quest asks for a Faction Wars boss: the highest boss stage (7, 14, 21) over every open crypt whose simulated win rate passes the push gate
+    /// (a boss already beaten with no forecast counts too). None does: the quest is given up for the day, logged. Quests that only need keys or materials
+    /// take the normal choice.
+    /// </summary>
+    private async Task ResolveBossAsync(PlayContext ctx, CancellationToken ct)
+    {
+        if (ctx.QuestLeft(QuestNeedKind.FactionWarsBoss) <= 0) { _bossPick = null; return; }
+        if (_bossGaveUp || _day is null || ctx.DryRun || _bossPick is not null) return;
+        (string Crypt, int Stage, double Rate)? best = null;
+        (string Crypt, int Stage, double Rate)? nearest = null;
+        foreach (var c in _day.Open.Where(c => c.Team.Count > 0 && c.Keys > 0))
+            for (var stage = 7; stage <= c.StageCount; stage += 7)
+            {
+                if (stage > c.HighestPassed + 1) break; // not unlocked yet
+                var fc = await ForecastAsync(c, stage, ct);
+                var rate = fc?.WinRate ?? (stage <= c.HighestPassed ? 1.0 : 0.0);
+                if (nearest is null || stage > nearest.Value.Stage || stage == nearest.Value.Stage && rate > nearest.Value.Rate) nearest = (c.Name, stage, rate);
+                if (rate > PushThreshold && (best is null || stage > best.Value.Stage || stage == best.Value.Stage && rate > best.Value.Rate)) best = (c.Name, stage, rate);
+            }
+        if (best is not null) { _bossPick = best; return; }
+        _bossGaveUp = true;
+        ctx.Event(AreaId, "quest", nearest is { } n ? $"no Faction Wars boss beatable (best: {n.Crypt} stage {n.Stage}, {n.Rate:P0})" : "no Faction Wars boss beatable (no boss stage open)");
+    }
+
     /// <summary>A Super Raid's keys: twice the stage's (the game's DoubleRun, as in Campaign and dungeons).</summary>
     public const int SuperRaidMultiplier = 2;
 
@@ -297,7 +368,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
         if (today == _date) return;
         _date = today;
         _stripped = false;
-        _geared.Clear(); _removed.Clear(); _forecast.Clear(); _farmAt.Clear(); _noSuper.Clear(); _dryShown.Clear(); _defeatsInARow.Clear();
+        _geared.Clear(); _removed.Clear(); _forecast.Clear(); _farmAt.Clear(); _noSuper.Clear(); _rates.Clear(); _bossPick = null; _bossGaveUp = false; _dryShown.Clear(); _defeatsInARow.Clear();
         _battles = _wins = _losses = 0;
         _day = null;
     }
@@ -305,12 +376,13 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
     private CvcStatus? _cvc;
     private DateTime _cvcAt;
     private DateTime _now;
-    private bool _questKeys;
+    private bool _questKeys, _tagQuest;
     private DateTime _holdLogged;
 
     private void Sync(PlayContext ctx)
     {
         _now = ctx.Utc;
+        _tagQuest = ctx.QuestLeft(QuestNeedKind.TagArena) > 0;
         _questKeys = ctx.QuestLeft(QuestNeedKind.FactionWars) > 0 || ctx.QuestLeft(QuestNeedKind.FactionWarsBoss) > 0;
     }
 
@@ -329,7 +401,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
     /// <summary>The keys to leave in this crypt: Clan vs Clan about to start holds them (<see cref="CvcKeyHold"/>).</summary>
     private int KeepFor(CryptPlan c, FactionWarsSettings s)
     {
-        var keep = CvcKeyHold.Keep(_cvc, _now, c.Keys, s.KeepKeys, _questKeys, NextUtcDay(_now), out _);
+        var keep = CvcKeyHold.Keep(_cvc, _now, c.Keys, s.KeepKeys, _questKeys, _tagQuest, NextUtcDay(_now), out _);
         return keep;
     }
 
@@ -338,7 +410,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
     {
         if (_day is null || _cvc is not { Phase: CvcPhase.NotStarted, StartUtc: { } start } || start <= ctx.Utc) return null;
         var s = ctx.Settings.FactionWars;
-        if (!_day.Open.Any(c => CvcKeyHold.Keep(_cvc, ctx.Utc, c.Keys, s.KeepKeys, _questKeys, NextUtcDay(ctx.Utc), out _) > s.KeepKeys)) return null;
+        if (!_day.Open.Any(c => CvcKeyHold.Keep(_cvc, ctx.Utc, c.Keys, s.KeepKeys, _questKeys, _tagQuest, NextUtcDay(ctx.Utc), out _) > s.KeepKeys)) return null;
         var why = $"keeping crypt keys for Clan vs Clan, starts in {CvcKeyHold.Hours(start - ctx.Utc)}";
         if (ctx.Utc - _holdLogged > TimeSpan.FromHours(2)) { _holdLogged = ctx.Utc; ctx.Event(AreaId, "hold-cvc", why); }
         var until = start + TimeSpan.FromMinutes(1);

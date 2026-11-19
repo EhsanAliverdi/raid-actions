@@ -98,7 +98,7 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
     private bool GoldFree(PlayContext ctx)
     {
         var s = ctx.Settings.DoomTower;
-        var gold = ctx.Resource(DoomTowerRules.Gold) ?? _map?.Gold;
+        var gold = _mapFresh ? _map?.Gold : ctx.Resource(DoomTowerRules.Gold) ?? _map?.Gold;
         return gold is null || s.UseGold && gold.Value - s.KeepGold >= 1;
     }
 
@@ -149,10 +149,34 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
         return $"{outcome.Result}: {tower} tower floor";
     }
 
+    /// <summary>Battles chained in one visit at most (a safety stop; the keys end the chain first).</summary>
+    public const int MaxChain = 40;
+
+    /// <summary>The map was read in this turn, so its key counts are newer than the resources the turn started with.</summary>
+    private bool _mapFresh;
+
+    /// <summary>
+    /// A visit chains battles while keys remain (Ehsan 2026-11-20: one battle per visit left BlackLord65 with 5 silver and 10 gold keys): after a win the
+    /// tower is read again (keys, map) and the next floor, boss or room is played, up to the kept keys; a loss, a skip or a dry run ends the visit.
+    /// </summary>
     public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
     {
-        await game.GearAfterAsync(ctx, AreaId, null, ct);
+        var results = new List<string>();
+        for (var i = 0; i < MaxChain; i++)
+        {
+            var r = await RunOnceAsync(ctx, i == 0, ct);
+            if (r.Length > 0) results.Add(r);
+            if (ctx.DryRun || !r.StartsWith("Victory", StringComparison.Ordinal) || ct.IsCancellationRequested) break;
+        }
+        _mapFresh = false;
+        return results.Count > 1 ? $"{string.Join("; ", results)} ({results.Count} battles in a row)" : results.FirstOrDefault() ?? "";
+    }
+
+    private async Task<string> RunOnceAsync(PlayContext ctx, bool first, CancellationToken ct)
+    {
+        if (first) await game.GearAfterAsync(ctx, AreaId, null, ct);
         _map = await game.ReadDoomTowerAsync(ct);
+        _mapFresh = true;
         _readAt = ctx.Utc;
         var (stage, why) = Pick(ctx);
         if (stage is null) return NormalDue(ctx) ? await Climb(ctx, false, ct) : ClimbDue(ctx) ? await Climb(ctx, true, ct) : "";

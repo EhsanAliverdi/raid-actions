@@ -25,9 +25,19 @@ public interface ICursedCityGame
     /// </summary>
     Task<BattleOutcome> CheckTeamAsync(CcLevel level, CancellationToken ct) => Task.FromResult(new BattleOutcome(BattleResult.NotStarted, "not checked"));
 
-    /// <summary>The simulated win rate of the level's team (as geared by the bot); null: no forecast (the level is not in the static data).</summary>
-    Task<StageForecast?> ForecastAsync(CcLevel level, CancellationToken ct) => Task.FromResult<StageForecast?>(null);
+    /// <summary>
+    /// The simulator's view of a level (Ehsan 2026-11-20): <paramref name="searchTeam"/> true: the best team the simulator finds over the account's champions
+    /// (StageTeam.Best, vaults included, minutes: the caller caches it), simulated as the bot will gear it; false: the win rate of the level's own team.
+    /// Null: no forecast (the level is not in the static data).
+    /// </summary>
+    Task<CcSim?> SimulateAsync(CcLevel level, bool searchTeam, CancellationToken ct) => Task.FromResult<CcSim?>(null);
+
+    /// <summary>The level with these champions as its team, their gear / vault state read fresh from the account.</summary>
+    Task<CcLevel> WithTeamAsync(CcLevel level, IReadOnlyList<int> ids, CancellationToken ct) => Task.FromResult(level);
 }
+
+/// <summary>A simulated team for a level: its champions, the simulated win rate after the bot's gear-up, and the simulator's note.</summary>
+public sealed record CcSim(List<int> Ids, List<string> Names, double WinRate, string Text);
 
 /// <summary>
 /// Cursed City (Auto Play, plan/cursed-city.md, Ehsan 2026-10-29): each turn, a fresh plan (keys, levels, the next level and the team
@@ -49,12 +59,16 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
     private readonly HashSet<int> _geared = [];
     private readonly HashSet<int> _dryShown = [];
     private int _battles, _wins, _losses, _opened;
-    /// <summary>Levels the simulation blocked today (win rate at or under <see cref="PushThreshold"/>), with the UTC day; merged into the skip set.</summary>
-    private readonly HashSet<int> _blocked = [];
-    private DateOnly _blockedDay;
+    /// <summary>Today's simulator results per stage id (one team search per level per day, reused); a null entry: no forecast for the level.</summary>
+    private readonly Dictionary<int, CcSim?> _sim = [];
+    /// <summary>Levels whose simulated team the game would not take (locked champions): today they use the planner's team, simulated as it is.</summary>
+    private readonly HashSet<int> _simOwnTeam = [];
+    private DateOnly _simDay;
+    private bool _fromSim;
 
-    /// <summary>The push gate: a level not beaten yet is tried only when the simulation gives its team at least this much (Ehsan: 70%).</summary>
-    public const double PushThreshold = 0.70;
+    /// <summary>The play gate (Ehsan 2026-11-20, replacing the level-50 readiness rule and the 70% push gate): a level, beaten or not, is played when the
+    /// simulator's best team for it wins over 30% after the bot's gear-up; the highest such level first.</summary>
+    public const double PushThreshold = 0.30;
 
     public bool IsEnabled(AutoplaySettings settings) => settings.CursedCity.Enabled;
 
@@ -83,14 +97,26 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
     {
         var s = ctx.Settings.CursedCity;
         _planForQuest = ForQuest(ctx);
-        if (_blockedDay != DateOnly.FromDateTime(ctx.Utc)) { _blockedDay = DateOnly.FromDateTime(ctx.Utc); _blocked.Clear(); }
-        _plan = await game.PlanAsync(Math.Max(1, s.LossesToSkip), _dryShown.Union(_blocked).ToHashSet(), s.TryRisky, s.Difficulty, _planForQuest, ct);
+        if (_simDay != DateOnly.FromDateTime(ctx.Utc)) { _simDay = DateOnly.FromDateTime(ctx.Utc); _sim.Clear(); _simOwnTeam.Clear(); }
+        _plan = await game.PlanAsync(Math.Max(1, s.LossesToSkip), _dryShown, s.TryRisky, s.Difficulty, _planForQuest, ct);
         _planAt = ctx.Utc;
         var level = _plan.Next;
+        _fromSim = false;
+        string? simWhy = null;
+        if (!_planForQuest && !ctx.DryRun)
+        {
+            // The simulator chooses (highest level first, not beaten ones before beaten ones): one new team search per turn, each level once a day.
+            var (chosen, searched) = await ChooseBySimAsync(s, ctx, level, ct);
+            if (searched) { _planAt = DateTime.MinValue; return ""; }
+            level = chosen;
+            _plan = _plan with { Next = level };   // Decide() and the status follow the simulator's choice
+            if (level is null) simWhy = "no level the simulator's best team wins over " + PushThreshold.ToString("P0") + " today";
+        }
         var playable = level is not null && Spendable(s) >= Cost(level) && level.Team.Feasible && !_dryShown.Contains(level.Stage.Id);
         // Nothing to play: why, once per reason (seen 2026-10-31: a whole day without one line from Cursed City).
-        if (!playable && _plan.Why != _lastWhy) ctx.Event(AreaId, "plan", $"nothing to play: {_plan.Why}");
-        _lastWhy = playable ? null : _plan.Why;
+        var whyNot = simWhy ?? _plan.Why;
+        if (!playable && whyNot != _lastWhy) ctx.Event(AreaId, "plan", $"nothing to play: {whyNot}");
+        _lastWhy = playable ? null : whyNot;
         if (ctx.Settings.Rules.CursedCityReplayIdleKeys && !_planForQuest && !playable && Spendable(s) >= 1 && _questLosses < ctx.Settings.Rules.CursedCityMaxReplayLosses) _idleUntil = ctx.Utc + IdleReplay;
 
         // Gear this bot added that the next level does not use (or all of it when no level is played now): off again.
@@ -106,14 +132,6 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
         if (!playable) return "";
 
         var gearNow = s.GearUnused ? level!.Team.Members.Where(m => m.GetsGear && !_geared.Contains(m.Id)).Select(m => m.Id).ToList() : [];
-        // The push gate: a level not beaten yet only when its team (geared as the bot will) simulates at 70% or more; else blocked for the day.
-        if (!level!.Stage.Beaten && !ctx.DryRun && await game.ForecastAsync(level, ct) is { } fc && fc.WinRate < PushThreshold)
-        {
-            _blocked.Add(level.Stage.Id);
-            ctx.Event(AreaId, "sim", $"{CursedCityPlanner.Where(level.Stage)}: simulated win {fc.WinRate:P0} (needs {PushThreshold:P0}), not tried today. {fc.Text}");
-            _planAt = DateTime.MinValue;
-            return "";
-        }
         // Before gear is moved: the level's team list read once end to end (no slot clicks), so gear goes only to champions the level takes
         // (2026-10-30: 21 pieces moved to three champions level 3 then refused). Then gear, then the level with the team set once.
         if (gearNow.Count > 0 && !ctx.DryRun)
@@ -122,6 +140,7 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
             if (check.Result == BattleResult.Retry)
             {
                 ctx.Event(AreaId, "team", $"{CursedCityPlanner.Where(level!.Stage)}: {check.Text}");
+                SimTeamRefused(level.Stage.Id);
                 _planAt = DateTime.MinValue;
                 return "";
             }
@@ -142,6 +161,7 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
         {
             // The game locks some champions in the city: plan again without them (their stand-ins get gear first).
             ctx.Event(AreaId, "team", $"{where}: {outcome.Text}");
+            SimTeamRefused(level.Stage.Id);
             _planAt = DateTime.MinValue;
             return "";
         }
@@ -167,6 +187,49 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
         _plan = _plan with { Next = null }; // read again next turn: results and keys changed
         _planAt = DateTime.MinValue;
         return $"{outcome.Result}: {where}";
+    }
+
+    /// <summary>The game would not take the simulated team: the level falls back to the planner's team (simulated as it is) for the day.</summary>
+    private void SimTeamRefused(int stageId)
+    {
+        if (!_fromSim) return;
+        _sim.Remove(stageId);
+        _simOwnTeam.Add(stageId);
+    }
+
+    /// <summary>
+    /// The level to play by the simulator: candidates are the reachable levels of the plan's difficulty (not lost too often, a team that meets the criterion
+    /// possible), not beaten ones first, higher first; each is searched once a day (<see cref="ICursedCityGame.SimulateAsync"/>) and the first whose best team
+    /// wins over <see cref="PushThreshold"/> is played with that team. Searched: a new search ran and failed this turn (the next one runs next turn).
+    /// With no forecast from the game, the planner's level as it is.
+    /// </summary>
+    private async Task<(CcLevel? Level, bool Searched)> ChooseBySimAsync(CursedCityPlaySettings s, PlayContext ctx, CcLevel? planned, CancellationToken ct)
+    {
+        var plan = _plan!;
+        var candidates = plan.Levels.Where(l => l.Stage.Difficulty == plan.Difficulty && l.Reachable && !l.Unbeatable && l.Team.Feasible
+                && !_dryShown.Contains(l.Stage.Id) && Spendable(s) >= Cost(l))
+            .OrderBy(l => l.Stage.Beaten).ThenBy(l => l.Stage.District.Contains("MainBoss", StringComparison.Ordinal))
+            .ThenByDescending(l => l.Stage.Number).ThenByDescending(l => l.Stage.District).ToList();
+        foreach (var c in candidates)
+        {
+            var own = _simOwnTeam.Contains(c.Stage.Id);
+            var searchedNow = false;
+            if (!_sim.TryGetValue(c.Stage.Id, out var r))
+            {
+                r = await game.SimulateAsync(c, !own, ct);
+                _sim[c.Stage.Id] = r;
+                searchedNow = true;
+                if (r is null) return (planned, false);   // the game has no forecast: the planner's choice
+                var verdict = r.WinRate > PushThreshold ? "played" : $"not played today (needs over {PushThreshold:P0})";
+                ctx.Event(AreaId, "sim", $"{CursedCityPlanner.Where(c.Stage)}: {(c.Stage.Beaten ? "beaten" : "not beaten")}; best team {string.Join(", ", r.Names)} " +
+                    $"(#{string.Join(", #", r.Ids)}): simulated win {r.WinRate:P0} after gear-up: {verdict}. {r.Text}");
+            }
+            if (r is null) return (planned, false);
+            if (r.WinRate <= PushThreshold) { if (searchedNow) return (null, true); continue; }
+            _fromSim = !own;
+            return (own ? c : await game.WithTeamAsync(c, r.Ids, ct), false);
+        }
+        return (null, false);
     }
 
     public AreaStatus Status(PlayContext ctx, Decision decision)

@@ -283,6 +283,8 @@
                   "Client.ViewModel.Contextes.PortalDialog.Summon.SummonTabContext":  [ "_selectedShardTypeId" ],
                   "Client.ViewModel.Contextes.CursedCity.Map.CursedCityMapContext":  [
                                                                                          "_currentDifficultly"
-                                                                                     ]
+                                                                                     ],
+                  "Client.ViewModel.Contextes.CvcTournament.Tabs.Versus.CvcVersusRewardContext":  [ "_rewardState", "_hidden", "_opponent" ],
+                  "Client.ViewModel.Contextes.CvcTournament.CvcTournamentButtonContext":  [ "_timerTitle", "_timer", "_buttonEnabled", "_state" ]
               }
 }

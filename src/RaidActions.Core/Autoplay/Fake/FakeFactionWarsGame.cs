@@ -19,6 +19,17 @@ public sealed class FakeFactionWarsGame(Func<DateTime> now) : IFactionWarsGame
     }
 
     public List<Crypt> Open { get; } = [];
+
+    /// <summary>The village button's Clan vs Clan: the phase and the start (null: not known); ReadCvc counts the reads.</summary>
+    public CvcPhase CvcPhase { get; set; } = CvcPhase.None;
+    public DateTime? CvcStart { get; set; }
+    public int CvcReads { get; private set; }
+
+    public Task<CvcStatus?> ReadCvcAsync(CancellationToken ct)
+    {
+        CvcReads++;
+        return Task.FromResult<CvcStatus?>(new CvcStatus(CvcPhase, now(), CvcPhase == CvcPhase.NotStarted ? CvcStart : null));
+    }
     public List<StripChampion> Strip { get; set; } = [];
     public List<string> Calls { get; } = [];
     public TimeSpan BattleTime { get; set; } = TimeSpan.FromSeconds(60);

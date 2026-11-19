@@ -2309,6 +2309,67 @@
           "status": "direct"
         }
       }
+    },
+    "Client.ViewModel.Contextes.CvcTournament.Tabs.Versus.CvcVersusRewardContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_rewardState": {
+          "offset": "0x50",
+          "type": "IntProperty",
+          "field": "_rewardState",
+          "source": "field",
+          "status": "direct"
+        },
+        "_hidden": {
+          "offset": "0x58",
+          "type": "BoolProperty",
+          "field": "_hidden",
+          "source": "field",
+          "status": "direct"
+        },
+        "_opponent": {
+          "offset": "0x60",
+          "type": "BoolProperty",
+          "field": "_opponent",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.CvcTournament.CvcTournamentButtonContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_timerTitle": {
+          "offset": "0x60",
+          "type": "StringProperty",
+          "field": "_timerTitle",
+          "source": "field",
+          "status": "direct"
+        },
+        "_timer": {
+          "offset": "0x68",
+          "type": "StringProperty",
+          "field": "_timer",
+          "source": "field",
+          "status": "direct"
+        },
+        "_buttonEnabled": {
+          "offset": "0x70",
+          "type": "BoolProperty",
+          "field": "_buttonEnabled",
+          "source": "field",
+          "status": "direct"
+        },
+        "_state": {
+          "offset": "0x80",
+          "type": "State",
+          "field": "_state",
+          "source": "field",
+          "status": "direct"
+        }
+      }
     }
   },
   "enums": {

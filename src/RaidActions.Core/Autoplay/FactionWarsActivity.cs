@@ -19,6 +19,9 @@ public interface IFactionWarsGame : IGearDropGame
 
     /// <summary>The simulated win rate of the crypt's team (as geared by the bot) on this stage; null: no forecast (the stage is not in the static data).</summary>
     Task<StageForecast?> ForecastStageAsync(CryptPlan crypt, int stage, CancellationToken ct) => Task.FromResult<StageForecast?>(null);
+
+    /// <summary>The village button's Clan vs Clan phase and countdown (a read of the village, no window opened); null: not known.</summary>
+    Task<CvcStatus?> ReadCvcAsync(CancellationToken ct) => Task.FromResult<CvcStatus?>(null);
 }
 
 /// <summary>
@@ -97,8 +100,10 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
     {
         NewDay(ctx);
         if (_day is null || ctx.Utc - _dayAt > PlanStale || _day.UtcDay != DateOnly.FromDateTime(ctx.Utc)) return Decision.Now("reading today's crypts");
+        Sync(ctx);
+        if (NeedCvcRead(ctx)) return Decision.Now("reading Clan vs Clan's start");
         return Next(ctx.Settings.FactionWars, ctx.DryRun, ctx.Settings.Teams) is { } step ? Decision.Now(step.Why)
-            : Decision.Wait(NextUtcDay(ctx.Utc), _day.Open.Count == 0 ? "no crypt open today" : "today's keys are used: next crypts at the new day (UTC)");
+            : HoldDecision(ctx) ?? Decision.Wait(NextUtcDay(ctx.Utc), _day.Open.Count == 0 ? "no crypt open today" : "today's keys are used: next crypts at the new day (UTC)");
     }
 
     public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
@@ -107,6 +112,8 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
         NewDay(ctx);
         _day = await game.PlanDayAsync(ct);
         _dayAt = ctx.Utc;
+        Sync(ctx);
+        if (NeedCvcRead(ctx)) await ReadCvcAsync(ctx, ct);
         var s = ctx.Settings.FactionWars;
         if (Next(s, ctx.DryRun, ctx.Settings.Teams) is not { } step) return "";
         await ctx.ThinkAsync(ct);
@@ -249,7 +256,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
     private Step? Next(FactionWarsSettings s, bool dryRun, IReadOnlyDictionary<string, AreaTeams>? teams = null)
     {
         if (_day is null) return null;
-        var playable = _day.Open.Where(c => c.Keys > s.KeepKeys && Run(c, s) is not null && c.Team.Count > 0 && !_dryShown.Contains(c.Name)
+        var playable = _day.Open.Where(c => c.Keys > KeepFor(c, s) && Run(c, s) is not null && c.Team.Count > 0 && !_dryShown.Contains(c.Name)
             && _defeatsInARow.GetValueOrDefault(c.Name) < 6).ToList();
         if (s.StripYesterdaysTeams && !_stripped && _day.Strip.Count > 0 && playable.Count > 0)
             return new("strip", null, $"freeing yesterday's gear: {_day.Strip.Count} champion(s) to the Reserve Vault");
@@ -263,7 +270,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
             return new("fight", c, $"{c.Name}: stage {Run(c, s)!.Value.Stage}{(Run(c, s)!.Value.SuperRaid ? " Super Raid" : "")} ({c.Keys} keys)");
         }
         if (s.RemoveGearAfter && !dryRun)
-            foreach (var c in _day.Open.Where(c => _geared.Contains(c.Name) && !_removed.Contains(c.Name) && (c.Keys <= s.KeepKeys || Run(c, s) is null || _dryShown.Contains(c.Name))))
+            foreach (var c in _day.Open.Where(c => _geared.Contains(c.Name) && !_removed.Contains(c.Name) && (c.Keys <= KeepFor(c, s) || Run(c, s) is null || _dryShown.Contains(c.Name))))
                 return new("remove", c, $"{c.Name}: keys used, removing the team's gear");
         return null;
     }
@@ -272,7 +279,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
     private (int Stage, bool SuperRaid)? Run(CryptPlan c, FactionWarsSettings s)
     {
         var newLevel = !_farmAt.ContainsKey(c.Name) && s.Stage != CryptStage.FarmHighest && c.HighestPassed < c.StageCount;
-        return CryptKeys.Next(c, c.Keys - Math.Max(0, s.KeepKeys), newLevel ? c.NextStage : Stage(c, s), newLevel,
+        return CryptKeys.Next(c, c.Keys - Math.Max(0, KeepFor(c, s)), newLevel ? c.NextStage : Stage(c, s), newLevel,
             s.SuperRaid && !_noSuper.Contains(c.Name) ? SuperRaidMultiplier : 1);
     }
 
@@ -293,6 +300,49 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
         _geared.Clear(); _removed.Clear(); _forecast.Clear(); _farmAt.Clear(); _noSuper.Clear(); _dryShown.Clear(); _defeatsInARow.Clear();
         _battles = _wins = _losses = 0;
         _day = null;
+    }
+
+    private CvcStatus? _cvc;
+    private DateTime _cvcAt;
+    private DateTime _now;
+    private bool _questKeys;
+    private DateTime _holdLogged;
+
+    private void Sync(PlayContext ctx)
+    {
+        _now = ctx.Utc;
+        _questKeys = ctx.QuestLeft(QuestNeedKind.FactionWars) > 0 || ctx.QuestLeft(QuestNeedKind.FactionWarsBoss) > 0;
+    }
+
+    /// <summary>The cached Clan vs Clan state is missing or old, and a crypt has keys to decide about.</summary>
+    private bool NeedCvcRead(PlayContext ctx) =>
+        _day is not null && _day.Open.Any(c => c.Keys > ctx.Settings.FactionWars.KeepKeys) && ctx.Utc - _cvcAt > TimeSpan.FromMinutes(1)
+        && (_cvc is null ? ctx.Utc - _cvcAt > TimeSpan.FromMinutes(30) : _cvc.Stale(ctx.Utc));
+
+    private async Task ReadCvcAsync(PlayContext ctx, CancellationToken ct)
+    {
+        _cvcAt = ctx.Utc;
+        _cvc = await game.ReadCvcAsync(ct);
+        if (_cvc is not null) ctx.Event(AreaId, "cvc", _cvc.StartUtc is { } s ? $"Clan vs Clan starts in {CvcKeyHold.Hours(s - ctx.Utc)}" : $"Clan vs Clan: {_cvc.Phase}");
+    }
+
+    /// <summary>The keys to leave in this crypt: Clan vs Clan about to start holds them (<see cref="CvcKeyHold"/>).</summary>
+    private int KeepFor(CryptPlan c, FactionWarsSettings s)
+    {
+        var keep = CvcKeyHold.Keep(_cvc, _now, c.Keys, s.KeepKeys, _questKeys, NextUtcDay(_now), out _);
+        return keep;
+    }
+
+    /// <summary>Nothing to play because the keys are held for Clan vs Clan: wait for its start, saying so (logged at most every 2 hours).</summary>
+    private Decision? HoldDecision(PlayContext ctx)
+    {
+        if (_day is null || _cvc is not { Phase: CvcPhase.NotStarted, StartUtc: { } start } || start <= ctx.Utc) return null;
+        var s = ctx.Settings.FactionWars;
+        if (!_day.Open.Any(c => CvcKeyHold.Keep(_cvc, ctx.Utc, c.Keys, s.KeepKeys, _questKeys, NextUtcDay(ctx.Utc), out _) > s.KeepKeys)) return null;
+        var why = $"keeping crypt keys for Clan vs Clan, starts in {CvcKeyHold.Hours(start - ctx.Utc)}";
+        if (ctx.Utc - _holdLogged > TimeSpan.FromHours(2)) { _holdLogged = ctx.Utc; ctx.Event(AreaId, "hold-cvc", why); }
+        var until = start + TimeSpan.FromMinutes(1);
+        return Decision.Wait(until < ctx.Utc + TimeSpan.FromMinutes(31) ? until : ctx.Utc + TimeSpan.FromMinutes(31), why);
     }
 
     private static DateTime NextUtcDay(DateTime utc) => utc.Date.AddDays(1).AddMinutes(3);

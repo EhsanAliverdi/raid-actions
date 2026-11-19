@@ -524,7 +524,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         await LeaveResult(ct);
         var took = DateTime.UtcNow - started;
         var outcome = result?.ResultType switch { 1 => BattleResult.Victory, 2 => BattleResult.Defeat, 3 => BattleResult.Draw, _ => BattleResult.Unknown };
-        return new BattleOutcome(outcome, $"{took.TotalSeconds:0} s" + (result?.EnemyPower is { } ep ? $", enemy power {ep:N0}" : ""));
+        return new BattleOutcome(outcome, $"{took.TotalSeconds:0} s" + (result?.EnemyPower is { } ep ? $", enemy power {ep:N0}" : "") + $", enemy {row.TeamText}");
     }
 
     public async Task<ArenaBoard?> RefreshArenaFreeAsync(bool dryRun, CancellationToken ct)
@@ -643,7 +643,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             lines.Add("");
             lines.Add($"arena board: tab {a.Tab?.ToString() ?? "?"}, loading {a.Loading?.ToString() ?? "?"}, free refresh {(a.FreeRefreshAvailable == true ? "available" : $"not now ({a.FreeRefreshText ?? "?"})")}");
             foreach (var r in a.Rows)
-                lines.Add($"  {r.Name,-22} power {r.Power,9:N0}  status {r.Status}  {(r.Playable ? "playable" : "not playable")}{(r.Quarantined ? ", quarantine" : "")}  team power text \"{r.TeamPowerText}\"  battle: {r.Battle?.NotClickable ?? "ok"}");
+                lines.Add($"  {r.Name,-22} power {r.Power,9:N0}  status {r.Status}  {(r.Playable ? "playable" : "not playable")}{(r.Quarantined ? ", quarantine" : "")}  {r.TeamText}  team power text \"{r.TeamPowerText}\"  battle: {r.Battle?.NotClickable ?? "ok"}");
         }
         if (play.AutoOn is { } auto) lines.Add($"battle: auto {(auto ? "on" : "off")}");
         if (play.CcDifficulty is { } ccd) lines.Add($"cursed city map: difficulty {ccd} (1 Normal, 2 Hard, 3 Brutal)");
@@ -672,6 +672,8 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     // ------------------------------------------------------------------ flow pieces
 
     /// <summary>The board as the activity sees it, once the battle tab has loaded (at most 10 s).</summary>
+    private readonly HashSet<(long, string)> _loggedOpponents = [];
+
     private async Task<ArenaBoard> Board(CancellationToken ct)
     {
         for (var i = 0; i < 20; i++)
@@ -688,6 +690,9 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 var rows = b.Rows.Where(r => r.Battle?.Active == true).DefaultIfEmpty().Where(r => r is not null).Select(r => r!).ToList();
                 if (rows.Count == 0) rows = b.Rows;
                 var left = GameText.TimeLeft(b.FreeRefreshText);
+                foreach (var r in rows.DistinctBy(r => r.UserId))
+                    if (_loggedOpponents.Add((r.UserId, r.TeamText)))
+                        log($"autoplay: arena opponent {r.Name ?? "?"} ({r.UserId}) power {r.Power:N0}: {r.TeamText}");
                 return new ArenaBoard(DateTime.UtcNow, [.. rows.DistinctBy(r => r.UserId).Select(r => new ArenaOpponentInfo(r.UserId, r.Name, r.Power,
                     r.Status switch { 1 => OpponentStatus.Defeated, 2 => OpponentStatus.Won, _ => OpponentStatus.None }, r.Playable && !r.Quarantined))],
                     b.FreeRefreshAvailable == true, left, await MyArenaPower(ct));

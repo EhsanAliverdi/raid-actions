@@ -20,6 +20,24 @@ public class PlayTargetsTests
 
         public UiContext Ctx(string cls, Dictionary<string, object>? f = null) => new(Add(f ?? []), cls);
 
+        public readonly Dictionary<ulong, List<ulong>> Lists = [];
+        public Dictionary<ulong, ulong> Raw = [];
+
+        public UiContext OpponentWithTeam(long id, string name, int power, params (int slot, int type, int level, int grade)[] heroes)
+        {
+            var list = Add([]);
+            Lists[list] = [.. heroes.Select(h => Add(new() { ["Slot"] = h.slot, ["HeroTypeId"] = h.type, ["Level"] = h.level, ["Grade"] = h.grade, ["EmpowerLevel"] = 0 }))];
+            var setup = Add([]);
+            Raw[setup] = list;
+            return Ctx("Client.ViewModel.Contextes.ArenaDialog.CurrentOpponentContext", new()
+            {
+                ["_opponent"] = Add(new() { ["UserId"] = id, ["Name"] = name, ["TotalPower"] = power, ["Status"] = 0, ["TeamSetup"] = setup }),
+                ["_playable"] = Prop(true), ["_onQuarantine"] = Prop(false), ["_teamPower"] = Prop($"{power:N0}"),
+            });
+        }
+
+        public ulong RefAt(ulong obj, int offset) => offset == PlayTargets.TeamHeroesOffset && Raw.TryGetValue(obj, out var v) ? v : 0;
+
         public UiContext Opponent(long id, string name, int power, int status = 0, bool playable = true) =>
             Ctx("Client.ViewModel.Contextes.ArenaDialog.CurrentOpponentContext", new()
             {
@@ -36,7 +54,7 @@ public class PlayTargetsTests
         public bool Bool(ulong obj, string type, string member) => (bool)Fields[obj][member];
         public string? String(ulong obj, string type, string member) => Fields[obj].TryGetValue(member, out var v) ? v as string : null;
         public int? NullableInt(ulong obj, string type, string member) => null;
-        public IReadOnlyList<ulong> RefList(ulong list, int max) => throw new NotSupportedException();
+        public IReadOnlyList<ulong> RefList(ulong list, int max) => Lists.TryGetValue(list, out var l) ? l : throw new NotSupportedException();
         public string? EnumName(string enumType, int value) => value == 3 ? "Token" : null;
     }
 
@@ -47,6 +65,25 @@ public class PlayTargetsTests
             binding, new ClientRect(10, y, 80, 30), isOn);
 
     private static UiTree Tree(string view, params UiNode[] nodes) => new(view, nodes, 1280, 720, null, 1);
+
+    [Fact]
+    public void The_arena_row_reads_the_opponents_defence_heroes_when_the_game_holds_them()
+    {
+        var g = new Objects();
+        var tree = Tree("ArenaDialog",
+            N("Arena", ctx: g.Ctx("Client.ViewModel.Contextes.ArenaDialogContext", new() { ["_tabIndex"] = g.Prop(0) })),
+            N("Arena/BattleTab/Rows/Row", 100, ctx: g.OpponentWithTeam(5L, "Foe", 90_000, (0, 1101, 60, 6), (1, 2202, 50, 5))),
+            N("Arena/BattleTab/Rows/Row/BattleButton", 100, interactable: true),
+            N("Arena/BattleTab/Rows/Row", 200, ctx: g.Opponent(6L, "NoTeam", 50_000)),
+            N("Arena/BattleTab/Rows/Row/BattleButton", 200, interactable: true));
+
+        var rows = PlayTargets.Scan(tree, g).Arena!.Rows;
+
+        Assert.Equal([(0, 1101, 60, 6), (1, 2202, 50, 5)], rows[0].Team!.Select(h => (h.Slot, h.TypeId, h.Level, h.Grade)));
+        Assert.Equal("team [1101 L60 G6, 2202 L50 G5]", rows[0].TeamText);
+        Assert.Null(rows[1].Team); // the field is absent: no team, the row still reads
+        Assert.Equal("team not read", rows[1].TeamText);
+    }
 
     [Fact]
     public void The_arena_board_gives_each_row_its_battle_button_and_reads_power_status_and_the_free_refresh()

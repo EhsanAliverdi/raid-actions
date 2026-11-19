@@ -154,8 +154,10 @@
                                                                       "UserId",
                                                                       "Status",
                                                                       "TotalPower",
-                                                                      "Name"
+                                                                      "Name",
+                                                                      "TeamSetup"
                                                                   ],
+                  "SharedModel.Battle.Core.Setup.HeroSlotSetup":  [ "Slot", "HeroTypeId", "Grade", "DoubleAscendGrade", "Level", "EmpowerLevel" ],
                   "ECS.ViewModel.BattleHUDContext":  [
                                                          "_isAutoEnabled",
                                                          "_speedInt",

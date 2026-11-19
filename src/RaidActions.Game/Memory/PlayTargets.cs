@@ -4,7 +4,22 @@ namespace RaidActions.Game.Memory;
 
 /// <summary>An opponent row on the Classic Arena board, from its CurrentOpponentContext.</summary>
 /// <param name="Status">ArenaOpponentStatus: 0 not fought, 1 defeated (beaten by us), 2 won (they beat us).</param>
-public sealed record ArenaRow(long UserId, string? Name, int Power, int Status, bool Playable, bool Quarantined, string? TeamPowerText, UiTarget? Battle);
+/// <param name="Team">The opponent's defence heroes (ArenaOpponent.TeamSetup), null when not read. UNVERIFIED live (2026-11-20, from the dump).</param>
+public sealed record ArenaRow(long UserId, string? Name, int Power, int Status, bool Playable, bool Quarantined, string? TeamPowerText, UiTarget? Battle,
+    List<OpponentHero>? Team = null, int? TeamCombatPower = null)
+{
+    /// <summary>"type 123 L60 G5, ..." for the log.</summary>
+    public string TeamText => OpponentHero.Describe(Team, TeamCombatPower);
+}
+
+/// <summary>One hero of an opponent's defence (HeroSlotSetup): HeroTypeId, Level, Grade (stars, HeroGrade), DoubleAscendGrade (null none), EmpowerLevel.</summary>
+public sealed record OpponentHero(int Slot, int TypeId, int Level, int Grade, int? DoubleAscend, int Empower)
+{
+    public override string ToString() => $"{TypeId} L{Level} G{Grade}" + (DoubleAscend is { } a ? $" A{a}" : "") + (Empower > 0 ? $" E{Empower}" : "");
+
+    public static string Describe(IReadOnlyList<OpponentHero>? team, int? power = null) =>
+        team is null ? "team not read" : team.Count == 0 ? "team empty" : "team [" + string.Join(", ", team.OrderBy(h => h.Slot)) + "]" + (power is > 0 ? $" cp {power:N0}" : "");
+}
 
 /// <param name="Tab">ArenaDialogContext._tabIndex: 0 the battle tab.</param>
 public sealed record ArenaBoardRead(List<ArenaRow> Rows, bool? FreeRefreshAvailable, string? FreeRefreshText, bool? Loading, int? Tab);
@@ -481,11 +496,12 @@ public static partial class PlayTargets
                     var playable = Try(() => BoolValue(g, g.Ref(c.Address, CurrentOpponent, "_playable")), null, notes, "CurrentOpponentContext._playable") == true;
                     var quarantine = Try(() => BoolValue(g, g.Ref(c.Address, CurrentOpponent, "_onQuarantine")), null, notes, "CurrentOpponentContext._onQuarantine") == true;
                     var (button, why) = Named(i, FightName(), NotFightName());
+                    var (oppTeam, teamCp) = ReadOpponentTeam(g, o, notes);
                     var target = Make("arena-opponent", $"arena: Battle {name ?? "?"} ({power:N0})", n, button,
                         $"user {id}, team power {power:N0} (account {accountPower:N0}), status {status}, {(playable ? "playable" : "not playable")}" + (why is null ? "" : "; " + why), key: id);
                     targets.Add(target);
                     rows ??= [];
-                    rows.Add(new ArenaRow(id, name, power, status, playable, quarantine, teamText, target));
+                    rows.Add(new ArenaRow(id, name, power, status, playable, quarantine, teamText, target, oppTeam, teamCp));
                     break;
                 }
                 case FwRegionItem:
@@ -1681,6 +1697,26 @@ public static partial class PlayTargets
     [GeneratedRegex(@"energy", RegexOptions.IgnoreCase)] private static partial Regex EnergyWord();
     [GeneratedRegex(@"token", RegexOptions.IgnoreCase)] private static partial Regex TokenWord();
     [GeneratedRegex(@"tag|3\s*x\s*3|live|auto|multi|ticket", RegexOptions.IgnoreCase)] private static partial Regex OtherTokens();
+
+    private const string HeroSlot = "SharedModel.Battle.Core.Setup.HeroSlotSetup";
+    /// <summary>TeamSetup.HeroSlotSetups at a raw offset (dump 11.95.0; TeamSetup is raid-extractor's type key, so not in ui-offsets.json).</summary>
+    public const int TeamHeroesOffset = 0x28;
+
+    /// <summary>ArenaOpponent.TeamSetup's heroes. Failures only add a note; null team when nothing could be read.</summary>
+    internal static (List<OpponentHero>? Team, int? CombatPower) ReadOpponentTeam(IGameObjects g, ulong opponent, List<string> notes)
+    {
+        var setup = Try(() => g.Ref(opponent, Opponent, "TeamSetup"), 0UL, notes, "ArenaOpponent.TeamSetup");
+        if (setup == 0) return (null, null);
+        var list = Try(() => g.RefAt(setup, TeamHeroesOffset), 0UL, notes, "TeamSetup.HeroSlotSetups");
+        if (list == 0) return (null, null);
+        var heroes = new List<OpponentHero>();
+        foreach (var h in Try<IReadOnlyList<ulong>>(() => g.RefList(list, 12), [], notes, "TeamSetup.HeroSlotSetups list"))
+            heroes.Add(new OpponentHero(Try(() => g.Int(h, HeroSlot, "Slot"), -1, notes, "HeroSlotSetup.Slot"), Try(() => g.Int(h, HeroSlot, "HeroTypeId"), 0, notes, "HeroSlotSetup.HeroTypeId"),
+                Try(() => g.Int(h, HeroSlot, "Level"), 0, notes, "HeroSlotSetup.Level"), Try(() => g.Int(h, HeroSlot, "Grade"), 0, notes, "HeroSlotSetup.Grade"),
+                Try(() => g.NullableInt(h, HeroSlot, "DoubleAscendGrade"), null, notes, "HeroSlotSetup.DoubleAscendGrade"),
+                Try(() => g.Int(h, HeroSlot, "EmpowerLevel"), 0, notes, "HeroSlotSetup.EmpowerLevel")));
+        return (heroes, null); // CombatPower (TeamSetup+0x10, int) has no raw int reader yet; the row text has the power
+    }
 
     /// <summary>A read that older offsets may lack, or that fails on a stale object: the fallback, with a note (shown by autoplay-explore).</summary>
     private static T Try<T>(Func<T> read, T fallback, List<string> notes, string what)

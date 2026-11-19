@@ -184,6 +184,44 @@ public class EnergyActivityTests
         Assert.Contains("stage 1:", quest!.Text, StringComparison.Ordinal);   // the cheapest beaten stage, a replay
     }
 
+    private static async Task<IReadOnlyList<AutoplayEvent>> GearQuest(string? setting, params EnergyTarget[] rows)
+    {
+        var host = new FakeHost(Start)
+        {
+            Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 }, Energy = On(rows),
+                Quests = setting is null ? new QuestSettings { Enabled = true } : new QuestSettings { Enabled = true, GearDungeon = setting } },
+        };
+        var game = new FakeEnergyGame(() => host.UtcNow) { Energy = 100 };
+        var engine = new AutoplayEngine([new EnergyActivity(game)], new FakeArenaGame(() => host.UtcNow), host, false)
+            { StartNeeds = [new QuestNeed(QuestNeedKind.DungeonBoss, 3, "Win 3 Artifacts from clearing the Dungeons", "Daily", true)] };
+        await engine.RunAsync(once: true, Limit());
+        return [.. host.Events];
+    }
+
+    private static EnergyTarget Dungeon(string region, int stage) => new() { Id = "d-" + region, Area = "Dungeon", Region = region, Difficulty = "Hard", Stage = stage };
+
+    [Fact]
+    public async Task A_gear_quest_plays_the_configured_dungeon_row_even_when_another_gear_row_comes_first()
+    {
+        var ev = await GearQuest("IceGolemCave", Dungeon("DragonsLair", 6), Dungeon("IceGolemCave", 4));
+        Assert.Contains(ev, e => e.Kind == "quest" && e.Text.Contains("IceGolemCave (the setting)"));
+        Assert.True(ev.Any(e => e.Kind == "battle" && e.Text.Contains("[row quest-dungeon-any]") && e.Text.Contains("Ice Golem")), string.Join(" / ", ev.Select(e => $"{e.Kind}: {e.Text}")));
+    }
+
+    [Fact]
+    public async Task A_gear_quest_plays_Dragon_s_Lair_by_default()
+    {
+        var ev = await GearQuest(null, Dungeon("IceGolemCave", 4), Dungeon("DragonsLair", 6));
+        Assert.Contains(ev, e => e.Kind == "quest" && e.Text.Contains("DragonsLair (the setting)"));
+    }
+
+    [Fact]
+    public async Task A_gear_quest_falls_back_to_another_gear_dungeon_when_the_configured_one_has_nothing()
+    {
+        var ev = await GearQuest("FireGolemCave", Dungeon("DragonsLair", 6));
+        Assert.Contains(ev, e => e.Kind == "quest" && e.Text.Contains("nothing beaten in FireGolemCave"));
+    }
+
     [Fact]
     public async Task A_lost_push_stage_waits_until_the_team_is_stronger()
     {

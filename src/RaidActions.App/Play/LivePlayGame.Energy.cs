@@ -311,7 +311,7 @@ public sealed partial class LivePlayGame : IEnergyGame
         if (outcome is BattleResult.Victory or BattleResult.Defeat && Top(await ReadState(ct)) == resultView)
             _parked = (run.Region, run.Difficulty, run.Number, TeamKey(run), run.Target.SuperRaid);
         else await LeaveResult(ct, resultView);
-        return new BattleOutcome(outcome, $"{(DateTime.UtcNow - started).TotalSeconds:0} s");
+        return new BattleOutcome(outcome, $"{(DateTime.UtcNow - started).TotalSeconds:0} s", _fielded);
     }
 
     /// <summary>The dungeon map's point name for a region (RegionTypeId name) where they differ (seen live 2026-10-31).</summary>

@@ -252,6 +252,9 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     /// <summary>The team tried at the stage now (set by <see cref="ApplyDefaultTeam"/> when the bot chose it), recorded with the battle's result.</summary>
     private (string Key, List<int> Ids)? _trying;
 
+    /// <summary>The team the screen showed when the last Start was pressed (for the battle events).</summary>
+    private List<int>? _fielded;
+
     private void RecordTry(BattleResult result)
     {
         if (_trying is not { } t || result is not (BattleResult.Victory or BattleResult.Defeat)) return;
@@ -1018,6 +1021,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 : $"{kind}: {string.Join("; ", all.Select(t => $"{t.NotClickable} ({t.Note})").Distinct())}.") + $" Screen dump: {dump}");
         }
         var target = ok[0];
+        if (kind == "team-start") _fielded = play.TeamIds?.ToList();
         var (w, why) = GameWindow.Find();
         if (w is null) throw new PlayStopException(why!);
         if (policy.Problem(w) is { } bad) throw new PlayStopException(bad);

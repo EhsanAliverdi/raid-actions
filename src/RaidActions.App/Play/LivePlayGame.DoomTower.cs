@@ -336,7 +336,7 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         await LeaveResult(ct, PlayTargets.DtResultView);
         var outcome = result?.Pve?.ResultType switch { 1 => BattleResult.Victory, 2 => BattleResult.Defeat, 3 => BattleResult.Draw, _ => BattleResult.Unknown };
         RecordTry(outcome);
-        return new BattleOutcome(outcome, $"{(DateTime.UtcNow - started).TotalSeconds:0} s");
+        return new BattleOutcome(outcome, $"{(DateTime.UtcNow - started).TotalSeconds:0} s", _fielded);
     }
 
     /// <summary>The tower map on top (its stages read), from wherever the game is.</summary>

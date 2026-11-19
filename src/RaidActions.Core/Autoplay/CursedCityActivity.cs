@@ -24,6 +24,9 @@ public interface ICursedCityGame
     /// every member, Retry when some cannot join (the plan is made again). So no champion gets gear for a team the game will not take.
     /// </summary>
     Task<BattleOutcome> CheckTeamAsync(CcLevel level, CancellationToken ct) => Task.FromResult(new BattleOutcome(BattleResult.NotStarted, "not checked"));
+
+    /// <summary>The simulated win rate of the level's team (as geared by the bot); null: no forecast (the level is not in the static data).</summary>
+    Task<StageForecast?> ForecastAsync(CcLevel level, CancellationToken ct) => Task.FromResult<StageForecast?>(null);
 }
 
 /// <summary>
@@ -46,6 +49,12 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
     private readonly HashSet<int> _geared = [];
     private readonly HashSet<int> _dryShown = [];
     private int _battles, _wins, _losses, _opened;
+    /// <summary>Levels the simulation blocked today (win rate at or under <see cref="PushThreshold"/>), with the UTC day; merged into the skip set.</summary>
+    private readonly HashSet<int> _blocked = [];
+    private DateOnly _blockedDay;
+
+    /// <summary>The push gate: a level not beaten yet is tried only when the simulation gives its team at least this much (Ehsan: 70%).</summary>
+    public const double PushThreshold = 0.70;
 
     public bool IsEnabled(AutoplaySettings settings) => settings.CursedCity.Enabled;
 
@@ -74,7 +83,8 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
     {
         var s = ctx.Settings.CursedCity;
         _planForQuest = ForQuest(ctx);
-        _plan = await game.PlanAsync(Math.Max(1, s.LossesToSkip), _dryShown, s.TryRisky, s.Difficulty, _planForQuest, ct);
+        if (_blockedDay != DateOnly.FromDateTime(ctx.Utc)) { _blockedDay = DateOnly.FromDateTime(ctx.Utc); _blocked.Clear(); }
+        _plan = await game.PlanAsync(Math.Max(1, s.LossesToSkip), _dryShown.Union(_blocked).ToHashSet(), s.TryRisky, s.Difficulty, _planForQuest, ct);
         _planAt = ctx.Utc;
         var level = _plan.Next;
         var playable = level is not null && Spendable(s) >= Cost(level) && level.Team.Feasible && !_dryShown.Contains(level.Stage.Id);
@@ -96,6 +106,14 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
         if (!playable) return "";
 
         var gearNow = s.GearUnused ? level!.Team.Members.Where(m => m.GetsGear && !_geared.Contains(m.Id)).Select(m => m.Id).ToList() : [];
+        // The push gate: a level not beaten yet only when its team (geared as the bot will) simulates at 70% or more; else blocked for the day.
+        if (!level!.Stage.Beaten && !ctx.DryRun && await game.ForecastAsync(level, ct) is { } fc && fc.WinRate < PushThreshold)
+        {
+            _blocked.Add(level.Stage.Id);
+            ctx.Event(AreaId, "sim", $"{CursedCityPlanner.Where(level.Stage)}: simulated win {fc.WinRate:P0} (needs {PushThreshold:P0}), not tried today. {fc.Text}");
+            _planAt = DateTime.MinValue;
+            return "";
+        }
         // Before gear is moved: the level's team list read once end to end (no slot clicks), so gear goes only to champions the level takes
         // (2026-10-30: 21 pieces moved to three champions level 3 then refused). Then gear, then the level with the team set once.
         if (gearNow.Count > 0 && !ctx.DryRun)
@@ -145,7 +163,7 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
             _losses++;
             if (_planForQuest) _questLosses++;
         }
-        ctx.Event(AreaId, "battle", $"{outcome.Result} {where} ({level.Criterion}; team {string.Join(", ", level.Team.Members.Select(m => m.Name))}). {outcome.Text}");
+        ctx.Event(AreaId, "battle", $"{outcome.Result} {where} ({level.Criterion}; team {string.Join(", ", level.Team.Members.Select(m => m.Name))}). {outcome.Text}{outcome.TeamTag}");
         _plan = _plan with { Next = null }; // read again next turn: results and keys changed
         _planAt = DateTime.MinValue;
         return $"{outcome.Result}: {where}";

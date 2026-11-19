@@ -605,7 +605,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 var sk = StageKey(run.Target.Area, run.Region, run.AtDifficulty ?? run.Target.Difficulty, run.Number);
                 var (sw, sl) = _stageResults.GetValueOrDefault(sk);
                 _stageResults[sk] = outcome.Result == BattleResult.Victory ? (sw + 1, sl) : (sw, sl + 1);
-                ctx.Event(AreaId, "battle", $"{outcome.Result} {where} [row {run.Target.Id}]. {outcome.Text}");
+                ctx.Event(AreaId, "battle", $"{outcome.Result} {where} [row {run.Target.Id}]. {outcome.Text}{outcome.TeamTag}");
                 // The push's loss record (RetryPowerPercent): the team's power when it lost; a win clears it.
                 if (run.Target is { Progress: true, RetryPowerPercent: > 0 } && outcome.Result is BattleResult.Defeat or BattleResult.Victory)
                 {

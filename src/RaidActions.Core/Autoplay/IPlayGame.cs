@@ -61,7 +61,15 @@ public sealed record ArenaBoard(DateTime Utc, List<ArenaOpponentInfo> Opponents,
 public enum BattleResult { Victory, Defeat, Draw, Unknown, NotStarted, Retry }
 
 /// <param name="Text">What happened, for the event log (opponent, power, result, how long).</param>
-public sealed record BattleOutcome(BattleResult Result, string Text);
+/// <param name="Team">The champions fielded (read from the team screen when Start was pressed), when known.</param>
+public sealed record BattleOutcome(BattleResult Result, string Text, IReadOnlyList<int>? Team = null)
+{
+    /// <summary>" [team 1,2,3]" for the event log (empty when the team is not known); no '#' so the gear/remove regexes never see it.</summary>
+    public string TeamTag => Team is { Count: > 0 } t ? $" [team {string.Join(",", t)}]" : "";
+}
+
+/// <summary>A stage's simulated win rate for the team the bot would field (the push gate), with a one-line why.</summary>
+public sealed record StageForecast(double WinRate, string Text);
 
 /// <summary>The game is not where it should be, or a check failed: nothing more is clicked in this turn.</summary>
 public sealed class PlayStopException(string message) : Exception(message);

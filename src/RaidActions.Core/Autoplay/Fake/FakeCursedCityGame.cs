@@ -25,6 +25,16 @@ public sealed class FakeCursedCityGame : ICursedCityGame
     /// <summary>The plain plan finds nothing the spare team can play: beaten levels only with the strong team.</summary>
     public bool SpareTeamNotReady { get; set; }
     public List<string> Calls { get; } = [];
+
+    /// <summary>The simulated win rate the push gate sees (null: no forecast).</summary>
+    public double? Forecast { get; set; }
+    public List<int> Forecasts { get; } = [];
+
+    public Task<StageForecast?> ForecastAsync(CcLevel level, CancellationToken ct)
+    {
+        Forecasts.Add(level.Stage.Number);
+        return Task.FromResult(Forecast is { } r ? new StageForecast(r, "fake") : null);
+    }
     private readonly HashSet<int> _wearing = [];
 
     public Task<CursedCityPlan> PlanAsync(int lossesToSkip, IReadOnlySet<int> skip, bool allowRisky, string? difficulty, bool forQuest, CancellationToken ct)
@@ -75,7 +85,7 @@ public sealed class FakeCursedCityGame : ICursedCityGame
             foreach (var next in Levels.Where(x => x.Number == l.Number + 1)) next.Open = true;
         }
         else l.Losses++;
-        return Task.FromResult(new BattleOutcome(won ? BattleResult.Victory : BattleResult.Defeat, "on auto"));
+        return Task.FromResult(new BattleOutcome(won ? BattleResult.Victory : BattleResult.Defeat, "on auto", l.Team.Select(m => m.Id).ToList()));
     }
 }
 

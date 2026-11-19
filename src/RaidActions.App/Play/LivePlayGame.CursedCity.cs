@@ -154,6 +154,16 @@ public sealed partial class LivePlayGame : ICursedCityGame
 
     Task<string> ICursedCityGame.RemoveGearAsync(IReadOnlyList<int> ids, bool dryRun, CancellationToken ct) => RemoveGearAsync(ids, dryRun, ct, cursedCity: true);
 
+    /// <summary>The push gate: the level's team, geared as the bot will gear it, simulated on the level's stage.</summary>
+    public async Task<StageForecast?> ForecastAsync(CcLevel level, CancellationToken ct)
+    {
+        var (d, g, r, l) = await Account(ct);
+        var ids = level.Team.Members.Select(m => m.Id).ToList();
+        var plan = RaidExtractor.Battle.Prepare.Make(d, g, r, ids, $"Cursed City: {CursedCityPlanner.Where(level.Stage)}", locks: l);
+        var (rate, why) = RaidExtractor.Battle.StageSim.WinRate(d, g, ExtractorOutput, level.Stage.Id, ids, gear: plan);
+        return why.Contains("not in the static data", StringComparison.Ordinal) ? null : new StageForecast(rate, why);
+    }
+
     public Task<BattleOutcome> CheckTeamAsync(CcLevel level, CancellationToken ct) => FightAsync(level, dryRun: true, ct, check: true);
 
     public Task<BattleOutcome> FightAsync(CcLevel level, bool dryRun, CancellationToken ct) => FightAsync(level, dryRun, ct, check: false);
@@ -267,7 +277,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
         var outcome = result?.Pve?.ResultType switch { 1 => BattleResult.Victory, 2 => BattleResult.Defeat, 3 => BattleResult.Draw, _ => BattleResult.Unknown };
         // A win does not lock its champions for every level (2026-10-30: Normal level 1's winners were all pickable on level 2): only what
         // a team screen shows locked is learnt (above).
-        return new BattleOutcome(outcome, $"{(DateTime.UtcNow - started).TotalSeconds:0} s");
+        return new BattleOutcome(outcome, $"{(DateTime.UtcNow - started).TotalSeconds:0} s", _fielded);
     }
 
     /// <summary>The Cursed City map on top with the level in view (dragged there when off screen); its map entry (state 0 closed).</summary>

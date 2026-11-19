@@ -684,6 +684,47 @@ public sealed partial class LivePlayGame : IChoresGame
     }
 
     /// <summary>
+    /// Clan vs Clan (shown by Ehsan 2026-11-19 on KaelStormVex): village → Clan vs Clan → Milestones (a Claim under each reached, untaken column; no popup:
+    /// the button goes) → Personal Milestones and Versus (a Claim/Collect only after the event ends, personal only when the clan won) → closed.
+    /// Never anything that spends (the dialog has none; activity 138 "spend gems" is never chased).
+    /// </summary>
+    public async Task<string> ClaimCvcAsync(bool dryRun, CancellationToken ct)
+    {
+        await HomeAsync(Action("to the village"), ct);
+        var (_, vt, _) = await Read(ct);
+        if (!vt.Any(t => t.Kind == "village-cvc" && t.NotClickable is null)) return "nothing: no Clan vs Clan button on the village";
+        log("autoplay: STEP Clan vs Clan: claiming its rewards");
+        await Click("village-cvc", null, (s2, _) => Top(s2) == "CvcTournamentDialog", "Clan vs Clan opens", ct, within: TimeSpan.FromSeconds(10));
+        await Pause(1200, ct);
+        var claimed = 0;
+        foreach (var tab in new[] { "Milestones", "PersonalMilestones_h", "Versus" })
+        {
+            var (_, tt, _) = await Read(ct);
+            if (tt.FirstOrDefault(t => t.Kind == "cvc-tab" && t.Name == $"cvc: tab {tab}") is null) continue;
+            await Click("cvc-tab", t => t.Name == $"cvc: tab {tab}", (_, _) => true, $"the {tab} tab", ct);
+            await Pause(1000, ct);
+            for (var i = 0; i < 12; i++)
+            {
+                var (w, _) = Game.Window.GameWindow.Find();
+                var width = w?.Client.Width ?? 1298;
+                var (_, ct2, _) = await Read(ct);
+                // A Claim on screen (the milestone list scrolls sideways: off-screen columns are left for the next look).
+                var claim = ct2.FirstOrDefault(t => t.Kind == "cvc-claim" && t.NotClickable is null && t.Rect is { } r && r.X >= 0 && r.X + r.Width <= width);
+                if (claim is null) break;
+                if (dryRun) { log($"autoplay: WOULD CLICK {claim.Name} on {tab} (dry run)"); break; }
+                await Click("cvc-claim", t => t.Path == claim.Path, (_, scan) => !scan().Targets.Any(t => t.Path == claim.Path && t.NotClickable is null),
+                    $"{tab}: claimed", ct, within: TimeSpan.FromSeconds(6), shot: true);
+                claimed++;
+                await Pause(1200, ct);
+                var top = Top(await Settled(ct));
+                if (top is not null && top != "CvcTournamentDialog") { await Back(top, ct); await Pause(800, ct); }
+            }
+        }
+        await HomeAsync(Action("from Clan vs Clan"), ct);
+        return claimed > 0 ? $"Clan vs Clan: claimed {claimed} reward(s)" : "nothing to claim in Clan vs Clan";
+    }
+
+    /// <summary>
     /// The mission "Get a Referral Link" (every account's first; Ehsan 2026-11-18: "open referral from the village and create the referral code"): the
     /// village's Referral Programs (top left), the first slot's Get Referral Link, closed. The game copies the link to the Windows clipboard: what was
     /// there is put back.

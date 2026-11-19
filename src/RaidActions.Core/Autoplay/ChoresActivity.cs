@@ -44,6 +44,9 @@ public interface IChoresGame
     /// <summary>Those champions' gear off and each back in the vault it came from; what was done.</summary>
     Task<string> PutBackAsync(TimeSpan after, bool dryRun, CancellationToken ct) => Task.FromResult("");
 
+    /// <summary>Clan vs Clan: every Claim the tournament shows (clan milestones; personal milestones and the Versus chest when the clan won); what was done.</summary>
+    Task<string> ClaimCvcAsync(bool dryRun, CancellationToken ct) => Task.FromResult("not supported");
+
     /// <summary>The mission "Get a Referral Link": village → Referral Programs → Get Referral Link; what was done ("not supported" in the fakes).</summary>
     Task<string> GetReferralLinkAsync(bool dryRun, CancellationToken ct) => Task.FromResult("not supported");
 
@@ -134,6 +137,8 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         // The village's red dots (Ehsan 2026-11-16): looked at every 20 minutes; each one brings its job forward, one nothing handles is a warning.
         if (s.RedDots && ctx.Utc >= _dotsAt && Open(ctx, "dots")) return "dots";
         if (s.AutoJoinClan && ctx.Utc >= _clanAt && Open(ctx, "clan")) return "clan";
+        // Clan vs Clan rewards (Ehsan 2026-11-19: "there are Clan vs Clan rewards you can collect"): looked at every 6 hours.
+        if (ctx.Utc >= _cvcAt && Open(ctx, "cvc")) return "cvc";
         // The clan's day does not start at 00:00 UTC (Ehsan: "at the clan's reset"): looked at every 4 hours; the Members page's Check In says whether it is due.
         if (s.ClanCheckIn && ctx.Utc >= _checkInNext && Open(ctx, "checkin")) return "checkin";
         if (s.InboxExpiringTokens && ctx.Utc >= _inboxAt && Open(ctx, "inbox")) return "inbox";
@@ -149,6 +154,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         DateOnly? CheckIn = null, DateOnly? Cleanup = null);
 
     private DateOnly? _checkInDay, _cleanupDay;
+    private DateTime _cvcAt;
     private DateTime _checkInNext, _dotsAt;
     private readonly Dictionary<string, DateOnly> _dotsNoted = [];
 
@@ -186,6 +192,12 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
         {
             switch (job)
             {
+                case "cvc":
+                {
+                    _cvcAt = ctx.Utc + TimeSpan.FromHours(6);
+                    var done = await game.ClaimCvcAsync(ctx.DryRun, ct);
+                    return done is "not supported" || done.StartsWith("nothing", StringComparison.Ordinal) ? "" : Report(ctx, "cvc", done);
+                }
                 case "referral":
                 {
                     // Once: the mission counts on the next read; tried again after a day if it did not.

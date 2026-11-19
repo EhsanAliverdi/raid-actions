@@ -192,6 +192,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 }
                 var enabled = activities.Where(a => a.IsEnabled(settings)).OrderBy(a => order.IndexOf(a.Id) is >= 0 and var at ? at : int.MaxValue).ToList();
                 ctx.ChainBreak = self => ChainBreak(ctx, enabled, self, once);
+                ctx.YieldTo = self => YieldTo(ctx, enabled, self);
                 _decisions = activities.ToDictionary(a => a.Id, a => !a.IsEnabled(settings) ? Decision.Off("switched off")
                     : ctx.Held(a.Id) is { } held ? Decision.Wait(held.Until, held.Why) : a.Decide(ctx));
                 if (enabled.Count == 0)
@@ -419,6 +420,18 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     }
 
     private TimeSpan Jitter(int minutes) => TimeSpan.FromMinutes(Math.Max(0, minutes) * (0.75 + 0.5 * host.Random.NextDouble()));
+
+
+    /// <summary>
+    /// Faction Wars after Tag Team (Ehsan 2026-11-20: the daily "5 Tag Team Arena battles" quest pays the +6 crypt keys, so it comes first): while that quest is
+    /// open and Tag Team can play now (tokens), Faction Wars waits. No tokens, or Tag Team off or held: Faction Wars plays.
+    /// </summary>
+    private static string? YieldTo(PlayContext ctx, IReadOnlyList<IActivity> enabled, string self)
+    {
+        if (self != FactionWarsActivity.AreaId || ctx.QuestLeft(QuestNeedKind.TagArena) <= 0) return null;
+        if (enabled.FirstOrDefault(a => a.Id == TagArenaActivity.AreaId) is not { } tag || ctx.Held(tag.Id) is not null) return null;
+        return tag.Decide(ctx) is { Act: true } d ? $"the Tag Team quest first (its reward is the crypt keys): {d.Why}" : null;
+    }
 
     /// <summary>
     /// What ends a chain of runs (Ehsan 2026-11-06: "the only time you go back to base is when something more critical is due, e.g. the Arena refresh"):

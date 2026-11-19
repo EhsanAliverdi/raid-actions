@@ -37,12 +37,14 @@ public sealed class FakeFactionWarsGame(Func<DateTime> now) : IFactionWarsGame
 
     /// <summary>The simulated win rate the push gate sees (null: no forecast).</summary>
     public double? Forecast { get; set; }
+    /// <summary>A rate per crypt and stage (overrides Forecast): faction, stage.</summary>
+    public Func<string, int, double?>? ForecastFor { get; set; }
     public List<string> Forecasts { get; } = [];
 
     public Task<StageForecast?> ForecastStageAsync(CryptPlan crypt, int stage, CancellationToken ct)
     {
         Forecasts.Add($"{crypt.Faction} {stage}");
-        return Task.FromResult(Forecast is { } r ? new StageForecast(r, "fake") : null);
+        return Task.FromResult((ForecastFor?.Invoke(crypt.Faction, stage) ?? Forecast) is { } r ? new StageForecast(r, "fake") : null);
     }
 
     public Task<FactionWarsDay> PlanDayAsync(CancellationToken ct) => Task.FromResult(new FactionWarsDay(DateOnly.FromDateTime(now()),

@@ -56,25 +56,27 @@ public sealed record CvcStatus(CvcPhase Phase, DateTime ReadUtc, DateTime? Start
 /// <summary>Faction Wars keys held for Clan vs Clan (Ehsan 2026-11-20: Faction Wars gives good points while Clan vs Clan runs).</summary>
 public static class CvcKeyHold
 {
-    /// <summary>A crypt's keys at their cap (assumed; the game's own cap is to be confirmed live) and the time one key takes to come back.</summary>
-    // Seen on the accounts (2026-11-20): +6 keys per crypt at the daily reset (12 -> 18 on KaelStormVex), three crypts sitting at exactly 18: the cap.
-    // 6 a day is one key per 4 hours on average.
+    /// <summary>
+    /// A crypt's keys at their cap (assumed; to be confirmed live) and the keys the daily "5 Tag Team Arena battles" quest pays.
+    /// Crypt keys do NOT regenerate with time (Ehsan 2026-11-20): the +6 a day are that quest's reward, so keys can be held until Clan vs Clan starts
+    /// without waste. The only loss is the quest's +6 landing on a crypt above the cap.
+    /// </summary>
     public static int KeyCap { get; set; } = 18;
-    public static TimeSpan KeyRegen { get; set; } = TimeSpan.FromHours(4);
+    public static int TagQuestKeys { get; set; } = 6;
 
     /// <summary>
-    /// The keys to leave in a crypt now. While Clan vs Clan is not started and starts before the crypt's keys would reach the cap, everything below the cap
-    /// is kept (a crypt at the cap spends down to one below it, so no key is ever lost). Not held when it starts later than the cap (play on, the keys
-    /// come back), when a Faction Wars quest would expire first (quests reset at the UTC day), or when nothing is known.
+    /// The keys to leave in a crypt now. While Clan vs Clan is not started, all keys are kept; except that a Tag Team quest still to be claimed (or one that
+    /// resets before the start, paying again) spends the crypt down to <c>KeyCap - TagQuestKeys</c> first, so the +6 never overflows. Not held when a
+    /// Faction Wars quest would expire first (quests reset at the UTC day), or when nothing is known.
     /// </summary>
-    public static int Keep(CvcStatus? cvc, DateTime now, int keys, int baseKeep, bool questNeedsKeys, DateTime nextReset, out TimeSpan? startsIn)
+    public static int Keep(CvcStatus? cvc, DateTime now, int keys, int baseKeep, bool questNeedsKeys, bool tagQuestPending, DateTime nextReset, out TimeSpan? startsIn)
     {
         startsIn = null;
         if (cvc is not { Phase: CvcPhase.NotStarted, StartUtc: { } start } || start <= now) return baseKeep;
         startsIn = start - now;
         if (questNeedsKeys && start > nextReset) return baseKeep;
-        var toCap = TimeSpan.FromTicks(KeyRegen.Ticks * Math.Max(0, KeyCap - keys));
-        return start - now <= toCap ? Math.Max(baseKeep, KeyCap - 1) : baseKeep;
+        var overflow = tagQuestPending || start > nextReset;
+        return overflow ? Math.Max(baseKeep, KeyCap - TagQuestKeys) : Math.Max(baseKeep, keys);
     }
 
     public static string Hours(TimeSpan t) => t.TotalHours >= 10 ? $"{t.TotalHours:0}h" : $"{t.TotalHours:0.#}h";

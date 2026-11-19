@@ -123,6 +123,11 @@ public sealed class PlayContext(AutoplaySettings settings, IPlayGame game, IAuto
     /// </summary>
     public Func<string, string?>? ChainBreak { get; set; }
 
+    /// <summary>
+    /// Why the area with this id should wait for another before it starts (Faction Wars waits for the daily Tag Team quest: its reward is the day's crypt keys); null: go on. Set by the engine.
+    /// </summary>
+    public Func<string, string?>? YieldTo { get; set; }
+
     /// <summary>A person's pause before an action (the pacing settings' range).</summary>
     public Task ThinkAsync(CancellationToken ct)
     {

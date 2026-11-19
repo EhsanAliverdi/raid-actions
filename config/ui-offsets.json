@@ -1755,6 +1755,92 @@
         }
       }
     },
+    "Client.ViewModel.Contextes.Bank.Offers.Gift.GiftOfferContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_offer": {
+          "offset": "0x78",
+          "type": "ViewModelOffer.Offer",
+          "field": "_offer",
+          "source": "field",
+          "status": "direct"
+        },
+        "_purchaseMethod": {
+          "offset": "0x80",
+          "type": "PurchaseType",
+          "field": "_purchaseMethod",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.Bank.Offers.ViewModelOffer.GiveOffer": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_offer": {
+          "offset": "0x10",
+          "type": "UserOffer",
+          "field": "_offer",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.Bank.Offers.ViewModelOffer.StaticOffer": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_Offer_k__BackingField": {
+          "offset": "0x10",
+          "type": "ClientStaticOffer",
+          "field": "_Offer_k__BackingField",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "SharedModel.Meta.Offers.UserOffer": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "PriceId": {
+          "offset": "0x28",
+          "type": "int",
+          "field": "PriceId",
+          "source": "field",
+          "status": "direct"
+        },
+        "Price": {
+          "offset": "0x30",
+          "type": "SharedModel.Meta.Account.Resources",
+          "field": "Price",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "SharedModel.Meta.Offers.StaticOffers.ClientStaticOffer": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "PriceId": {
+          "offset": "0x28",
+          "type": "int?",
+          "field": "PriceId",
+          "source": "field",
+          "status": "direct"
+        },
+        "Price": {
+          "offset": "0x30",
+          "type": "SharedModel.Meta.Account.Resources",
+          "field": "Price",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
     "Client.ViewModel.Contextes.ResourceRefillOverlayContext": {
       "kind": "class",
       "offsetsRelativeTo": "object",

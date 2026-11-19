@@ -1013,7 +1013,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         var (s, targets, play) = await Read(ct);
         var read = clock.ElapsedMilliseconds - fit;
         var top = Top(s);
-        if (top is { } t0 && kind is not ("dialog-close" or "back" or "market-item" or "market-get" or "shop-free" or "shop-claim" or "shop-section" or "shop-subtab") && IsPurchase(t0)) throw new PlayStopException($"Refused: a purchase window ({t0}) is on top.");
+        if (top is { } t0 && kind is not ("dialog-close" or "back" or "market-item" or "market-get" or "shop-free" or "shop-gift" or "shop-claim" or "shop-section" or "shop-subtab") && IsPurchase(t0)) throw new PlayStopException($"Refused: a purchase window ({t0}) is on top.");
         if (view is not null && top != view && !(view == PlayTargets.BattleHudView && Has(s, view))) throw new PlayStopException($"Expected {view} on top; the screen shows {top}.");
         if (before?.Invoke(play) is { } changed) throw new PlayStopException(changed);
         var all = targets.Where(t => t.Kind == kind && (which is null || which(t)) && (view is null || t.View == view)).ToList();

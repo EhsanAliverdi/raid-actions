@@ -36,7 +36,8 @@ public class PlayTargetsTests
             });
         }
 
-        public ulong RefAt(ulong obj, int offset) => offset == PlayTargets.TeamHeroesOffset && Raw.TryGetValue(obj, out var v) ? v : 0;
+        public ulong RefAt(ulong obj, int offset) => (offset == PlayTargets.TeamHeroesOffset || offset == PlayTargets.ResourcesRawValuesOffset) && Raw.TryGetValue(obj, out var v) ? v : 0;
+        public int IntAt(ulong obj, int offset) => (int)Fields[obj]["__count"];
 
         public UiContext Opponent(long id, string name, int power, int status = 0, bool playable = true) =>
             Ctx("Client.ViewModel.Contextes.ArenaDialog.CurrentOpponentContext", new()
@@ -46,16 +47,71 @@ public class PlayTargetsTests
             });
 
         public ulong Root(string name, string expectedType) => throw new NotSupportedException();
-        public string ClassName(ulong obj) => throw new NotSupportedException();
+        public string ClassName(ulong obj) => Fields.TryGetValue(obj, out var f) && f.TryGetValue("__class", out var c) ? (string)c : throw new NotSupportedException();
         public IReadOnlyList<string> ClassChain(ulong obj) => throw new NotSupportedException();
         public ulong Ref(ulong obj, string type, string member) => Fields[obj].TryGetValue(member, out var v) ? (ulong)v : 0;
         public int Int(ulong obj, string type, string member) => (int)Fields[obj][member];
         public long Long(ulong obj, string type, string member) => (long)Fields[obj][member];
         public bool Bool(ulong obj, string type, string member) => (bool)Fields[obj][member];
         public string? String(ulong obj, string type, string member) => Fields[obj].TryGetValue(member, out var v) ? v as string : null;
-        public int? NullableInt(ulong obj, string type, string member) => null;
+        public int? NullableInt(ulong obj, string type, string member) => Fields.TryGetValue(obj, out var f) && f.TryGetValue(member, out var v) ? (int?)v : null;
         public IReadOnlyList<ulong> RefList(ulong list, int max) => Lists.TryGetValue(list, out var l) ? l : throw new NotSupportedException();
         public string? EnumName(string enumType, int value) => value == 3 ? "Token" : null;
+    }
+
+    private const string Gift = "Client.ViewModel.Contextes.Bank.Offers.Gift.GiftOfferContext";
+    private const string Pkg = "Client.ViewModel.Contextes.Bank.PurchaseTypes.Implementation.";
+
+    private static UiTree GiftTree(Objects g, string purchase, ulong offer)
+    {
+        var ctx = g.Ctx(Gift, new() { ["_purchaseMethod"] = g.Add(new() { ["__class"] = Pkg + purchase }), ["_offer"] = offer });
+        return Tree("BankOverlay", N("GiftOffer", ctx: ctx), N("GiftOffer/Button", 50, interactable: true));
+    }
+
+    private static ulong Give(Objects g, int priceId, int? resources)
+    {
+        var price = resources is null ? 0UL : g.Add(new() { ["__class"] = "SharedModel.Meta.Account.Resources" });
+        if (resources is not null) { g.Raw[price] = g.Add(new() { ["__count"] = resources.Value }); }
+        var user = g.Add(new() { ["PriceId"] = priceId, ["Price"] = price });
+        return g.Add(new() { ["__class"] = "Client.ViewModel.Contextes.Bank.Offers.ViewModelOffer.GiveOffer", ["_offer"] = user });
+    }
+
+    [Fact]
+    public void A_gift_the_game_prices_at_nothing_is_a_shop_gift_target()
+    {
+        var g = new Objects();
+        Assert.Contains(PlayTargets.Scan(GiftTree(g, "ResourcesPurchase", Give(g, -1, 0)), g).Targets, t => t.Kind == "shop-gift");
+        Assert.Contains(PlayTargets.Scan(GiftTree(g, "ResourcesPurchase", Give(g, -1, null)), g).Targets, t => t.Kind == "shop-gift");
+    }
+
+    [Theory]
+    [InlineData("BillingPurchase", -1, 0)]          // billed: never
+    [InlineData("AllianceBossKeyResourcesPurchase", -1, 0)]
+    [InlineData("ResourcesPurchase", 12, 0)]        // has a client price
+    [InlineData("ResourcesPurchase", -1, 1)]        // costs resources (gems)
+    public void A_gift_that_costs_anything_is_never_a_target(string purchase, int priceId, int resources)
+    {
+        var g = new Objects();
+        Assert.DoesNotContain(PlayTargets.Scan(GiftTree(g, purchase, Give(g, priceId, resources)), g).Targets, t => t.Kind == "shop-gift");
+    }
+
+    [Fact]
+    public void A_static_gift_is_free_only_with_no_price_id_and_an_empty_price()
+    {
+        ulong Static(Objects g, int? priceId, int count)
+        {
+            var price = g.Add(new() { ["__class"] = "SharedModel.Meta.Account.Resources" });
+            g.Raw[price] = g.Add(new() { ["__count"] = count });
+            var f = new Dictionary<string, object> { ["Price"] = price };
+            if (priceId is { } p) f["PriceId"] = p;
+            return g.Add(new() { ["__class"] = "Client.ViewModel.Contextes.Bank.Offers.ViewModelOffer.StaticOffer", ["_Offer_k__BackingField"] = g.Add(f) });
+        }
+        var g1 = new Objects();
+        Assert.Contains(PlayTargets.Scan(GiftTree(g1, "ResourcesPurchase", Static(g1, null, 0)), g1).Targets, t => t.Kind == "shop-gift");
+        var g2 = new Objects();
+        Assert.DoesNotContain(PlayTargets.Scan(GiftTree(g2, "ResourcesPurchase", Static(g2, null, 1)), g2).Targets, t => t.Kind == "shop-gift");
+        var g3 = new Objects();
+        Assert.DoesNotContain(PlayTargets.Scan(GiftTree(g3, "ResourcesPurchase", Static(g3, 5, 0)), g3).Targets, t => t.Kind == "shop-gift");
     }
 
     private static int _index;

@@ -31,9 +31,9 @@ public class CursedCityActivityTests
     }
 
     [Theory]
-    [InlineData(0.69, false)]
-    [InlineData(0.71, true)]
-    public async Task A_level_not_beaten_is_tried_only_at_70_percent_or_more_in_simulation(double rate, bool tried)
+    [InlineData(0.29, false)]
+    [InlineData(0.31, true)]
+    public async Task A_level_is_played_only_when_the_simulator_gives_over_30_percent(double rate, bool tried)
     {
         var (host, game, engine) = Make(stopAfter: TimeSpan.FromHours(3));
         game.Keys = 2;
@@ -41,9 +41,39 @@ public class CursedCityActivityTests
         game.Levels.Add(new FakeCursedCityGame.Level { Number = 6, Team = [(1, false), (2, false)], Open = true });
         await engine.RunAsync(once: false, Limit());
         Assert.Equal(tried, game.Calls.Contains("fight 6"));
-        Assert.Equal(!tried, host.Events.Any(e => e.Kind == "sim"));
         Assert.Single(game.Forecasts);
         if (tried) Assert.Contains(host.Events, e => e.Kind == "battle" && e.Text.Contains("[team 1,2]", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task The_highest_level_that_passes_in_simulation_is_played_one_search_per_level_per_day()
+    {
+        var (host, game, engine) = Make(stopAfter: TimeSpan.FromHours(3));
+        game.Keys = 1;
+        game.ForecastByLevel[8] = 0.10;
+        game.ForecastByLevel[7] = 0.45;
+        game.ForecastByLevel[6] = 0.90;
+        game.Levels.Add(new FakeCursedCityGame.Level { Number = 6, Team = [(1, false), (2, false)], Open = true });
+        game.Levels.Add(new FakeCursedCityGame.Level { Number = 7, Team = [(1, false), (3, false)], Open = true });
+        game.Levels.Add(new FakeCursedCityGame.Level { Number = 8, Team = [(1, false), (4, false)], Open = true });
+        await engine.RunAsync(once: false, Limit());
+        Assert.Contains("fight 7", game.Calls);
+        Assert.DoesNotContain("fight 8", game.Calls);
+        Assert.DoesNotContain("fight 6", game.Calls);
+        Assert.Equal([(8, true), (7, true)], game.Simulations.Take(2));
+        Assert.Contains(host.Events, e => e.Kind == "sim" && e.Text.Contains("simulated win 45%", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_beaten_level_is_gated_too_and_no_champion_level_rule_blocks_it()
+    {
+        var (host, game, engine) = Make(stopAfter: TimeSpan.FromHours(3));
+        game.Keys = 1;
+        game.Forecast = 0.2;
+        game.Levels.Add(new FakeCursedCityGame.Level { Number = 5, Team = [(1, false), (2, false)], Wins = 3, Open = true });
+        await engine.RunAsync(once: false, Limit());
+        Assert.DoesNotContain("fight 5", game.Calls);
+        Assert.Contains(host.Events, e => e.Kind == "sim" && e.Text.Contains("beaten", StringComparison.Ordinal));
     }
 
     [Fact]

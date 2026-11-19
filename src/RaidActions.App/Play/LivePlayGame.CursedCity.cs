@@ -27,7 +27,9 @@ public sealed partial class LivePlayGame : ICursedCityGame
         LoadLocked(data.Progress?.CursedCity?.RotationUpdatedUtc, difficulty ?? "Hard");
         // The readiness check (AoE control, survivability, damage, the boss's needs): NotReady levels are never played.
         _ccCtx ??= CcContext.Load(extractorRoot, ExtractorOutput);
-        var plan = CursedCityPlanner.Plan(data, locks, ratings, lossesToSkip, skip, _ccLocked, _ccCtx, allowRisky, difficulty, _ccLastTeam, forQuest);
+        // Ehsan 2026-11-20: the readiness rules (champions level 50+, ...) no longer gate a level; the simulator does (CursedCityActivity.PushThreshold).
+        // Readiness only ranks the quest's replays; the plain plan is made without it so every reachable level stays a candidate.
+        var plan = CursedCityPlanner.Plan(data, locks, ratings, lossesToSkip, skip, _ccLocked, forQuest ? _ccCtx : null, allowRisky, difficulty, _ccLastTeam, forQuest);
         // The chosen level's own disabled champions: its team built again without them.
         if (plan.Next is { } next && _ccDisabled.TryGetValue(next.Stage.Id, out var off) && off.Count > 0)
         {
@@ -154,14 +156,38 @@ public sealed partial class LivePlayGame : ICursedCityGame
 
     Task<string> ICursedCityGame.RemoveGearAsync(IReadOnlyList<int> ids, bool dryRun, CancellationToken ct) => RemoveGearAsync(ids, dryRun, ct, cursedCity: true);
 
-    /// <summary>The push gate: the level's team, geared as the bot will gear it, simulated on the level's stage.</summary>
-    public async Task<StageForecast?> ForecastAsync(CcLevel level, CancellationToken ct)
+    /// <summary>
+    /// The simulator's view of a level (Ehsan 2026-11-20): with <paramref name="searchTeam"/> the best team over the account's champions (StageTeam.Best,
+    /// vaults included; minutes, cached on disk and per day by the activity), else the level's own team; either geared as the bot will gear it.
+    /// </summary>
+    public async Task<CcSim?> SimulateAsync(CcLevel level, bool searchTeam, CancellationToken ct)
     {
         var (d, g, r, l) = await Account(ct);
-        var ids = level.Team.Members.Select(m => m.Id).ToList();
-        var plan = RaidExtractor.Battle.Prepare.Make(d, g, r, ids, $"Cursed City: {CursedCityPlanner.Where(level.Stage)}", locks: l);
+        var what = $"Cursed City: {CursedCityPlanner.Where(level.Stage)}";
+        List<int> ids;
+        List<string> names;
+        PrepareResult? plan = null;
+        if (searchTeam)
+        {
+            log($"autoplay: STEP Cursed City: simulating teams for {CursedCityPlanner.Where(level.Stage)} (stage {level.Stage.Id})");
+            var pick = RaidExtractor.Battle.StageTeam.Best(d, g, ExtractorOutput, level.Stage.Id, r, l);
+            if (pick is null) return new CcSim([], [], 0, "no team could be simulated");
+            ids = pick.Ids; names = pick.Names; plan = pick.Gear;
+        }
+        else { ids = [.. level.Team.Members.Select(m => m.Id)]; names = [.. level.Team.Members.Select(m => m.Name)]; }
+        plan ??= RaidExtractor.Battle.Prepare.Make(d, g, r, ids, what, locks: l);
         var (rate, why) = RaidExtractor.Battle.StageSim.WinRate(d, g, ExtractorOutput, level.Stage.Id, ids, gear: plan);
-        return why.Contains("not in the static data", StringComparison.Ordinal) ? null : new StageForecast(rate, why);
+        return why.Contains("not in the static data", StringComparison.Ordinal) ? null : new CcSim(ids, names, rate, why);
+    }
+
+    public async Task<CcLevel> WithTeamAsync(CcLevel level, IReadOnlyList<int> ids, CancellationToken ct)
+    {
+        var (d, _, _, l) = await Account(ct);
+        var byId = d.Champions.ToDictionary(c => c.Id);
+        var cond = level.Stage.Active;
+        var picks = ids.Where(byId.ContainsKey).Select(id => byId[id]).Select(c => new CcPick(c.Id, c.Name ?? $"#{c.Id}", c.Rarity, c.Faction, c.Element, c.Role, c.Level, c.Rank, 0,
+            cond is null || CursedCityPlanner.Matches(c, cond), c.Artifacts.Count == 0 && !l.IsLocked(c.Id), c.InVault || c.InBathhouse, l.IsLocked(c.Id))).ToList();
+        return level with { Team = new CcTeam(level.Stage.Id, picks, picks.Count > 0, null, 0) };
     }
 
     public Task<BattleOutcome> CheckTeamAsync(CcLevel level, CancellationToken ct) => FightAsync(level, dryRun: true, ct, check: true);

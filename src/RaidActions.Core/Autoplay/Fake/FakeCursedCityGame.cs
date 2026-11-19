@@ -30,10 +30,16 @@ public sealed class FakeCursedCityGame : ICursedCityGame
     public double? Forecast { get; set; }
     public List<int> Forecasts { get; } = [];
 
-    public Task<StageForecast?> ForecastAsync(CcLevel level, CancellationToken ct)
+    /// <summary>Win rate per level number (overrides <see cref="Forecast"/>); the "searched" team is the level's own.</summary>
+    public Dictionary<int, double> ForecastByLevel { get; } = [];
+    public List<(int Level, bool Search)> Simulations { get; } = [];
+
+    public Task<CcSim?> SimulateAsync(CcLevel level, bool searchTeam, CancellationToken ct)
     {
         Forecasts.Add(level.Stage.Number);
-        return Task.FromResult(Forecast is { } r ? new StageForecast(r, "fake") : null);
+        Simulations.Add((level.Stage.Number, searchTeam));
+        double? rate = ForecastByLevel.TryGetValue(level.Stage.Number, out var r) ? r : Forecast;
+        return Task.FromResult(rate is { } x ? new CcSim([.. level.Team.Members.Select(m => m.Id)], [.. level.Team.Members.Select(m => m.Name)], x, "fake") : null);
     }
     private readonly HashSet<int> _wearing = [];
 

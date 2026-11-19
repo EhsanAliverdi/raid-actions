@@ -35,6 +35,29 @@ public class DoomTowerActivityTests
     }
 
     [Fact]
+    public async Task One_visit_chains_battles_until_the_keys_run_out_and_stops_at_a_loss()
+    {
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, DoomTower = new DoomTowerSettings { Enabled = true, KeepGold = 1 } } };
+        var game = new FakeDoomTowerGame();
+        game.Stages.AddRange([S(7021801, 2), S(7021802, 1), S(7021040, 2), S(7021050, 2), S(7021060, 1)]);
+        (game.Silver, game.Gold) = (2, 3);
+        var ctx = new PlayContext(host.Settings, new FakeArenaGame(() => host.UtcNow), host, false, host.Events.Add);
+        var result = await new DoomTowerActivity(game).RunTurnAsync(ctx, CancellationToken.None);
+        // 2 silver + 2 gold (1 kept) in ONE visit.
+        Assert.Equal(["fight 7021050", "fight 7021050", "fight 7021060", "fight 7021060"], game.Calls);
+        Assert.Equal((0d, 1d), (game.Silver, game.Gold));
+        Assert.Contains("4 battles in a row", result, StringComparison.Ordinal);
+
+        var game2 = new FakeDoomTowerGame();
+        game2.Stages.AddRange([S(7021050, 2), S(7021060, 1)]);
+        (game2.Silver, game2.Gold) = (3, 3);
+        game2.Loses.Add(7021050);
+        var result2 = await new DoomTowerActivity(game2).RunTurnAsync(ctx, CancellationToken.None);
+        Assert.Single(game2.Calls);
+        Assert.StartsWith("Defeat", result2, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public async Task Kept_keys_stay_and_a_lost_boss_is_not_tried_again()
     {
         var (_, game, engine) = Make(new DoomTowerSettings { Enabled = true, KeepGold = 2 });

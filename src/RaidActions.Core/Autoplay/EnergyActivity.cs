@@ -253,9 +253,31 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             // played Arcane Keep 19 three times, 0/3: the Keeps drop potions, the Minotaur scrolls): only the gear dungeons then.
             var needsGear = SuperRaidRules.OfQuest(n.Text) == SuperRaidRules.Need.Drops;
             static bool GearDungeon(string region) => region is "DragonsLair" or "IceGolemCave" or "FireGolemCave" or "SpiderCave";
-            if (ctx.Settings.Energy.Targets.FirstOrDefault(t => t.Enabled && !t.Progress && t.Area == "Dungeon" && EnergyPlaces.Group(t.Region) is null && t.Stage is not null
+            // Gear quests play where the account says (Ehsan 2026-11-20, "Gear quests play in", Dragon's Lair by default): its own enabled row first,
+            // else a row built there at the highest stage beaten; only a place with nothing beaten leaves it to the other gear dungeons.
+            var gearRegion = needsGear && n.Region is null ? GearRegion(ctx.Settings.Quests.GearDungeon) : null;
+            bool Beaten(string reg) => EnergyPlanner.HighestBeaten(new EnergyTarget { Area = "Dungeon", Region = reg, Difficulty = "Normal" }, _account?.Progress ?? []) is not null
+                || EnergyPlanner.HighestBeaten(new EnergyTarget { Area = "Dungeon", Region = reg, Difficulty = "Hard" }, _account?.Progress ?? []) is not null;
+            EnergyTarget? OwnRow(string? only) => ctx.Settings.Energy.Targets.FirstOrDefault(t => t.Enabled && !t.Progress && t.Area == "Dungeon" && EnergyPlaces.Group(t.Region) is null && t.Stage is not null
+                    && (only is null || t.Region == only)
                     && (!needsGear || GearDungeon(t.Region))
-                    && (n.Region is null ? t.Difficulty == "Hard" || n.MinStage is null : t.Region == n.Region && (t.Difficulty == "Hard" || n.MinStage is not { } m0 || t.Stage >= m0))) is { } own)
+                    && (n.Region is null ? t.Difficulty == "Hard" || n.MinStage is null : t.Region == n.Region && (t.Difficulty == "Hard" || n.MinStage is not { } m0 || t.Stage >= m0)));
+            var own = gearRegion is not null ? OwnRow(gearRegion) : null;
+            string? buildRegion = n.Region;
+            if (gearRegion is not null)
+            {
+                if (own is not null) GearTold(ctx, id, $"gear quest \"{n.Text}\": plays {gearRegion} (the setting), its row {own.Difficulty} {own.Stage}");
+                else if (Beaten(gearRegion)) { buildRegion = gearRegion; GearTold(ctx, id, $"gear quest \"{n.Text}\": plays {gearRegion} (the setting), no row there, built at the highest stage beaten"); }
+                else
+                {
+                    var other = new[] { "DragonsLair", "IceGolemCave", "FireGolemCave", "SpiderCave" }.FirstOrDefault(r => r != gearRegion && Beaten(r));
+                    own = OwnRow(null);
+                    buildRegion = own is null ? other ?? gearRegion : null;
+                    GearTold(ctx, id, $"gear quest \"{n.Text}\": nothing beaten in {gearRegion}, plays {own?.Region ?? buildRegion} instead");
+                }
+            }
+            else own = OwnRow(null);
+            if (own is not null)
             {
                 rows.Add(own with { Id = id, RunsPerDay = null });
                 _rowNeed[id] = SuperRaidRules.OfQuest(n.Text);
@@ -268,9 +290,9 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             // beaten, lost in a Super Raid and replayed at once: 56 Energy on two losses).
             // A row without a stage of its own ("Win 3 Artifacts from clearing the Dungeons") plays the highest beaten one: its losses step down from there.
             if (_questRowLosses.GetValueOrDefault(id) is > 0 and var lostTimes
-                && (stage ?? EnergyPlanner.HighestBeaten(new EnergyTarget { Area = "Dungeon", Region = n.Region ?? "DragonsLair", Difficulty = "Normal" }, _account?.Progress ?? [])) is { } s0)
+                && (stage ?? EnergyPlanner.HighestBeaten(new EnergyTarget { Area = "Dungeon", Region = buildRegion ?? "DragonsLair", Difficulty = "Normal" }, _account?.Progress ?? [])) is { } s0)
                 stage = Math.Max(n.MinStage ?? 1, s0 - 3 * lostTimes);
-            rows.Add(new EnergyTarget { Id = id, Area = "Dungeon", Region = n.Region ?? "DragonsLair", Difficulty = best && hard is not null ? "Hard" : "Normal", Stage = stage });
+            rows.Add(new EnergyTarget { Id = id, Area = "Dungeon", Region = buildRegion ?? "DragonsLair", Difficulty = best && hard is not null ? "Hard" : "Normal", Stage = stage });
             _rowNeed[id] = SuperRaidRules.OfQuest(n.Text);
             if (n.Tab == "Mission") missions.Add(id);
         }
@@ -285,6 +307,18 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         // Nor one whose dungeon was seen closed today (2026-11-16: Minotaur's Labyrinth with every champion at the day's scrolls, visited each turn).
         return [.. rows.Where(r => !(r.Area == "Dungeon" && _closedToday.Contains(r.Region)) && _questRowLosses.GetValueOrDefault(r.Id) < MaxQuestRowLosses && _missionWins.GetValueOrDefault(r.Id).Stale < MaxQuestRowLosses
             && ctx.Held($"{AreaId}:mission:{r.Id}") is null)];
+    }
+
+    private readonly Dictionary<string, string> _gearToldBook = [];
+
+    /// <summary>The region a gear quest plays in: the setting when it names a gear dungeon, else Dragon's Lair.</summary>
+    internal static string GearRegion(string? setting) => setting is "DragonsLair" or "IceGolemCave" or "FireGolemCave" or "SpiderCave" ? setting : "DragonsLair";
+
+    private void GearTold(PlayContext ctx, string id, string text)
+    {
+        if (_gearToldBook.GetValueOrDefault(id) == text) return;
+        _gearToldBook[id] = text;
+        ctx.Event(AreaId, "quest", text);
     }
 
     /// <summary>The settings the planner sees: quest rows first, rows shown in a dry run left out, a food step that did nothing switched off for a while.</summary>

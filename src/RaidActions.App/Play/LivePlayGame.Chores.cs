@@ -745,6 +745,7 @@ public sealed partial class LivePlayGame : IChoresGame
             if (tt.FirstOrDefault(t => t.Kind == "cvc-tab" && t.Name == $"cvc: tab {tab}") is null) continue;
             await Click("cvc-tab", t => t.Name == $"cvc: tab {tab}", (_, _) => true, $"the {tab} tab", ct);
             await Pause(1000, ct);
+            if (tab == "Versus") claimed += await ClaimCvcVersusAsync(dryRun, ct);
             for (var i = 0; i < 12; i++)
             {
                 var (w, _) = Game.Window.GameWindow.Find();
@@ -763,7 +764,41 @@ public sealed partial class LivePlayGame : IChoresGame
             }
         }
         await HomeAsync(Action("from Clan vs Clan"), ct);
+        // A prize that went to the inbox (Ehsan approved collecting Clan vs Clan rewards): its entry, named after the event.
+        if (claimed > 0 && !dryRun)
+            await CollectInbox(e => (e.Title ?? "").Contains("Clan vs Clan", StringComparison.OrdinalIgnoreCase) || (e.Message ?? "").Contains("Clan vs Clan", StringComparison.OrdinalIgnoreCase),
+                "Silver", "Clan vs Clan rewards", dryRun, ct);
         return claimed > 0 ? $"Clan vs Clan: claimed {claimed} reward(s)" : "nothing to claim in Clan vs Clan";
+    }
+
+    /// <summary>
+    /// The Versus tab's gear slots of our clan (never the opponent's): each ClaimAvailable slot is clicked (the game's own claim: CvcVersusRewardContext.TryCollectReward
+    /// sends it and takes the prize from the inbox), the reward box read and closed, and the gear won logged. Returns the slots claimed.
+    /// </summary>
+    private async Task<int> ClaimCvcVersusAsync(bool dryRun, CancellationToken ct)
+    {
+        var got = 0;
+        for (var i = 0; i < 6; i++)
+        {
+            var (_, vt, _) = await Read(ct);
+            var slots = vt.Where(t => t.Kind == "cvc-reward").ToList();
+            if (i == 0) log($"autoplay: Clan vs Clan Versus: {slots.Count} slot(s) of ours, states [{string.Join(",", slots.Select(t => t.Id))}] (0 inactive, 1 active, 2 claim available, 3 claimed)");
+            var slot = slots.FirstOrDefault(t => t.Id == 2 && t.NotClickable is null);
+            if (slot is null) break;
+            if (dryRun) { log($"autoplay: WOULD CLICK {slot.Name} (dry run)"); break; }
+            await Click("cvc-reward", t => t.Name == slot.Name, (_, _) => true, $"{slot.Name} claimed", ct, within: TimeSpan.FromSeconds(4), shot: true);
+            await Pause(1500, ct);
+            var top = Top(await Settled(ct));
+            if (top is not null && top != "CvcTournamentDialog")
+            {
+                log($"autoplay: Clan vs Clan gear won in {slot.Name}: reward screen {top}. Screen dump: {DumpScreen("cvc versus reward")}");
+                await Back(top, ct);
+                await Pause(800, ct);
+            }
+            else log($"autoplay: Clan vs Clan gear won in {slot.Name} (no reward box; the prize goes to the inbox)");
+            got++;
+        }
+        return got;
     }
 
     /// <summary>

@@ -217,6 +217,8 @@ public static partial class PlayTargets
     private const string ClanDialog = "Client.ViewModel.Contextes.AllianceEnemies.Dialog.AllianceEnemiesDialogContext";
     // Free rewards (plan/free-rewards.md; from the dump 2026-10-31): the village's playtime gifts.
     private const string GiftPrize = "Client.ViewModel.Contextes.HourlyGiftPrizeContext";
+    private const string CvcReward = "Client.ViewModel.Contextes.CvcTournament.Tabs.Versus.CvcVersusRewardContext";
+    private const string CvcButton = "Client.ViewModel.Contextes.CvcTournament.CvcTournamentButtonContext";
     private const string QuestClaimAll = "Client.ViewModel.Contextes.Quests.QuestClaimAllButtonContext";
     private const string QuestsDialog = "Client.ViewModel.Contextes.Quests.QuestsDialogContext";
     // Tag Team Arena (plan/tag-arena.md; from the dump 2026-10-31).
@@ -295,7 +297,7 @@ public static partial class PlayTargets
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-quickjoin", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-collect", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-reward", "resource-add", "refill-use", "live-state", "live-phase", "live-slot", "live-confirm",
         "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "menu-open", "menu-item", "reward-claim", "reward-tab", "event-card", "event-claimall", "event-close", "challenge-confirm", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-gift", "shop-claim", "shop-section", "shop-subtab", "village-pass", "village-challenges", "village-clan", "clan-tab", "clan-checkin", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
-        "village-referral", "referral-getlink", "village-cvc", "cvc-tab", "cvc-claim", "loyalty-claim",
+        "village-referral", "referral-getlink", "village-cvc", "cvc-tab", "cvc-claim", "cvc-reward", "cvc-status", "loyalty-claim",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh", "arena-defence-slot", "defence-save", "noaura-confirm", "tag-tab", "pit-levelup", "brew-open", "brew-grade", "brew-item", "brew-hero", "brew-upgrade", "brew-close", "ascend-tab", "ascend-max", "ascend-go",
     };
@@ -789,6 +791,28 @@ public static partial class PlayTargets
                     // The screen a series ends on (2026-11-02): every series was "Unknown" because only the summary screen was read.
                     var won = Try(() => BoolValue(g, g.Ref(c.Address, TagReward, "_isBattleWon")), null, notes, "BattleFinishArena3x3RewardDialogContext._isBattleWon");
                     if (won is { } w) result = new ArenaResultRead(w ? 1 : 2, null, null);
+                    break;
+                }
+                case CvcReward:
+                {
+                    // A Versus gear slot (Ehsan 2026-11-20): RewardState 0 Inactive, 1 Active, 2 ClaimAvailable, 3 Claimed. The game claims on a click of the
+                    // slot itself (CvcVersusRewardContext.OnClickStateChanged -> TryCollectReward sends the claim and takes the InboxItem prizes).
+                    // Only our clan's slots: _opponent is the other clan's. Id = the reward state, note = "slot x".
+                    var opponent = Try(() => BoolValue(g, g.Ref(c.Address, CvcReward, "_opponent")), null, notes, "CvcVersusRewardContext._opponent");
+                    var hidden = Try(() => BoolValue(g, g.Ref(c.Address, CvcReward, "_hidden")), null, notes, "CvcVersusRewardContext._hidden");
+                    var rs = Try(() => IntValue(g, g.Ref(c.Address, CvcReward, "_rewardState")), null, notes, "CvcVersusRewardContext._rewardState");
+                    if (opponent != false || rs is not { } st || n.Screen is null) break;
+                    var slotNo = targets.Count(x => x.Kind == "cvc-reward") + 1;
+                    targets.Add(Make("cvc-reward", $"cvc: our gear slot {slotNo}", n, Own(i), hidden == true ? "hidden" : $"slot {slotNo}", id: st));
+                    break;
+                }
+                case CvcButton:
+                {
+                    // The village's Clan vs Clan button: _state (None 0, Teaser 1 = starts in ..., Started 2, Finished 3), the shown title and countdown.
+                    var state = Try(() => g.NullableInt(c.Address, CvcButton, "_state"), null, notes, "CvcTournamentButtonContext._state");
+                    var title = Try(() => StringValue(g, g.Ref(c.Address, CvcButton, "_timerTitle")), null, notes, "CvcTournamentButtonContext._timerTitle");
+                    var timer = Try(() => StringValue(g, g.Ref(c.Address, CvcButton, "_timer")), null, notes, "CvcTournamentButtonContext._timer");
+                    targets.Add(Make("cvc-status", "village: Clan vs Clan status", n, null, $"{state}|{timer}|{title}", id: state));
                     break;
                 }
                 case GiftPrize:

@@ -275,6 +275,14 @@ public sealed partial class LivePlayGame : IFactionWarsGame
     };
 
     /// <summary>The push gate: the crypt team, geared as the bot will gear it, simulated on the stage (id 5 + faction 2 digits + 9 + stage 3 digits).</summary>
+    /// <summary>The village's Clan vs Clan button (state and countdown, read from its context; no window opened). Null: no button or no state.</summary>
+    public async Task<CvcStatus?> ReadCvcAsync(CancellationToken ct)
+    {
+        await HomeAsync(Action("to the village"), ct);
+        var (_, vt, _) = await Read(ct);
+        return CvcStatus.FromNote(vt.FirstOrDefault(t => t.Kind == "cvc-status")?.Note, DateTime.UtcNow);
+    }
+
     public async Task<StageForecast?> ForecastStageAsync(CryptPlan crypt, int stage, CancellationToken ct)
     {
         if (!FactionNumber.TryGetValue(crypt.Faction, out var n) || crypt.Team.Count == 0) return null;

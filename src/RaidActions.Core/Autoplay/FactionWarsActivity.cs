@@ -234,6 +234,7 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
                 }
                 _battles++;
                 // The keys the battle used and the stage beaten, for the next battle of this turn (the next turn plans the day again).
+                var keysBefore = c.Keys;
                 var spent = c.Cost(stage) * (super && !outcome.Text.Contains(", normal run", StringComparison.Ordinal) ? SuperRaidMultiplier : 1);
                 if (_day!.Open.IndexOf(c) is var at and >= 0)
                     _day.Open[at] = c with { Keys = Math.Max(0, c.Keys - spent), HighestPassed = outcome.Result == BattleResult.Victory ? Math.Max(c.HighestPassed, stage) : c.HighestPassed };
@@ -257,7 +258,8 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
                         _farmAt[c.Name] = Math.Max(1, Math.Min(stage - 1, Math.Max(1, c.HighestPassed)));
                 }
                 var asSuper = super && !outcome.Text.Contains(", normal run", StringComparison.Ordinal);
-                ctx.Event(AreaId, "battle", $"{outcome.Result} vs {c.Name} stage {stage}{(asSuper ? " (Super Raid)" : "")}. {outcome.Text}{outcome.TeamTag}");
+                var keysAfter = Math.Max(0, keysBefore - spent);
+                ctx.Event(AreaId, "battle", $"{outcome.Result} vs {c.Name} stage {stage}{(asSuper ? $" (Super Raid x{SuperRaidMultiplier})" : " (x1)")}, keys {keysBefore} -> {keysAfter}. {outcome.Text}{outcome.TeamTag}");
                 if (outcome.Result == BattleResult.Victory) await game.GearAfterAsync(ctx, AreaId, AreaId, ct);
                 return $"{outcome.Result}: {c.Name} stage {stage}";
             }
@@ -313,8 +315,9 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
     private (int Stage, bool SuperRaid)? Run(CryptPlan c, FactionWarsSettings s)
     {
         var newLevel = !_farmAt.ContainsKey(c.Name) && s.Stage != CryptStage.FarmHighest && c.HighestPassed < c.StageCount;
-        return CryptKeys.Next(c, c.Keys - Math.Max(0, KeepFor(c, s)), newLevel ? c.NextStage : Stage(c, s), newLevel,
+        var run = CryptKeyPlan.Next(c, c.Keys - Math.Max(0, KeepFor(c, s)), newLevel ? c.NextStage : Stage(c, s), newLevel,
             s.SuperRaid && !_noSuper.Contains(c.Name) ? SuperRaidMultiplier : 1);
+        return run is null ? null : (run.Stage, run.SuperRaid);
     }
 
     private readonly HashSet<string> _noSuper = [];

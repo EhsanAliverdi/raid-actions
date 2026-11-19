@@ -250,7 +250,7 @@ public static partial class PlayTargets
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-quickjoin", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-collect", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-reward", "resource-add", "refill-use", "live-state", "live-phase", "live-slot", "live-confirm",
         "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "menu-open", "menu-item", "reward-claim", "reward-tab", "event-card", "event-claimall", "event-close", "challenge-confirm", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "shop-section", "shop-subtab", "village-pass", "village-challenges", "village-clan", "clan-tab", "clan-checkin", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
-        "village-referral", "referral-getlink", "village-cvc", "cvc-tab", "cvc-claim",
+        "village-referral", "referral-getlink", "village-cvc", "cvc-tab", "cvc-claim", "loyalty-claim",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh", "arena-defence-slot", "defence-save", "noaura-confirm", "tag-tab", "pit-levelup", "brew-open", "brew-grade", "brew-item", "brew-hero", "brew-upgrade", "brew-close", "ascend-tab", "ascend-max", "ascend-go",
     };
@@ -1340,6 +1340,25 @@ public static partial class PlayTargets
                     targets.Add(Make("cvc-claim", $"cvc: {x.Name}", x, x, x.Path));
             }
 
+        // The daily login programs (7/14-day, monthly 35-day, 90-day, the advent calendar; side menu, 2026-11-20; static analysis only, button names not yet
+        // seen live): a day's Collect. A button named Collect/Claim, or a day item (its context class) with an active Collect/Claim/Ready/red-dot element
+        // below it. Never a button that buys, unlocks, shares or costs (names: Buy, Purchase, Unlock, Gem, Price, Share, Premium, Skip, Restore).
+        if (LoyaltyViews.Contains(t.View))
+            for (var k = 0; k < nodes.Count; k++)
+            {
+                var x = nodes[k];
+                if (x.Interactable is null || !x.ActiveInHierarchy || x.Screen is null) continue;
+                var cls = x.Context?.Class ?? "";
+                var item = cls.EndsWith(".LoyaltyDayItemContext", StringComparison.Ordinal) || cls.EndsWith(".Loyalty90DItemContext", StringComparison.Ordinal)
+                    || cls.EndsWith(".MonthlyLoyaltyItemContext", StringComparison.Ordinal) || cls.EndsWith(".AdventCalendarSlotContext", StringComparison.Ordinal);
+                var button = !item && LoyaltyCollectName(x.Name);
+                if (!item && !button) continue;
+                if (LoyaltyPaidName(x.Name) || LoyaltyPaidPath(x.Path)) continue;
+                if (item && !SelfAndBelow(k).Any(y => y.ActiveInHierarchy && (LoyaltyCollectName(y.Name) || RedDot(y.Name)))) continue;
+                if (item && SelfAndBelow(k).Any(y => y.ActiveInHierarchy && LoyaltyPaidName(y.Name))) continue;
+                targets.Add(Make("loyalty-claim", $"loyalty: {x.Name}", x, x, x.Path, id: x.Index));
+            }
+
         // The Referral Program (seen 2026-11-18, SocialActivityDialog): each free friend slot's "Get Referral Link" (SendLinkutton, the game's spelling). It
         // copies the account's link to the clipboard; that is all "Get a Referral Link" asks (Ehsan 2026-11-18).
         if (t.View == "SocialActivityDialog")
@@ -1386,6 +1405,7 @@ public static partial class PlayTargets
             foreach (var x in nodes.Where(x => x.Name == "Button" && x.Path.Contains("/HiddenMenu/", StringComparison.Ordinal) && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
                 targets.Add(Make("menu-open", "village: the side menu", x, x, null));
             foreach (var x in nodes.Where(x => x.Name is "MilestoneReward" or "PlariumProgram_h" or "MonthlyGifts_h" or "AdventCalendar_h" or "Loyalty14DayProgram_h"
+                or "Loyalty7DayProgram_h" or "LoyaltyProgramsAggregator_h"
                 && x.Path.Contains("/HiddenMenu/", StringComparison.Ordinal) && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null))
                 targets.Add(Make("menu-item", $"side menu: {x.Name}", x, x, x.Name));
             // Its red dot in the note (2026-11-17, Ehsan: "just the one has red dot and claim if there is anything to claim").
@@ -1665,6 +1685,24 @@ public static partial class PlayTargets
             tagRows is not null || tagFree is not null ? new ArenaBoardRead(tagRows ?? [], tagFree, tagFreeText, null, null) : null, TeamSlots: teamSlots, TowerStage: towerStage,
             RedDots: redDots);
     }
+
+    /// <summary>The overlays of the daily login programs (7/14-day, monthly, 90-day, advent calendar, the aggregator that lists them).</summary>
+    public static readonly IReadOnlySet<string> LoyaltyViews = new HashSet<string>
+    {
+        "DailyRewardProgramOverlay", "MonthlyLoyaltyOverlay", "Loyalty90DOverlay", "LoyaltyOverlay", "AdventCalendar25DaysOverlay", "LoyaltyProgramsAggregatorOverlay",
+    };
+
+    public static bool LoyaltyCollectName(string name) =>
+        name.Contains("Collect", StringComparison.OrdinalIgnoreCase) || name.Contains("Claim", StringComparison.OrdinalIgnoreCase) || name.Contains("ReadyTo", StringComparison.Ordinal);
+
+    /// <summary>Names of elements that cost or share: never pressed.</summary>
+    public static bool LoyaltyPaidName(string name) =>
+        LoyaltyPaid().IsMatch(name);
+
+    public static bool LoyaltyPaidPath(string path) =>
+        LoyaltyPaid().IsMatch(path);
+
+    [GeneratedRegex(@"Buy|Purchase|Unlock|Gem|Price|Share|Premium|Skip|Restore|Paid|Pay", RegexOptions.IgnoreCase)] private static partial Regex LoyaltyPaid();
 
     /// <summary>An element that is a red dot: the game's indicator images (not a wizard's pointer, not the menu's controller).</summary>
     public static bool RedDot(string name) =>

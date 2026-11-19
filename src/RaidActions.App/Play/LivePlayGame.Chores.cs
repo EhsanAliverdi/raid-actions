@@ -475,17 +475,30 @@ public sealed partial class LivePlayGame : IChoresGame
     private async Task<int> ClaimMenuRewardsAsync(bool dryRun, CancellationToken ct)
     {
         var claimed = 0;
-        foreach (var item in new[] { "MilestoneReward", "PlariumProgram_h" })
+        foreach (var item in new[] { "MilestoneReward", "PlariumProgram_h", "Loyalty7DayProgram_h", "Loyalty14DayProgram_h", "MonthlyGifts_h", "LoyaltyProgramsAggregator_h", "AdventCalendar_h" })
         {
+            var loyalty = item != "MilestoneReward" && item != "PlariumProgram_h";
             var (s, _, _) = await Read(ct);
             if (Top(s) != PlayTargets.VillageHudView) await ToVillage(ct);
-            // The menu slides in: its buttons are tapped once they are on the screen (2026-11-03: a tap at x -214 was refused).
-            await Click("menu-open", null, (_, scan) => scan().Targets.Any(t => t.Kind == "menu-item" && t.Note == item && t.Rect is { X: >= 0 }), "the side menu opens", ct,
-                within: TimeSpan.FromSeconds(6));
+            bool MenuShows(IReadOnlyList<UiTarget> ts) => ts.Any(t => t.Kind == "menu-item" && t.Note == item && t.Rect is { X: >= 0 });
+            // The menu slides in: its buttons are tapped once they are on the screen (2026-11-03: a tap at x -214 was refused). Already open (the previous
+            // item was absent): not tapped again, that would close it.
+            if (!MenuShows((await Read(ct)).Targets))
+                await Click("menu-open", null, (_, scan) => scan().Targets.Any(t => t.Kind == "menu-item" && t.Rect is { X: >= 0 }), "the side menu opens", ct,
+                    within: TimeSpan.FromSeconds(6));
             await Pause(500, ct);
+            // The login programs come and go (a season, a finished program): one not in the menu is left.
+            if (loyalty && !MenuShows((await Read(ct)).Targets)) { log($"autoplay: side menu: {item} is not in the menu: left"); continue; }
             await Click("menu-item", t => t.Note == item, (s2, _) => Top(s2) != PlayTargets.VillageHudView, $"{item} opens", ct, within: TimeSpan.FromSeconds(8));
             await Pause(1500, ct);
             var view = Top(await ReadState(ct))!;
+            if (loyalty)
+            {
+                claimed += await ClaimLoyaltyAsync(item, view, dryRun, ct);
+                await Back(view, ct);
+                await Pause(1200, ct);
+                continue;
+            }
             var tabs = (await Read(ct)).Targets.Where(t => t.Kind == "reward-tab").Select(t => t.Path).ToList();
             foreach (var path in tabs.DefaultIfEmpty(""))
             {
@@ -511,7 +524,36 @@ public sealed partial class LivePlayGame : IChoresGame
         return claimed;
     }
 
-    private const string CoalitionView = "CooperationEventWorldBossDialog";
+    /// <summary>
+    /// An opened daily login program (7/14-day, monthly, 90-day, advent calendar): every enabled Collect, once each (a day item that stays after its tap is
+    /// not tapped again), never a button that buys, unlocks or shares (PlayTargets.LoyaltyPaidName). Logs what it took.
+    /// </summary>
+    private async Task<int> ClaimLoyaltyAsync(string item, string view, bool dryRun, CancellationToken ct)
+    {
+        var claimed = 0;
+        var tried = new HashSet<(string, int?)>();
+        // A program list (the aggregator) may only open the program: look once at what is shown, then the program's own screen.
+        for (var i = 0; i < 12; i++)
+        {
+            var (_, now, _) = await Read(ct);
+            var claim = now.FirstOrDefault(t => t.Kind == "loyalty-claim" && t.NotClickable is null && t.Rect is { X: >= 0 } && !tried.Contains((t.Path ?? "", t.Id)));
+            if (claim is null) break;
+            tried.Add((claim.Path ?? "", claim.Id));
+            if (dryRun) { log($"autoplay: WOULD CLAIM {claim.Name} on {view} ({item}) (dry run)"); continue; }
+            await Click("loyalty-claim", t => t.Path == claim.Path && t.Id == claim.Id, (_, _) => true, claim.Name, ct, shot: true);
+            await Pause(1500, ct);
+            await DismissLevelUp(ct);
+            var s3 = await Settled(ct);
+            // A reward box (or the next screen of a list) is closed; the program's own screen stays.
+            if (Top(s3) is { } top && top != view && !top.EndsWith("NotificationView", StringComparison.Ordinal)) { await Back(top, ct); await Pause(800, ct); }
+            log($"autoplay: loyalty: pressed {claim.Name} on {view} ({item})");
+            claimed++;
+        }
+        if (claimed == 0 && !dryRun) log($"autoplay: loyalty: {item} ({view}): nothing to collect");
+        return claimed;
+    }
+
+    private const string CoalitionView ="CooperationEventWorldBossDialog";
 
     /// <summary>
     /// The Tournaments button's red dot (Ehsan 2026-11-17: a village dot with none inside means a new one started or starts soon): the page opened, so the

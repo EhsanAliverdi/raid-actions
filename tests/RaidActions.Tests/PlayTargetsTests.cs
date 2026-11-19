@@ -180,4 +180,32 @@ public class PlayTargetsTests
     [InlineData("Gems", "x100", false)]
     public void Inbox_arena_tokens_are_told_apart_from_other_tokens(string title, string message, bool tokens) =>
         Assert.Equal(tokens, PlayTargets.IsArenaTokens(new InboxEntry(title, message, null, true, null)));
+
+    [Fact]
+    public void The_loyalty_programs_give_a_collect_for_a_ready_day_and_never_a_paid_or_shared_button()
+    {
+        var g = new Objects();
+        var day = "Client.ViewModel.Contextes.LoyaltyProgram.LoyaltyDayItemContext";
+        var tree = Tree("DailyRewardProgramOverlay",
+            N("Prog/Days/Day1", 100, interactable: true, ctx: g.Ctx(day)),
+            N("Prog/Days/Day1/CollectButton", 100, interactable: true),
+            N("Prog/Days/Day2", 140, interactable: true, ctx: g.Ctx(day)),
+            N("Prog/Days/Day2/Lock", 140),
+            N("Prog/Days/Day3", 180, interactable: true, ctx: g.Ctx(day)),
+            N("Prog/Days/Day3/CollectAndShareButton", 180, interactable: true),
+            N("Prog/BuyPremiumButton", 220, interactable: true),
+            N("Prog/Footer/ClaimAllButton", 260, interactable: true));
+
+        var claims = PlayTargets.Scan(tree, new Objects()).Targets.Where(t => t.Kind == "loyalty-claim").Select(t => t.Path).ToList();
+
+        Assert.Contains("Prog/Days/Day1", claims);
+        Assert.Contains("Prog/Footer/ClaimAllButton", claims);
+        Assert.DoesNotContain("Prog/Days/Day2", claims);
+        Assert.DoesNotContain("Prog/Days/Day3", claims);
+        Assert.DoesNotContain("Prog/BuyPremiumButton", claims);
+    }
+
+    [Fact]
+    public void Loyalty_targets_exist_only_on_the_loyalty_views() =>
+        Assert.DoesNotContain(PlayTargets.Scan(Tree("ArenaDialog", N("A/CollectButton", 10, interactable: true)), new Objects()).Targets, t => t.Kind == "loyalty-claim");
 }

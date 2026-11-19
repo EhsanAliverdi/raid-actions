@@ -178,6 +178,14 @@ public static partial class PlayTargets
     private const string InboxReward = "Client.ViewModel.Contextes.InboxDialog.Contexts.InboxRewardItemContext";
     private const string ItemAvatarCtx = "Client.ViewModel.Contextes.Generic.Items.ItemAvatarContext";
     private const string ShopOffer = "Client.ViewModel.Contextes.Bank.Offers.StaticCommon.StaticCommonOfferContext";
+    private const string GiftOffer = "Client.ViewModel.Contextes.Bank.Offers.Gift.GiftOfferContext";
+    private const string GiveOfferModel = "Client.ViewModel.Contextes.Bank.Offers.ViewModelOffer.GiveOffer";
+    private const string StaticOfferModel = "Client.ViewModel.Contextes.Bank.Offers.ViewModelOffer.StaticOffer";
+    private const string UserOfferModel = "SharedModel.Meta.Offers.UserOffer";
+    private const string ClientStaticOfferModel = "SharedModel.Meta.Offers.StaticOffers.ClientStaticOffer";
+    private const string ResourcesPurchaseClass = "Client.ViewModel.Contextes.Bank.PurchaseTypes.Implementation.ResourcesPurchase";
+    /// <summary>System.Collections.Generic.Dictionary's _count (il2cpp layout: _buckets 0x10, _entries 0x18, _count 0x20); Resources.RawValues is one.</summary>
+    public const int DictionaryCountOffset = 0x20, ResourcesRawValuesOffset = 0x10;
     private const string DtMapItem = "Client.ViewModel.Contextes.DoomTowerMap.DoomTowerMapItemContext";
     private const string DtResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishDoomTowerDialogContext";
     private const string CcMap = "Client.ViewModel.Contextes.CursedCity.Map.CursedCityMapContext";
@@ -225,6 +233,43 @@ public static partial class PlayTargets
     private const string MissionItem = "Client.ViewModel.Contextes.RecommendedQuests.RecommendedQuestItemContext";
 
     /// <summary>PeriodicQuestPrototypeId (from the dump): the daily, weekly and monthly quests' types.</summary>
+    /// <summary>
+    /// True only when the game itself prices the gift at nothing: the purchase method is a ResourcesPurchase (never BillingPurchase, never the alliance
+    /// key one) and the offer has no client price (OfferExtensions.IsFree: a UserOffer's PriceId is -1, a ClientStaticOffer's PriceId is null) and no
+    /// resource price (an empty Resources dictionary). Anything unreadable or unknown is not free.
+    /// </summary>
+    internal static bool IsFreeGift(IGameObjects g, ulong context, List<string> notes)
+    {
+        var method = Try(() => g.Ref(context, GiftOffer, "_purchaseMethod"), 0UL, notes, "GiftOfferContext._purchaseMethod");
+        if (method == 0 || Try(() => g.ClassName(method), "", notes, null) != ResourcesPurchaseClass) return false;
+        var offer = Try(() => g.Ref(context, GiftOffer, "_offer"), 0UL, notes, "GiftOfferContext._offer");
+        if (offer == 0) return false;
+        var cls = Try(() => g.ClassName(offer), "", notes, null);
+        ulong price;
+        if (cls == GiveOfferModel)
+        {
+            var user = Try(() => g.Ref(offer, GiveOfferModel, "_offer"), 0UL, notes, "GiveOffer._offer");
+            if (user == 0 || Try(() => (int?)g.Int(user, UserOfferModel, "PriceId"), null, notes, "UserOffer.PriceId") != -1) return false;
+            price = Try(() => g.Ref(user, UserOfferModel, "Price"), 0UL, notes, "UserOffer.Price");
+        }
+        else if (cls == StaticOfferModel)
+        {
+            var stat = Try(() => g.Ref(offer, StaticOfferModel, "_Offer_k__BackingField"), 0UL, notes, "StaticOffer.Offer");
+            if (stat == 0) return false;
+            var read = false;
+            int? priceId = Try(() => { var v = g.NullableInt(stat, ClientStaticOfferModel, "PriceId"); read = true; return v; }, null, notes, "ClientStaticOffer.PriceId");
+            if (!read || priceId is not null) return false;
+            price = Try(() => g.Ref(stat, ClientStaticOfferModel, "Price"), 0UL, notes, "ClientStaticOffer.Price");
+        }
+        else return false;
+        if (price == 0) return true;
+        // Resources.RawValues (0x10) is read raw: raid-extractor's offsets.json already owns the Resources root key.
+        if (Try(() => g.ClassName(price), "", notes, null) != "SharedModel.Meta.Account.Resources") return false;
+        var raw = Try(() => g.RefAt(price, ResourcesRawValuesOffset), 0UL, notes, "Resources.RawValues");
+        if (raw == 0) return true;
+        return Try(() => (int?)g.IntAt(raw, DictionaryCountOffset), null, notes, "Resources.RawValues.count") == 0;
+    }
+
     private static readonly Dictionary<int, string> QuestPrototypes = new()
     {
         [110000] = "SummonHero", [110001] = "AscendHero", [110002] = "SkillUpHero", [110003] = "LevelUpHero", [110004] = "RankUpHero",
@@ -249,7 +294,7 @@ public static partial class PlayTargets
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
         "mode-clan", "clan-quickjoin", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-collect", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-reward", "resource-add", "refill-use", "live-state", "live-phase", "live-slot", "live-confirm",
-        "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "menu-open", "menu-item", "reward-claim", "reward-tab", "event-card", "event-claimall", "event-close", "challenge-confirm", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-claim", "shop-section", "shop-subtab", "village-pass", "village-challenges", "village-clan", "clan-tab", "clan-checkin", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
+        "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "menu-open", "menu-item", "reward-claim", "reward-tab", "event-card", "event-claimall", "event-close", "challenge-confirm", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-gift", "shop-claim", "shop-section", "shop-subtab", "village-pass", "village-challenges", "village-clan", "clan-tab", "clan-checkin", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-referral", "referral-getlink", "village-cvc", "cvc-tab", "cvc-claim", "loyalty-claim",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
         "arena-tag", "tag-opponent", "tag-refresh", "arena-defence-slot", "defence-save", "noaura-confirm", "tag-tab", "pit-levelup", "brew-open", "brew-grade", "brew-item", "brew-hero", "brew-upgrade", "brew-close", "ascend-tab", "ascend-max", "ascend-go",
@@ -950,6 +995,15 @@ public static partial class PlayTargets
                     if (Try(() => BoolValue(g, g.Ref(c.Address, ShopOffer, "_isFree")), null, notes, "StaticCommonOfferContext._isFree") != true) break;
                     if (SelfAndBelow(i).Any(x => x.Name == "LockedState_h" && x.ActiveInHierarchy)) break;
                     targets.Add(Make("shop-free", $"shop: free offer {n.Name}", n, Own(i), "free"));
+                    break;
+                }
+                case GiftOffer:
+                {
+                    // A gift / retention offer (the Shop's Limited tab; Ehsan 2026-11-20: a good bag and a small pack are free every day). Only one the
+                    // game's own free test passes (IsFreeGift) is a target; its button is the "Button" under the context.
+                    if (!IsFreeGift(g, c.Address, notes)) break;
+                    var button = SelfAndBelow(i).FirstOrDefault(x => x.Name == "Button" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null);
+                    if (button is not null) targets.Add(Make("shop-gift", $"shop: free gift {n.Name}", n, button, "free"));
                     break;
                 }
                 case MarketSlot:

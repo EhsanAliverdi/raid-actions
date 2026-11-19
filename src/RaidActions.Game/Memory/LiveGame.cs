@@ -223,6 +223,8 @@ internal sealed class CoreObjects(GameSession session, OffsetConfig offsets) : I
 
     public string ClassName(ulong obj) => ClassChain(obj)[0];
 
+    public int IntAt(ulong obj, int offset) => R.ReadInt32(obj + (ulong)offset, $"object+0x{offset:X}");
+
     public ulong RefAt(ulong obj, int offset) => R.ReadPointer(obj + (ulong)offset, $"object+0x{offset:X}");
 
     public IReadOnlyList<string> ClassChain(ulong obj)

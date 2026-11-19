@@ -30,6 +30,9 @@ public interface IGameObjects
     /// <summary>The reference at a raw offset (a field whose name is not known; check the object's class before trusting it). 0 when none.</summary>
     ulong RefAt(ulong obj, int offset) => 0;
 
+    /// <summary>A 32-bit integer at a raw offset (a collection's count).</summary>
+    int IntAt(ulong obj, int offset) => throw new NotSupportedException("Raw integer reads are not available here.");
+
     /// <summary>The game's name for an enum value, or null when it is not a member.</summary>
     string? EnumName(string enumType, int value);
 

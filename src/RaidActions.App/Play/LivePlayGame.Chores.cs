@@ -886,6 +886,31 @@ public sealed partial class LivePlayGame : IChoresGame
         for (var i = 0; i < 4; i++)
         {
             var (_, targets, _) = await Read(ct);
+            var gift = targets.FirstOrDefault(t => t.Kind == "shop-gift" && t.NotClickable is null);
+            if (gift is not null)
+            {
+                // A free gift (GiftOfferContext the game's own free test passed; Ehsan 2026-11-20: a good bag and a small pack every day). Its button may
+                // give the reward at once or ask "Get this for free?" first; the confirm is only pressed here, after a tile proven free.
+                if (dryRun) { log($"autoplay: WOULD CLAIM {gift.Name} (dry run)"); break; }
+                await Click("shop-gift", t => t.Path == gift.Path, (_, _) => true, $"{gift.Name} claimed", ct, within: TimeSpan.FromSeconds(8), shot: true);
+                await Pause(1500, ct);
+                if (Top(await Settled(ct)) == "StaticOfferInfoOverlay")
+                {
+                    await Click("shop-claim", null, (s2, _) => Top(s2) != "StaticOfferInfoOverlay", $"{gift.Name} confirmed", ct, within: TimeSpan.FromSeconds(8), shot: true);
+                    await Pause(2000, ct);
+                }
+                for (var j = 0; j < 3; j++)
+                {
+                    var s3 = await Settled(ct);
+                    if (Top(s3) is not { } top || top == PlayTargets.ShopView) break;
+                    await Back(top, ct); // the reward box
+                }
+                // The same tile can show the next gift; one that stays is a gift that was not taken: leave it.
+                if ((await Read(ct)).Targets.Any(t => t.Kind == "shop-gift" && t.Path == gift.Path)) { log($"autoplay: {gift.Name} is still free after the claim: left"); break; }
+                claimed++;
+                log($"autoplay: claimed free gift {gift.Name} ({gift.Path})");
+                continue;
+            }
             var offer = targets.FirstOrDefault(t => t.Kind == "shop-free" && t.NotClickable is null);
             if (offer is null) break;
             if (dryRun) { log($"autoplay: WOULD CLAIM {offer.Name} (dry run)"); break; }

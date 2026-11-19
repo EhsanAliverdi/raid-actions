@@ -195,8 +195,22 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         if (floorBoss is not null)
         {
             var bossChoice = TeamsOf($"doom-tower:{tower}:boss:{floorBoss}") ?? TeamsOf($"doom-tower:{tower}:bosses") ?? TeamsOf("doom-tower");
-            // The team that will fight: the stage's next try, not the general pick (2026-11-16: Dorothy's team was geared, the 2nd and 3rd tries fought ungeared).
-            var nextTry = await NextTry("doom-tower", $"{tower} boss floor {openFloor}", TowerContent(floorBoss), 5, ct);
+            // Simulate, don't guess (Ehsan 2026-11-19: "the team you suggest must be able to pass ... try the next level only above 50%"): the best team
+            // the simulator finds for this boss, simulated with the gear the bot will put on it; at 50% or less the floor is not tried.
+            List<int>? nextTry;
+            {
+                var (sd, sgd, sr, sl) = await Account(ct);
+                log($"autoplay: STEP Doom Tower {tower} floor {openFloor} ({floorBoss}): simulating teams for stage {current}");
+                var pick = RaidExtractor.Battle.StageTeam.Best(sd, sgd, ExtractorOutput, current, sr, sl);
+                if (pick is null)
+                    return new BattleOutcome(BattleResult.NotStarted, $"floor {openFloor} ({floorBoss}): no team could be simulated for stage {current}");
+                var plan = pick.Gear ?? RaidExtractor.Battle.Prepare.Make(sd, sgd, sr, pick.Ids, $"Auto Play: Doom Tower {tower} {floorBoss}", locks: sl);
+                var (rate, simWhy) = RaidExtractor.Battle.StageSim.WinRate(sd, sgd, ExtractorOutput, current, pick.Ids, gear: plan);
+                log($"autoplay: Doom Tower {tower} floor {openFloor}: best team {string.Join(", ", pick.Names)}: simulated win {rate:P0} after gear-up ({simWhy})");
+                if (!RaidExtractor.Battle.StageTeam.ShouldPush(rate))
+                    return new BattleOutcome(BattleResult.NotStarted, $"floor {openFloor} ({floorBoss}): best team {string.Join(", ", pick.Names)} wins {rate:P0} in simulation (needs over 50%): not tried");
+                nextTry = pick.Ids;
+            }
             if ((await PrepareTeam($"Doom Tower {tower} {floorBoss}", "doom-tower", TowerContent(floorBoss), 5, bossChoice?.Default, dryRun, ct, team: nextTry)).Length > 0)
             {
                 await OpenDoomTower(ct);

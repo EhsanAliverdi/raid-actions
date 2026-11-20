@@ -130,6 +130,7 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
             return "gear removed";
         }
         if (!playable) return "";
+        ctx.Report("Cursed City: " + CursedCityPlanner.Where(level!.Stage), _plan.Why ?? "keys to spend", 1, 3, "reading the team");
 
         var gearNow = s.GearUnused ? level!.Team.Members.Where(m => m.GetsGear && !_geared.Contains(m.Id)).Select(m => m.Id).ToList() : [];
         // Before gear is moved: the level's team list read once end to end (no slot clicks), so gear goes only to champions the level takes
@@ -148,6 +149,7 @@ public sealed class CursedCityActivity(ICursedCityGame game) : IActivity
         if (gearNow.Count > 0)
         {
             await ctx.ThinkAsync(ct);
+            ctx.Report("Cursed City: " + CursedCityPlanner.Where(level!.Stage), _plan.Why ?? "keys to spend", 2, 3, $"gearing up {gearNow.Count} champion(s)");
             var done = await game.GearAsync(level!, gearNow, ctx.DryRun, ct);
             if (!ctx.DryRun) foreach (var id in gearNow) _geared.Add(id);
             ctx.Event(AreaId, "gear", $"{CursedCityPlanner.Where(level!.Stage)}: {string.Join(", ", level.Team.Members.Where(m => gearNow.Contains(m.Id)).Select(m => $"{m.Name} #{m.Id}"))}. {done}");

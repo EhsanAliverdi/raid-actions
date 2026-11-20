@@ -164,6 +164,7 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
         var results = new List<string>();
         for (var i = 0; i < MaxChain; i++)
         {
+            ctx.Report("Doom Tower: climbing", Pick(ctx).Why ?? "keys to spend", i + 1, MaxChain, i == 0 ? "reading the map, then fighting" : "next floor from the result screen");
             var r = await RunOnceAsync(ctx, i == 0, ct);
             if (r.Length > 0) results.Add(r);
             if (ctx.DryRun || !r.StartsWith("Victory", StringComparison.Ordinal) || ct.IsCancellationRequested) break;

@@ -479,6 +479,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
     {
         await game.GearAfterAsync(ctx, AreaId, null, ct); // gear that came from elsewhere since is not this area's drop
+        ctx.Report("Energy: chain of runs", _plan?.Why ?? "spending energy", 1, MaxChain, "one run from the village, the next from the result screen");
         var done = await OneStep(ctx, ct);
         var runs = 1;
         while (runs < MaxChain && !ctx.DryRun && (done.StartsWith("Victory", StringComparison.Ordinal) || done.StartsWith("Defeat", StringComparison.Ordinal)) && _account is { } account)
@@ -492,6 +493,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                 ctx.Event(AreaId, "chain", $"back after {runs} run(s): {why}");
                 break;
             }
+            ctx.Report("Energy: chain of runs", _plan?.Why ?? "spending energy", runs + 1, MaxChain, "next run from the result screen");
             var more = await OneStep(ctx, ct);
             if (more.Length == 0) break;
             done = more;

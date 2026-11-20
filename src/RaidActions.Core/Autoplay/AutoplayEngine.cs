@@ -2,6 +2,9 @@ using RaidExtractor.Autoplay;
 
 namespace RaidActions.Autoplay;
 
+/// <summary>The rotation as the banner shows it: this account's name, the next account, when this turn ends (UTC).</summary>
+public sealed record TurnView(string Who, string? To, DateTime? EndsUtc);
+
 /// <summary>Where the engine runs: time, waiting, the settings and stop files, the person's input, the status and the event log.</summary>
 public interface IAutoplayHost
 {
@@ -26,6 +29,9 @@ public interface IAutoplayHost
 
     /// <summary>Why this account's turn ends now, to play another one (raid-extractor's account pool); null: it goes on. Asked between turns only.</summary>
     string? RotateDue(DateTime? nextUsefulUtc) => null;
+
+    /// <summary>For the banner: this account's name, the account the rotation goes to next, and when this turn ends (UTC); null: no rotation.</summary>
+    TurnView? BannerTurn() => null;
     /// <summary>Another account of the pool can be played now, whatever this turn's time or hold (the account taken by another device).</summary>
     bool CanRotate() => false;
 
@@ -77,6 +83,8 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     private DateTime _nowWritten;
     private DateTime? _next;
     private PlayContext? _ctx;
+    private List<IActivity> _enabledOrder = [];
+    private IActivity? _current;
     private Dictionary<string, Decision> _decisions = [];
 
     /// <summary>Turns run (one battle, one refresh, ...).</summary>
@@ -123,6 +131,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
         // The quests read first in every run (Ehsan 2026-11-09: the player may finish a mission on another device while the bot is away, e.g. the
         // Spirit Keep potions on Monday at 11:10; the bot coming at 14:00 must not act on the old read): the read closes the tasks of quests gone.
         var ctx = _ctx = new PlayContext(settings, game, host, dryRun, Remember) { QuestNeeds = [.. StartNeeds], QuestsStale = StartNeeds.Count == 0 };
+        ctx.Reported = () => { if (host.UtcNow - _nowWritten >= TimeSpan.FromSeconds(2) || _now is null) WriteStatus(); };
         ctx.RestoreHolds(host.RecentEvents());
         // What the areas knew when the last bot here stopped (Ehsan 2026-11-06: "track stuff, don't just check them": the arena's board and refresh, the
         // reward checks' times), so a rotation's new bot does not go and look again.
@@ -191,6 +200,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                     catch (Exception e) when (e is not OperationCanceledException) { }
                 }
                 var enabled = activities.Where(a => a.IsEnabled(settings)).OrderBy(a => order.IndexOf(a.Id) is >= 0 and var at ? at : int.MaxValue).ToList();
+                _enabledOrder = enabled;
                 ctx.ChainBreak = self => ChainBreak(ctx, enabled, self, once);
                 ctx.YieldTo = self => YieldTo(ctx, enabled, self);
                 _decisions = activities.ToDictionary(a => a.Id, a => !a.IsEnabled(settings) ? Decision.Off("switched off")
@@ -248,6 +258,8 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
 
                 (_engine, _detail, _next) = ("playing", $"{act.Name}: {_decisions[act.Id].Why}", null);
                 _now = null;
+                _current = act;
+                ctx.ClearTask(new BotTask(act.Name, _decisions[act.Id].Why, 1, 1, ""));
                 WriteStatus();
                 try
                 {
@@ -409,6 +421,27 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
         return $"{waiting.Name} at {d0.UntilUtc!.Value.ToLocalTime():HH:mm}: {d0.Why}";
     }
 
+    /// <summary>The ordered plan after the current task: the areas due now in priority order, then the ones waiting by their time (the banner shows two).</summary>
+    internal List<string>? NextTasks()
+    {
+        if (_ctx is null || _enabledOrder.Count == 0) return null;
+        var rest = _enabledOrder.Where(a => a != (_engine == "playing" ? _current : null) && _decisions.ContainsKey(a.Id)).ToList();
+        var due = rest.Where(a => _decisions[a.Id].Act).Select(a => $"{a.Name}: {_decisions[a.Id].Why}");
+        var later = rest.Where(a => !_decisions[a.Id].Act && _decisions[a.Id].UntilUtc is not null).OrderBy(a => _decisions[a.Id].UntilUtc)
+            .Select(a => $"{a.Name} at {_decisions[a.Id].UntilUtc!.Value.ToLocalTime():HH:mm}");
+        return [.. due.Concat(later).Take(3)];
+    }
+
+    /// <summary>Why this turn exists and how far it is: tasks done this run, and about as many more as areas are due now.</summary>
+    private TurnGoal? GoalNow()
+    {
+        if (host.BannerTurn() is not { } t) return null;
+        var dueNow = _decisions.Values.Count(d => d.Act);
+        return new TurnGoal(t.Who, Turns, Turns + dueNow);
+    }
+
+    private SwitchInfo? SwitchNow() => host.BannerTurn() is { To: { } to, EndsUtc: { } ends } ? new SwitchInfo(to, ends, true) : null;
+
     private void WriteStatus()
     {
         _nowWritten = host.UtcNow;
@@ -416,7 +449,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
         var areas = ctx is null ? [] : activities.Select(a => a.Status(ctx, _decisions.GetValueOrDefault(a.Id) ?? Decision.Off(a.IsEnabled(ctx.Settings) ? "starting" : "switched off"))).ToList();
         var clocks = ctx is null ? [] : ctx.Clocks.Values.Select(c => c.Out()).OfType<ClockOut>().ToList();
         host.WriteStatus(new AutoplayStatus(host.UtcNow, host.ProcessId, dryRun, _engine, _detail, _next, clocks, areas, [.. _recent.TakeLast(20)])
-            { Now = _engine == "playing" ? _now : null, Next = NextText() });
+            { Now = _engine == "playing" ? _now : null, Next = NextText(), Task = _engine == "playing" ? ctx?.Task : null, NextTasks = NextTasks(), Goal = GoalNow(), Switch = SwitchNow() });
     }
 
     private TimeSpan Jitter(int minutes) => TimeSpan.FromMinutes(Math.Max(0, minutes) * (0.75 + 0.5 * host.Random.NextDouble()));

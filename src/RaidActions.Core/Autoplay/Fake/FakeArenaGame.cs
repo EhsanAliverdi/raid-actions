@@ -167,6 +167,13 @@ public sealed class FakeHost(DateTime start) : IAutoplayHost
     public AutoplayStatus? Last { get; private set; }
     public int StatusWrites { get; private set; }
 
+    /// <summary>The banner's goal and switch (a test sets it); null: no rotation.</summary>
+    public TurnView? Turn { get; set; }
+    public TurnView? BannerTurn() => Turn;
+
+    /// <summary>Every status written while playing (the banner's fields over time).</summary>
+    public List<AutoplayStatus> Playing { get; } = [];
+
     /// <summary>The account's tasks (a test sets a <see cref="MemoryTaskBook"/>); null: no store, as on a dry run host.</summary>
     public ITaskBook? Tasks { get; set; }
 
@@ -189,6 +196,7 @@ public sealed class FakeHost(DateTime start) : IAutoplayHost
     {
         Last = status;
         StatusWrites++;
+        if (status.Engine == "playing") Playing.Add(status);
     }
 
     public void Event(AutoplayEvent e) => Events.Add(e);

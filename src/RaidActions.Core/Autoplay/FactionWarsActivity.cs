@@ -148,6 +148,14 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
     private async Task<string> RunStepAsync(PlayContext ctx, Step step, FactionWarsSettings s, CancellationToken ct)
     {
         await ctx.ThinkAsync(ct);
+        var (phase, what, detail) = step.Kind switch
+        {
+            "strip" => (1, "freeing yesterday's gear", "taking the gear off yesterday's teams, champions to the Reserve Vault"),
+            "gear" => (2, $"gearing up the {step.Crypt?.Name} team", step.Crypt is null ? "" : $"{string.Join(", ", step.Crypt.TeamNames)}: moving and upgrading gear"),
+            "remove" => (4, $"taking the gear off the {step.Crypt?.Name} team", "the crypt's keys are used"),
+            _ => (3, $"fighting the {step.Crypt?.Name} crypt", step.Crypt is null ? "" : $"{step.Crypt.Keys} key(s) left, battles in a row"),
+        };
+        ctx.Report($"Faction Wars ({step.Crypt?.Name ?? "all crypts"}): {what}", step.Why, phase, 4, detail);
         switch (step.Kind)
         {
             case "strip":

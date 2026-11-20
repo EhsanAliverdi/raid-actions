@@ -24,16 +24,16 @@ public class WindowFitTests : IDisposable
     }
 
     [Fact]
-    public void The_committed_policy_has_a_floor_of_864x486_and_40_px_targets()
+    public void The_committed_policy_has_a_floor_of_896x504_and_40_px_targets()
     {
         var p = WindowPolicy.Load(Path.Combine(AppPathsForTests.Config, "window.json"));
-        Assert.Equal((864, 486), (p.FloorWidth, p.FloorHeight));
+        Assert.Equal((896, 504), (p.FloorWidth, p.FloorHeight));
         Assert.Equal(40, p.TargetPx);
         Assert.True(p.MinWidth >= p.FloorWidth && p.MinHeight >= p.FloorHeight);
     }
 
     [Theory]
-    [InlineData(864, 486)]
+    [InlineData(896, 504)]
     [InlineData(1280, 720)]
     [InlineData(1600, 900)]
     [InlineData(1920, 1017)]
@@ -45,7 +45,7 @@ public class WindowFitTests : IDisposable
     {
         var p = Policy();
         Assert.Contains("minimized", p.Problem(Window(1600, 900, minimized: true)));
-        Assert.Contains("below the minimum", p.Problem(Window(863, 486)));
+        Assert.Contains("below the minimum", p.Problem(Window(895, 504)));
         Assert.Contains("below the minimum", p.Problem(Window(648, 334)));
         Assert.Null(WindowPolicy.CaptureProblem(Window(648, 334))); // captures work at any size
     }

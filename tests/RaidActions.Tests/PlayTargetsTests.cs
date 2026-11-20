@@ -296,4 +296,15 @@ public class PlayTargetsTests
     [InlineData("ResourceRefillOverlay", 5, "none")]
     public void The_live_arena_flow_registers_with_a_ticket_and_closes_what_it_does_not_know(string view, double tickets, string want) =>
         Assert.Equal(want, PlayTargets.LiveOverlayAction(view, tickets));
+
+    [Fact]
+    public void A_locked_battle_menu_card_is_noted_locked()
+    {
+        var locked = PlayTargets.Scan(Tree("BattleModeSelectionDialog", N("D/Cards/CursedCity_h", 100, interactable: true, binding: "CursedCity"),
+            N("D/Cards/CursedCity_h/Locked_h", 120)), new Objects()).Targets.First(t => t.Kind == "mode-cc");
+        Assert.Equal("locked", locked.Note);
+        var open = PlayTargets.Scan(Tree("BattleModeSelectionDialog", N("D/Cards/CursedCity_h", 100, interactable: true, binding: "CursedCity")), new Objects())
+            .Targets.First(t => t.Kind == "mode-cc");
+        Assert.NotEqual("locked", open.Note);
+    }
 }

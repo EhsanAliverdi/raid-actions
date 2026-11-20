@@ -1277,7 +1277,9 @@ public static partial class PlayTargets
             };
             if (byPath.Item1 is not { } kind) continue;
             var own = Own(i);
-            if (own is not null && !targets.Any(x => x.Kind == kind && x.Path == own.Path)) targets.Add(Make(kind, byPath.Item2!, n, own, $"binding '{bp}'"));
+            // A battle-menu card with its Locked_h showing (2026-11-20: Cursed City on the level 37-40 accounts; the tap does nothing): "locked".
+            var lockedCard = t.View == BattleMenuView && SelfAndBelow(i).Any(y => y.Name == "Locked_h" && y.ActiveInHierarchy);
+            if (own is not null && !targets.Any(x => x.Kind == kind && x.Path == own.Path)) targets.Add(Make(kind, byPath.Item2!, n, own, lockedCard ? "locked" : $"binding '{bp}'"));
         }
 
         // The dungeon map's dungeons (seen live 2026-10-30): a 3D scene with no contexts; each dungeon is a point named and bound by its

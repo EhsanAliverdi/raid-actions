@@ -381,6 +381,8 @@ public sealed partial class LivePlayGame : ICursedCityGame
             {
                 // The battle menu's cards run sideways past the window (seen 2026-10-29: Cursed City at x 1263 of 864): drag it into view.
                 await DragIntoView("mode-cc", ct);
+                if ((await Read(ct)).Targets.FirstOrDefault(t => t.Kind == "mode-cc") is { Note: "locked" })
+                    throw new AreaLockedException("Cursed City is not unlocked on this account yet (its card is locked)");
                 // The cards tween after the menu moves (SiblingTweenActivator, CanvasGroupAlphaTween): a tap too early does nothing (2026-11-20: 8 of 9
                 // taps failed with the 896x504 window). One more tap after a short wait before it counts as an error.
                 var opened = true;

@@ -257,6 +257,9 @@ public static partial class UiTargets
                 "SellMode" when n.BindingPath?.Contains("SellArtifactsButton", StringComparison.Ordinal) == true => ("sell-mode", "picker: Sell mode"),
                 "Cancel" when n.Path.Contains("/SellArtifactsPanel_h/", StringComparison.Ordinal) => ("sell-cancel", "sell panel: Cancel"),
                 "Apply" when n.Path.Contains("/SellArtifactsPanel_h/", StringComparison.Ordinal) => ("sell-apply", "sell panel: Sell"),
+                // The warning Equip shows for a piece the champion cannot wear (WarningType Fraction / Grade / AscendLevel, 2026-11-20): only a close, OK or
+                // Cancel on that overlay, which dismisses it (nothing is equipped or confirmed).
+                "BTN_Close1" or "Close" or "Cancel" or "CancelButton" or "OkButton" or "OK" when t.View == UiState.EquipWarningView => ("equip-warning-close", "equip warning: close"),
                 // Any other popup's close button (offers and the like): closing only; their other buttons are never targets.
                 "BTN_Close1" when t.View.EndsWith("Overlay", StringComparison.Ordinal) => ("dialog-close", $"{t.View}: close"),
                 // A champion filter panel's Hide: it stays loaded when closed (2026-10-30), so it is never a screen's way back.

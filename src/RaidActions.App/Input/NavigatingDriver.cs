@@ -41,7 +41,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
 
     /// <summary>The ways back go home may take, innermost first: in the top view, the first of these kinds found is clicked.</summary>
     public static readonly IReadOnlyList<string> BackKinds =
-        ["swap-cancel", "popup-close-selected", "popup-close-worn", "picker-close", "manage-close", "dialog-close", "back", "screen-close"];
+        ["equip-warning-close", "swap-cancel", "popup-close-selected", "popup-close-worn", "picker-close", "manage-close", "dialog-close", "back", "screen-close"];
 
     /// <summary>The one click outside the allow-list that the next <see cref="Click"/> may make (swap-continue, inside a step's Equip).</summary>
     private string? _once;
@@ -232,12 +232,24 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             await Task.Delay(400, ct);
             var (after, _) = game.ReadUi();
             if (after?.Top?.Name is UiState.SwapView or UiState.UndressView) return await ConfirmSwap(a, step, ct);
+            if (after is not null && Screen.Covering(after) == UiState.EquipWarningView) return await DismissEquipWarning(a, step, after, ct);
             if (after is not null && Screen.Covering(after) is { } popup) throw new StopException($"After Equip: unexpected popup {popup}.");
             var fresh = await game.Account.ReadAsync(ct);
             var owner = fresh.Artifacts.FirstOrDefault(x => x.Id == step.ArtifactId)?.OwnerHeroId;
             if (owner == step.ToChampionId) return DriverResult.Success($"Equip clicked; the account shows #{step.ArtifactId} on {step.ToName} (#{step.ToChampionId}) → {png}");
         }
         throw new StopException($"After Equip: the account does not show #{step.ArtifactId} on {step.ToName} within 25 s.");
+    }
+
+    /// <summary>
+    /// The game refused the piece for this champion (ArtifactEquipWarningOverlay: faction, grade or ascension): close the warning (never confirm
+    /// anything), skip this piece and let the plan go on with the rest. The step still counts as done; it is logged.
+    /// </summary>
+    private async Task<DriverResult> DismissEquipWarning(UiAction a, PlanStep step, UiState seen, CancellationToken ct)
+    {
+        log($"step {a.Step}: the game refused #{step.ArtifactId} for {step.ToName} (ArtifactEquipWarningOverlay); closing the warning and skipping this piece");
+        await Click(a, "equip-warning-close", null, null, (s2, _) => s2.Top?.Name != UiState.EquipWarningView, "the equip warning closes", ct);
+        return DriverResult.Success($"SKIPPED: the game refused #{step.ArtifactId} on {step.ToName} (ArtifactEquipWarningOverlay); warning closed, not equipped");
     }
 
     public static bool AtVillage(UiState s) => s.Top?.Name is "Village" or "VillageHUD";
@@ -516,13 +528,14 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             if (s.Top?.Name != view) throw new StopException($"Expected {view} on top; the screen shows {s.Top?.Name}.");
             targets = targets.Where(t => t.View == view).ToList();
         }
-        if (Screen.Covering(s) is { } cover && kind is not ("manage-close" or "manage-remove" or "vault-gear-remove" or "dialog-close" or "swap-cancel" or "swap-continue" or "undress-continue" or "back" or "message-button" or "powerup-level" or "powerup-cancel")) throw new StopException($"Unexpected popup {cover} over the champion screen.");
+        if (Screen.Covering(s) is { } cover && kind is not ("manage-close" or "manage-remove" or "vault-gear-remove" or "dialog-close" or "equip-warning-close" or "swap-cancel" or "swap-continue" or "undress-continue" or "back" or "message-button" or "powerup-level" or "powerup-cancel")) throw new StopException($"Unexpected popup {cover} over the champion screen.");
         if (before?.Invoke(s) is { } changed) throw new StopException(changed);
         var (t, problem) = UiTargets.Resolve(targets, kind, id, slot);
         if (t is null) throw new StopException($"{kind}: {problem}");
         if (id is not null && t.Id != id) throw new StopException($"{kind}: id {t.Id}, expected {id}.");
         if (t.Forbidden || !(IsAllowed(t.Kind) || once && t.Kind == kind)) throw new StopException($"Refused: {t.Name} may not be clicked.");
         if (kind is "swap-cancel" or "swap-continue" && t.View != UiState.SwapView) throw new StopException($"Refused: {t.Path} is not on the swap confirmation.");
+        if (kind == "equip-warning-close" && (t.View != UiState.EquipWarningView || s.Top?.Name != UiState.EquipWarningView)) throw new StopException($"Refused: {t.Path} is not on the equip warning on top.");
         if (kind == "message-button" && (t.View != UiState.MessageBoxView || s.Top?.Name != UiState.MessageBoxView)) throw new StopException($"Refused: {t.Path} is not on the message box on top.");
         // An offer's close: only its own close element (BTN_Close1), on the popup that is on top; nothing else on an offer.
         if (kind == "dialog-close" && (t.View != s.Top?.Name || !t.Path.EndsWith("/BTN_Close1", StringComparison.Ordinal)))

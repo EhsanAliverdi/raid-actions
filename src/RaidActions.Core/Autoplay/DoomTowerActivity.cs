@@ -112,6 +112,9 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
         return goldOk || silverOk ? null : $"no key to use (gold {gold:0}, silver {silver:0}): the tower is not opened until one comes";
     }
 
+    /// <summary>How long a climb rests after the team was refused.</summary>
+    public static readonly TimeSpan RefusedRest = TimeSpan.FromMinutes(15);
+
     private async Task<string> Climb(PlayContext ctx, bool hard, CancellationToken ct)
     {
         var tower = hard ? "Hard" : "Normal";
@@ -128,7 +131,10 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
         if (outcome.Result is BattleResult.NotStarted or BattleResult.Retry)
         {
             if (!hard && outcome.Text.Contains("no gold floor", StringComparison.Ordinal)) _normalFinished = ctx.Utc;
-            Rest(ctx.Utc + TimeSpan.FromHours(hard ? 6 : 12), $"{tower} tower: {outcome.Text}");
+            // A refused team (a champion of it busy or missing; 2026-11-20 Kael: floor 1's team could not be set and the tower rested 12 hours with 15 silver and
+            // 10 gold keys unused) is tried again in 15 minutes, not after hours: the team is chosen again then.
+            var refused = outcome.Text.Contains("refused here", StringComparison.Ordinal);
+            Rest(ctx.Utc + (refused ? RefusedRest : TimeSpan.FromHours(hard ? 6 : 12)), $"{tower} tower: {outcome.Text}");
             ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", $"{tower} tower: {outcome.Text}");
             return "";
         }

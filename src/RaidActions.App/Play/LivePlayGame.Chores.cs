@@ -569,6 +569,9 @@ public sealed partial class LivePlayGame : IChoresGame
             if (Top(s3) is { } top && top != view && !top.EndsWith("NotificationView", StringComparison.Ordinal)) { await Back(top, ct); await Pause(800, ct); }
             log($"autoplay: loyalty: pressed {claim.Name} on {view} ({item})");
             claimed++;
+            // One day a day: the program lets one day be taken per day, and Loyalty90DItemContext's own state (an IntProperty with no named values in the dump)
+            // cannot be read, so the first item the game marks claimable is pressed and the visit stops (2026-11-20: all 12 day items were pressed, 45 s).
+            break;
         }
         if (claimed == 0 && !dryRun) log($"autoplay: loyalty: {item} ({view}): nothing to collect");
         return claimed;
@@ -887,6 +890,8 @@ public sealed partial class LivePlayGame : IChoresGame
             : $"Quick Join pressed, but the account has no clan yet (screen dump {afterDump})";
     }
 
+    private DateOnly _shopWalkDay;
+
     public async Task<int> CollectFreeAsync(bool dryRun, CancellationToken ct)
     {
         _nav.FitWindow();
@@ -914,7 +919,9 @@ public sealed partial class LivePlayGame : IChoresGame
             await Click("shop-section", t => t.Note == section, (_, _) => true, $"the Shop's {section}", ct);
             await Pause(1500, ct);
             claimed += await ClaimShopFree(dryRun, ct);
-            foreach (var tab in (await Read(ct)).Targets.Where(t => t.Kind == "shop-subtab").Select(t => t.Id).ToList())
+            // Only the tabs with a red dot, plus every tab once a day (2026-11-20: all 11 tabs every visit took 30 s).
+            var fullWalk = _shopWalkDay != DateOnly.FromDateTime(DateTime.UtcNow);
+            foreach (var tab in (await Read(ct)).Targets.Where(t => t.Kind == "shop-subtab" && (fullWalk || t.Name.EndsWith(PlayTargets.ShopDotSuffix, StringComparison.Ordinal))).Select(t => t.Id).ToList())
             {
                 // A tab read with the section can be gone by its turn (2026-11-16: the Daily tabs scrolled; "not on screen"): skipped.
                 if (!(await Read(ct)).Targets.Any(t => t.Kind == "shop-subtab" && t.Id == tab)) { log($"autoplay: the Shop's {section} tab {tab} is not on screen: skipped"); continue; }
@@ -924,6 +931,7 @@ public sealed partial class LivePlayGame : IChoresGame
                 claimed += await ClaimShopFree(dryRun, ct);
             }
         }
+        _shopWalkDay = DateOnly.FromDateTime(DateTime.UtcNow);
         // A Shop too big to read has no close to find (2026-11-16): Esc, as on the way home.
         try { await Back(PlayTargets.ShopView, ct); }
         catch (PlayStopException)

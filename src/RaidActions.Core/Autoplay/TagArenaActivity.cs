@@ -46,6 +46,21 @@ public sealed class TagArenaActivity(ITagArenaGame game) : IActivity
 
     public bool IsEnabled(AutoplaySettings settings) => settings.TagArena.Enabled;
 
+    /// <summary>
+    /// Tag Team fights now (an opponent to fight, not only the free refresh) with the tokens to finish the quest's <paramref name="left"/> battles; else false, and
+    /// <paramref name="why"/> says what is missing (2026-11-20: 3 tokens for a quest of 5 held Faction Wars back for nothing).
+    /// </summary>
+    public bool CanFinishQuest(PlayContext ctx, double left, out string why)
+    {
+        var s = ctx.Settings.TagArena;
+        if (_board is null || _tokens is null) { why = ""; return true; } // not looked at yet: its look comes first, then this is asked again
+        var spend = ArenaRules.SpendableTokens(_tokens ?? 0, s);
+        if (Eligible(s).Count == 0) { why = "Tag Team has nobody to fight (only a refresh)"; return false; }
+        if (spend < left) { why = $"Tag Team has {spend:0.#} token(s) for the quest's {left:0.#} battle(s)"; return false; }
+        why = "";
+        return true;
+    }
+
     private List<ArenaOpponentInfo> Eligible(ClassicArenaSettings s) =>
         _board is null ? [] : [.. ArenaRules.Eligible(_board.Opponents, s).Where(o => !_skip.Contains(o.UserId) && !_foughtBefore.Contains(o.Name))];
 

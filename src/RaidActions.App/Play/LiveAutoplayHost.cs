@@ -310,6 +310,8 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
         && pool.Next(current, DateTime.UtcNow) is not null;
 
     private string? _heldNote;
+    private IReadOnlySet<string> _acting = new HashSet<string>();
+    public void Acting(IReadOnlySet<string> areaIds) => _acting = areaIds;
 
     /// <summary>The banner's goal and switch: this account's name, the next account of the pool and the end of this turn.</summary>
     public TurnView? BannerTurn()
@@ -340,11 +342,7 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
         IReadOnlyList<TaskRow> open;
         try { open = book.OpenTasks(); }
         catch (Microsoft.Data.Sqlite.SqliteException) { return null; }
-        // Only today's work holds a turn (2026-11-12 10:44-10:53: yesterday's Faction Wars gear task, never closed, kept BlackLord65 with nothing to do;
-        // Ehsan: "why wait? just schedule the next visit").
-        bool Recent(TaskRow t) => (t.UpdatedUtc ?? t.CreatedUtc) is { } at && now - at < TimeSpan.FromHours(6);
-        var task = open.FirstOrDefault(t => t.State == TodoState.InProgress && t.Kind != "quest" && Recent(t) && (t.DeadlineUtc is not { } d || d > now))
-            ?? open.FirstOrDefault(t => t.FollowUpDue(now) && Recent(t));
+        var task = TurnHold.Pick(open, now, _acting);
         return task is null ? null : $"{task.Title}: up to {extra} min more";
     }
 

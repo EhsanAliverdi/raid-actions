@@ -97,6 +97,7 @@ public static class MouseInput
 
     public static string? SendEscape(GameWindowInfo w)
     {
+        if (RaidActions.Autoplay.PauseGate.Check() is { } paused) return paused;
         if (EnsureForeground(w) is { } why) return why;
         keybd_event(0x1B, 0, 0, IntPtr.Zero);
         Thread.Sleep(60);
@@ -142,6 +143,7 @@ public static class MouseInput
     /// <summary>A left click at client point (x, y). Returns null when sent, else why not (nothing sent).</summary>
     public static string? Click(GameWindowInfo w, float x, float y, Random random)
     {
+        if (RaidActions.Autoplay.PauseGate.Check() is { } paused) return paused;
         if (Prepare(w, x, y) is { } problem) return problem;
         mouse_event(LeftDown, 0, 0, 0, IntPtr.Zero);
         Thread.Sleep(random.Next(45, 95));
@@ -159,6 +161,7 @@ public static class MouseInput
     /// <param name="gapMs">Pause between two notches (35 ms: a hand turning the wheel; less for a long turn).</param>
     public static string? Wheel(GameWindowInfo w, float x, float y, int notches, bool single = false, int gapMs = 35)
     {
+        if (RaidActions.Autoplay.PauseGate.Check() is { } paused) return paused;
         if (Prepare(w, x, y) is { } problem) return problem;
         if (single)
         {
@@ -181,6 +184,7 @@ public static class MouseInput
     /// </summary>
     public static string? Drag(GameWindowInfo w, float x1, float y1, float x2, float y2, int steps = 18)
     {
+        if (RaidActions.Autoplay.PauseGate.Check() is { } paused) return paused;
         if (x2 < 0 || y2 < 0 || x2 >= w.Client.Width || y2 >= w.Client.Height) return $"({x2:0},{y2:0}) is outside the client area.";
         // A small window floating over the start (a screen recorder's; seen 2026-10-31): the same drag from a free point near it.
         string? problem = null;

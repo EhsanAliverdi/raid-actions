@@ -15,6 +15,18 @@ public interface IAutoplayHost
     AutoplaySettings LoadSettings();
     bool StopRequested();
 
+    /// <summary>When the app asked for a pause (UTC); null: not paused. While it is set the bot sends no input.</summary>
+    DateTime? PausedSince() => null;
+
+    /// <summary>The pause begins: the host lets go of any held input.</summary>
+    void PauseBegan() { }
+
+    /// <summary>
+    /// The pause ended after <paramref name="pausedFor"/>: the host moves the rotation slice's clock on by it and re-reads the game. Null: go on with the
+    /// account the bot plays; else why this run ends (<see cref="PauseGate.NowOn"/>, <see cref="PauseGate.SwitchBack"/>, <see cref="PauseGate.GameClosed"/>).
+    /// </summary>
+    string? PauseEnded(TimeSpan pausedFor) => null;
+
     /// <summary>The last time the person (not the bot) used the mouse or keyboard; null when unknown.</summary>
     DateTime? PersonLastInputUtc();
 
@@ -157,6 +169,13 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 settings = ctx.Settings = host.LoadSettings();
                 if (host.StopRequested()) return Stop("stopped from the app");
                 if (!settings.Enabled) return Stop("Auto Play is switched off");
+                if (host.PausedSince() is not null)
+                {
+                    var held = await HoldWhilePaused(false, ct);
+                    sessionEnd += held.Span;
+                    if (held.Reason is not null) return held.Reason;
+                    continue;
+                }
                 var now = host.UtcNow;
                 var p = settings.Pacing;
 
@@ -170,7 +189,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 {
                     var until = now + Jitter(p.BreakMinutes);
                     Remember(new AutoplayEvent(now, "engine", "break", $"a break until {until.ToLocalTime():HH:mm}"));
-                    while (host.UtcNow < until && !host.StopRequested() && host.LoadSettings().Enabled) await Idle("resting", "taking a break, like a person", until, ct);
+                    while (host.UtcNow < until && !host.StopRequested() && host.LoadSettings().Enabled && host.PausedSince() is null) await Idle("resting", "taking a break, like a person", until, ct);
                     sessionEnd = host.UtcNow + Jitter(p.SessionMinutes);
                     continue;
                 }
@@ -300,6 +319,14 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 }
                 catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
                 {
+                    // Paused from the app: the click step finished, the next input refused; held here, then on with the plan (not an error).
+                    if (host.PausedSince() is not null || e.Message.Contains(PauseGate.Refusal, StringComparison.Ordinal))
+                    {
+                        var held = await HoldWhilePaused(true, ct);
+                        sessionEnd += held.Span;
+                        if (held.Reason is not null) return held.Reason;
+                        continue;
+                    }
                     // Windows would not let the game come to the front (someone working at the PC, 2026-11-11 17:22: three of these stopped Auto Play
                     // for good): nothing is wrong with the area or the game, so it is not counted; the bot waits a minute and tries again.
                     // A battle running in the background (the game's background battles, e.g. Doom Tower's auto-climb, 2026-11-12 22:56): a Start shows
@@ -372,9 +399,40 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
             var slice = end - host.UtcNow < Tick ? end - host.UtcNow : Tick;
             await host.DelayAsync(slice, ct);
             if (!untilOnly) break;
-            if (host.StopRequested() || !host.LoadSettings().Enabled) break;
+            if (host.StopRequested() || !host.LoadSettings().Enabled || host.PausedSince() is not null) break;
             WriteStatus();
         }
+    }
+
+    /// <summary>
+    /// Holds while the app's pause stands: no input, status "paused", every state kept. After it the host moves the slice clock and re-reads the game
+    /// (<see cref="IAutoplayHost.PauseEnded"/>), the game goes home (the person may have left a screen open) and the turn goes on from its plan.
+    /// </summary>
+    private async Task<(string? Reason, TimeSpan Span)> HoldWhilePaused(bool refused, CancellationToken ct)
+    {
+        var began = host.UtcNow;
+        var since = host.PausedSince() ?? began;
+        if (host.PausedSince() is not null)
+        {
+            host.PauseBegan();
+            Remember(new AutoplayEvent(began, "engine", "pause", $"Paused since {since.ToLocalTime():HH:mm}"));
+        }
+        while (host.PausedSince() is not null && !host.StopRequested() && host.LoadSettings().Enabled)
+        {
+            (_engine, _detail, _next) = ("paused", $"Paused since {since.ToLocalTime():HH:mm}", null);
+            WriteStatus();
+            await host.DelayAsync(TimeSpan.FromSeconds(1), ct);
+        }
+        var span = host.UtcNow - began;
+        if (host.StopRequested() || !host.LoadSettings().Enabled) return (null, span); // the loop's top stops it
+        Remember(new AutoplayEvent(host.UtcNow, "engine", "resume", $"Resumed after {span.TotalMinutes:0.#} min"));
+        if (host.PauseEnded(span) is { } end) return (Stop(end), span);
+        try { await game.GoHomeAsync(ct); }
+        catch (Exception home) when (home is not OperationCanceledException || !ct.IsCancellationRequested)
+        {
+            Remember(new AutoplayEvent(host.UtcNow, "engine", "error", "going home after the pause failed: " + home.Message));
+        }
+        return (null, span);
     }
 
     /// <summary>The account's holdings, or null (not readable now: the rewards log skips this turn).</summary>
@@ -496,6 +554,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     {
         // Stop asked (2026-11-14 07:41: a Dragon's Lair chain started run after run while the app asked it to stop).
         if (host.StopRequested()) return "stop asked";
+        if (host.PausedSince() is not null) return "paused";
         if (!once && host.RotateDue(null) is { } rotate) return "rotation: " + rotate;
         // Only an area the next turn would really give to (2026-11-06: arena tokens full broke every Campaign chain, and the next turn went to Energy again,
         // full too and first in the order): an urgent one, or a full one while this area is not full or comes after it.

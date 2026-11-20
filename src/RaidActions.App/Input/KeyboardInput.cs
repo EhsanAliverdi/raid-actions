@@ -11,6 +11,7 @@ public static class KeyboardInput
 {
     public static string? Type(GameWindowInfo w, string text)
     {
+        if (RaidActions.Autoplay.PauseGate.Check() is { } paused) return paused;
         if (text.Length is 0 or > 40 || !text.All(c => char.IsLetterOrDigit(c) || c == ' ')) return "Refused: only letters, digits and spaces, at most 40.";
         if (MouseInput.EnsureForeground(w) is { } problem) return problem;
         foreach (var ch in text)

@@ -170,7 +170,8 @@ public sealed partial class LivePlayGame : ILiveArenaGame
             if (t0.FirstOrDefault(t => t.Kind == "live-find")?.Rect is { } r) Shot("autoplay: WOULD CLICK Find Opponent (dry run: NOT pressed)", r, always: true);
             return new BattleOutcome(BattleResult.NotStarted, "Find Opponent shown, not pressed");
         }
-        await Click("live-find", null, (s2, _) => Has(s2, LiveDraftView) || Top(s2) == "LiveArenaMatchMakingDialog" || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView, "the match is searched", ct, within: TimeSpan.FromSeconds(5));
+        await Click("live-find", null, (s2, _) => Has(s2, LiveDraftView) || Top(s2) == "LiveArenaMatchMakingDialog" || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView || PlayTargets.LiveOverlayAction(Top(s2), 0) != "none", "the match is searched", ct, within: TimeSpan.FromSeconds(5));
+        await HandleLiveOverlays(ct);
         // Out of tokens the game offers to buy some (2026-11-03: Find Opponent stays enabled at 0): closed, nothing bought, no match.
         var (after, _, _) = await Read(ct);
         if (Top(after) is PlayTargets.RefillView or UiState.MessageBoxView)
@@ -183,6 +184,49 @@ public sealed partial class LivePlayGame : ILiveArenaGame
         }
         log("autoplay: looking for a Live Arena opponent");
         return await FinishLiveMatchAsync(s, started, ct);
+    }
+
+    /// <summary>
+    /// Screens over the Live Arena's search: the win-streak overlay is registered with a ticket (never "don't ask again", never gems: its price is the
+    /// ticket alone), closed without; any other unknown overlay is closed. Never a pause: a close that does not take is logged and the flow goes on.
+    /// </summary>
+    private async Task HandleLiveOverlays(CancellationToken ct)
+    {
+        for (var n = 0; n < 4; n++)
+        {
+            var (s, targets, _) = await Read(ct);
+            var top = Top(s);
+            var tickets = top == PlayTargets.LiveWinStreakView ? (await Account(ct)).Data.Account.Resources.GetValueOrDefault("LiveArenaWinStreakTicket") : 0;
+            var action = PlayTargets.LiveOverlayAction(top, tickets);
+            if (action == "none" || top is null) return;
+            try
+            {
+                if (action == "register" && targets.FirstOrDefault(t => t.Kind == "live-register" && t.NotClickable is null) is not null)
+                {
+                    await Click("live-register", null, (s2, _) => Top(s2) != top, "the win streak registered", ct, within: TimeSpan.FromSeconds(8));
+                    await Pause(1000, ct);
+                    var now = (await Account(ct)).Data.Account.Resources.GetValueOrDefault("LiveArenaWinStreakTicket");
+                    log($"autoplay: registered for the Live Arena win streak (ticket {tickets:0} -> {now:0})");
+                    continue;
+                }
+                log($"autoplay: Live Arena: {top} closed{(top == PlayTargets.LiveWinStreakView ? " (no ticket to register)" : " (not known to the flow)")}");
+                await CloseLiveOverlay(top, ct);
+            }
+            catch (Exception e) when (e is PlayStopException)
+            {
+                log($"autoplay: Live Arena: {top} was not handled ({e.Message}); going on. Screen dump: {DumpScreen("live arena overlay")}");
+                return;
+            }
+        }
+    }
+
+    private async Task CloseLiveOverlay(string view, CancellationToken ct)
+    {
+        try { await Back(view, ct); }
+        catch (PlayStopException)
+        {
+            if (Game.Window.GameWindow.Find().Window is { } w && Input.MouseInput.SendEscape(w) is null) { log($"autoplay: {view}: Esc sent"); await Pause(1200, ct); }
+        }
     }
 
     private bool InLiveMatch(UiState state) => Has(state, LiveDraftView) || Has(state, "LiveArenaMatchMakingDialog") || Has(state, LiveResultView);
@@ -199,7 +243,11 @@ public sealed partial class LivePlayGame : ILiveArenaGame
             await Pause(700, ct);
             var state = await ReadState(ct);
             if (state.Active.Any(v => BattleViews.Contains(v.Name)) || Has(state, LiveResultView)) break;
-            if (!Has(state, LiveDraftView)) continue; // still searching
+            if (!Has(state, LiveDraftView))
+            {
+                if (PlayTargets.LiveOverlayAction(Top(state), 0) != "none") await HandleLiveOverlays(ct);
+                continue; // still searching
+            }
             var (_, targets, play) = await Read(ct);
             var phase = targets.FirstOrDefault(t => t.Kind == "live-phase");
             var parts = (phase?.Note ?? "").Split('|');

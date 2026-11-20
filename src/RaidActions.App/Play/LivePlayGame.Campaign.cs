@@ -445,11 +445,17 @@ public sealed partial class LivePlayGame
             opened++;
             await Pause(2500, ct); // the summon's show starts after the click
             // The new champion's card (PortalHeroInfoDialog, seen 2026-10-31) slides in: its close is tried until it is on screen.
-            for (var i = 0; i < 10; i++)
+            for (var i = 0; i < 14; i++)
             {
                 await Pause(1500, ct);
                 var (s2, t2, _) = await Read(ct);
                 if (Top(s2) == "PortalDialog" && t2.Any(t => t.Kind == "portal-summon1" && t.NotClickable is null)) break;
+                if (Top(s2) == "PortalHeroInfoDialog")
+                {
+                    // Its CloseButton is off the window (2026-11-20): the game's back key (never its own Summon button).
+                    if (Game.Window.GameWindow.Find().Window is { } w && Input.MouseInput.SendEscape(w) is null) log("autoplay: PortalHeroInfoDialog: Esc sent");
+                    continue;
+                }
                 if (Top(s2) is { } top && top != "PortalDialog")
                 {
                     try { await Back(top, ct); }

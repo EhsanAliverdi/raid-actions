@@ -173,6 +173,21 @@ public static partial class PlayTargets
     private const string LiveDraftDialog = "Client.ViewModel.Contextes.LiveArenaDraftDialog.LiveArenaDraftDialogContext";
     private const string LiveDraftState = "Client.ViewModel.Contextes.LiveArenaDraftDialog.IterativeHeroSelectionStateContext";
     private const string LiveBattleTab = "Client.ViewModel.Contextes.LiveArenaDialog.Tabs.Battle.LiveArenaBattleTabContext";
+    public const string LiveWinStreakView = "LiveArenaWinStreakRegisterOverlay";
+
+    /// <summary>
+    /// What the Live Arena flow does with a screen over the search (Ehsan 2026-11-20: "always sign up" with a ticket; "whenever you see a window you
+    /// don't understand, close it"). Register only for the win-streak overlay with a ticket; anything else unknown is closed; never a pause.
+    /// </summary>
+    public static string LiveOverlayAction(string? view, double? tickets) => view switch
+    {
+        null or "" => "none",
+        LiveWinStreakView => tickets is >= 1 ? "register" : "close",
+        "LiveArenaDialog" or "LiveArenaDraftDialog" or "LiveArenaMatchMakingDialog" or "BattleFinishLiveArenaDialog" or RefillView or MultiRefillView or UiState.MessageBoxView => "none",
+        _ => "close",
+    };
+
+    private const string LiveRegisterButton = "Client.ViewModel.Contextes.LiveArenaWinStreakRegisterOverlay.LiveArenaWinStreakRegisterButtonContext";
     private const string LiveSchedule = "Client.ViewModel.Contextes.LiveArenaDialog.Tabs.Battle.LiveArenaCurrentScheduleContext";
     private const string LiveSlot = "Client.ViewModel.Contextes.LiveArenaDraftDialog.SelectableHeroSlotContext";
     private const string InboxReward = "Client.ViewModel.Contextes.InboxDialog.Contexts.InboxRewardItemContext";
@@ -295,7 +310,7 @@ public static partial class PlayTargets
         "mode-dungeon", "dungeon-region", "dungeon-stage", "dungeon-difficulty", "dungeon-dropdown", "super-raid",
         "mode-campaign", "campaign-region", "village-tavern", "village-heroes", "champion-tavern", "tavern-rankup-tab", "tavern-fast-rankup", "fastrankup-grade", "fastrankup-item",
         "fastrankup-go", "fastrankup-filter", "food-filter-apply", "village-portal", "portal-shard", "portal-summon1",
-        "mode-clan", "clan-quickjoin", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-collect", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-reward", "resource-add", "refill-use", "live-state", "live-phase", "live-slot", "live-confirm",
+        "mode-clan", "clan-quickjoin", "clan-demonlord", "clan-hydra", "clan-chimera", "clan-difficulty", "clan-battle", "clan-collect", "clan-continue", "clan-chests", "clan-score", "clan-chest", "live-open", "live-find", "live-register", "live-reward", "resource-add", "refill-use", "live-state", "live-phase", "live-slot", "live-confirm",
         "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "menu-open", "menu-item", "reward-claim", "reward-tab", "event-card", "event-claimall", "event-close", "challenge-confirm", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-gift", "shop-claim", "shop-section", "shop-subtab", "village-pass", "village-challenges", "village-clan", "clan-tab", "clan-checkin", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-referral", "referral-getlink", "village-cvc", "cvc-tab", "cvc-claim", "cvc-reward", "cvc-status", "loyalty-claim",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
@@ -628,6 +643,13 @@ public static partial class PlayTargets
                     }
                     foreach (var x in SelfAndBelow(i).Where(x => x.Name == "CollectRegularRewardButton_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).Take(1))
                         targets.Add(Make("live-reward", "live arena: Collect (the progress reward)", x, x, null));
+                    break;
+                }
+                case LiveRegisterButton:
+                {
+                    // The win-streak overlay's Register (Ehsan 2026-11-20: always sign up when there is a ticket). Its price is the ticket alone by the
+                    // game's own code (Cost; a missing ticket only notifies, never offers gems); _dontAskAgain on the overlay is never a target.
+                    if (Own(i) is { } reg) targets.Add(Make("live-register", "live arena win streak: Register (the ticket)", n, reg, null));
                     break;
                 }
                 case LiveSchedule:

@@ -12,7 +12,18 @@ public interface IDoomTowerGame : IGearDropGame
     Task<DoomTowerMap> ReadDoomTowerAsync(CancellationToken ct);
 
     /// <summary>One battle of the stage with the team the game shows there; a dry run shows Start only.</summary>
-    Task<BattleOutcome> FightDoomTowerAsync(DtStage stage, bool dryRun, CancellationToken ct);
+    /// <param name="superRaid">Super Raid (x2) wanted on a beaten boss: set on the team screen when the game offers it; the outcome's text carries
+    /// ", normal run" when it was not set.</param>
+    Task<BattleOutcome> FightDoomTowerAsync(DtStage stage, bool dryRun, CancellationToken ct, bool superRaid = false);
+
+    /// <summary>
+    /// The same stage again from the result screen the last battle left open (Replay; Ehsan 2026-11-20: "why are you going back to the village between
+    /// boss floor 30 farms"), Super Raid as asked. Null when no result screen is open or Replay is not offered: the stage is then played the long way.
+    /// </summary>
+    Task<BattleOutcome?> ReplayDoomTowerAsync(DtStage stage, bool superRaid, CancellationToken ct);
+
+    /// <summary>The result screen a battle left open for Replay closed (before anything else is done in the game).</summary>
+    Task LeaveDoomTowerResultAsync(CancellationToken ct) => Task.CompletedTask;
 
     /// <summary>One floor of the Normal or Hard tower, the one the game offers (its gold banner); a boss floor takes a gold key for a win.</summary>
     Task<BattleOutcome> ClimbDoomTowerAsync(bool hard, bool dryRun, CancellationToken ct);
@@ -35,6 +46,18 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
     private readonly HashSet<int> _skip = [];
     private int _battles, _wins, _losses;
     private string _last = "";
+
+    /// <summary>The stage the next battle repeats from the result screen, and whether with Super Raid (set after a win while the keys cover it).</summary>
+    private (DtStage Stage, bool Super)? _replay;
+
+    /// <summary>Super Raid's multiplier on a boss floor (the team screen's box: x2).</summary>
+    public const int SuperRaidMultiplier = 2;
+
+    /// <summary>Silver keys the settings let a battle use now (the kept ones stay unless a quest asks for silver).</summary>
+    private int SpendableSilver(PlayContext ctx) => _map is null ? 0 : (int)Math.Floor(_map.Silver) - (SilverQuest(ctx) ? 0 : Math.Max(0, ctx.Settings.DoomTower.KeepSilver));
+
+    /// <summary>Super Raid for a silver-key stage when the keys cover two battles' worth (<see cref="CryptKeyPlan.MayReplay"/>).</summary>
+    private bool SuperFor(PlayContext ctx, DtStage stage) => DoomTowerRules.KeyOf(stage) == DoomTowerRules.Silver && CryptKeyPlan.MayReplay(SpendableSilver(ctx), DoomTowerRules.Cost(stage), SuperRaidMultiplier);
 
     /// <summary>A Doom Tower team set to "the bot picks" (the area's, or one of its difficulty/kind teams): a loss tries the next team.</summary>
     private static bool BotChooses(PlayContext ctx) => ctx.Settings.Teams.Where(kv => kv.Key == AreaId || kv.Key.StartsWith(AreaId + ":", StringComparison.Ordinal))
@@ -168,6 +191,7 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
     public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
     {
         var results = new List<string>();
+        _replay = null;
         for (var i = 0; i < MaxChain; i++)
         {
             ctx.Report("Doom Tower: climbing", Pick(ctx).Why ?? "keys to spend", i + 1, MaxChain, i == 0 ? "reading the map, then fighting" : "next floor from the result screen");
@@ -176,19 +200,35 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
             if (ctx.DryRun || !r.StartsWith("Victory", StringComparison.Ordinal) || ct.IsCancellationRequested) break;
         }
         _mapFresh = false;
+        _replay = null;
+        await game.LeaveDoomTowerResultAsync(CancellationToken.None);
         return results.Count > 1 ? $"{string.Join("; ", results)} ({results.Count} battles in a row)" : results.FirstOrDefault() ?? "";
     }
 
     private async Task<string> RunOnceAsync(PlayContext ctx, bool first, CancellationToken ct)
     {
         if (first) await game.GearAfterAsync(ctx, AreaId, null, ct);
+        // The result screen of a won boss still open and the keys covering another battle of it: Replay, no trip to the village and the map.
+        if (_replay is { } rp && !ctx.DryRun && _map is not null)
+        {
+            _replay = null;
+            await ctx.ThinkAsync(ct);
+            if (await game.ReplayDoomTowerAsync(rp.Stage, rp.Super, ct) is { } again) return await Finish(ctx, rp.Stage, again, rp.Super, ct);
+        }
+        _replay = null;
         _map = await game.ReadDoomTowerAsync(ct);
         _mapFresh = true;
         _readAt = ctx.Utc;
         var (stage, why) = Pick(ctx);
         if (stage is null) return NormalDue(ctx) ? await Climb(ctx, false, ct) : ClimbDue(ctx) ? await Climb(ctx, true, ct) : "";
         await ctx.ThinkAsync(ct);
-        var outcome = await game.FightDoomTowerAsync(stage, ctx.DryRun, ct);
+        var super = SuperFor(ctx, stage);
+        var outcome = await game.FightDoomTowerAsync(stage, ctx.DryRun, ct, super);
+        return await Finish(ctx, stage, outcome, super, ct);
+    }
+
+    private async Task<string> Finish(PlayContext ctx, DtStage stage, BattleOutcome outcome, bool super, CancellationToken ct)
+    {
         var name = DoomTowerRules.Name(stage);
         if (outcome.Result is BattleResult.NotStarted or BattleResult.Retry)
         {
@@ -211,11 +251,25 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
             _skip.Add(stage.Id);
             ctx.Hold($"{AreaId}:stage:{stage.Id}", ClanBossRules.NextReset(ctx.Utc), $"{name} was lost");
         }
+        var asSuper = super && !outcome.Text.Contains(", normal run", StringComparison.Ordinal);
+        var spent = DoomTowerRules.Cost(stage) * (asSuper ? SuperRaidMultiplier : 1);
         if (DoomTowerRules.KeyOf(stage) == DoomTowerRules.Silver)
-            ctx.QuestNeeds = [.. ctx.QuestNeeds.Select(n => n.Kind == QuestNeedKind.DoomTower ? n with { Remaining = n.Remaining - DoomTowerRules.Cost(stage) } : n).Where(n => n.Remaining > 0)];
-        _last = $"{outcome.Result} {name}. {outcome.Text}{outcome.TeamTag}";
+        {
+            ctx.QuestNeeds = [.. ctx.QuestNeeds.Select(n => n.Kind == QuestNeedKind.DoomTower ? n with { Remaining = n.Remaining - spent } : n).Where(n => n.Remaining > 0)];
+            if (_map is not null) _map = _map with { Silver = _map.Silver - spent };
+        }
+        _last = $"{outcome.Result} {name}{(asSuper ? $" (Super Raid x{SuperRaidMultiplier})" : "")}. {outcome.Text}{outcome.TeamTag}";
         ctx.Event(AreaId, "battle", _last);
-        if (outcome.Result == BattleResult.Victory) await game.GearAfterAsync(ctx, AreaId, AreaId, ct);
+        // Another battle of the same silver stage while the keys cover it (the planner's pick unchanged): Replay from this result screen, and the
+        // gear check waits for the chain's end (it would leave the screen).
+        _replay = null;
+        if (outcome.Result == BattleResult.Victory && !ctx.DryRun && DoomTowerRules.KeyOf(stage) == DoomTowerRules.Silver && Pick(ctx).Stage?.Id == stage.Id)
+            _replay = (stage, SuperFor(ctx, stage));
+        else
+        {
+            await game.LeaveDoomTowerResultAsync(ct);
+            if (outcome.Result == BattleResult.Victory) await game.GearAfterAsync(ctx, AreaId, AreaId, ct);
+        }
         _readAt = DateTime.MinValue; // keys and the map changed: read again next turn
         return $"{outcome.Result}: {name}";
     }

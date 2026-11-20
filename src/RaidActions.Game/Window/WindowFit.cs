@@ -72,7 +72,7 @@ public sealed record WindowPlacement(PixelRect Normal, bool Minimized, bool Maxi
 /// </summary>
 public static class WindowFit
 {
-    /// <summary>The resize that gives a <paramref name="width"/>×<paramref name="height"/> client area, the window staying where it is.</summary>
+    /// <summary>The resize that gives a <paramref name="width"/>×<paramref name="height"/> client area, the window at the work area's bottom-right corner.</summary>
     public static FitPlan Plan(GameWindowInfo w, int width, int height) => Native.PhysicalPixels(() =>
     {
         var style = (uint)Native.GetWindowLongPtr(w.Handle, Native.GwlStyle).ToInt64();
@@ -85,8 +85,19 @@ public static class WindowFit
         // Where the window is now (its normal rectangle, also while minimized): it stays there, only its size changes.
         var p = new Native.WINDOWPLACEMENT { length = Marshal.SizeOf<Native.WINDOWPLACEMENT>() };
         Native.GetWindowPlacement(w.Handle, ref p);
-        return Keep(work, p.rcNormalPosition.Left, p.rcNormalPosition.Top, frame.Right - frame.Left, frame.Bottom - frame.Top, width, height, w.Minimized);
+        return BottomRight(work, frame.Right - frame.Left, frame.Bottom - frame.Top, width, height, w.Minimized);
     });
+
+    /// <summary>
+    /// The outer size at the work area's bottom-right corner (Ehsan 2026-11-20: "banner top-left, game bottom-right, both visible"): the app's banner sits
+    /// at the top-left, so the two do not meet while the game is small. A window wider or taller than the work area keeps its top-left at the work area's.
+    /// </summary>
+    public static FitPlan BottomRight(PixelRect work, int outerWidth, int outerHeight, int clientWidth, int clientHeight, bool restore)
+    {
+        var x = Math.Max(work.X, work.X + work.Width - outerWidth);
+        var y = Math.Max(work.Y, work.Y + work.Height - outerHeight);
+        return new FitPlan(new PixelRect(x, y, outerWidth, outerHeight), clientWidth, clientHeight, work, restore);
+    }
 
     /// <summary>
     /// The outer size at the window's own top-left corner: the window is not moved, only resized; it is pushed back inside the work

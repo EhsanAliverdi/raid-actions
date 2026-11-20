@@ -785,22 +785,21 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
     /// </summary>
     private const int FullWidth = 1298, FullHeight = 732;
 
+    /// <summary>The client is the minimum (a few pixels over: the game may snap) and the window sits at the work area's bottom-right.</summary>
+    private bool AtMinimum(GameWindowInfo w)
+    {
+        if (w.Client.Width > policy.MinWidth + 8 || w.Client.Height > policy.MinHeight + 8) return false;
+        var plan = WindowFit.Plan(w, w.Client.Width, w.Client.Height);
+        return Math.Abs(w.Window.X - plan.Window.X) <= 2 && Math.Abs(w.Window.Y - plan.Window.Y) <= 2;
+    }
+
     public void FitWindow()
     {
         var (w, why) = GameWindow.Find();
         if (w is null) throw new StopException(why!);
-        // Full size whenever the screen has room (2026-11-01: the Campaign map's far regions are out of reach at the smallest size); a small Remote
-        // Desktop screen keeps the small window Ehsan allows.
-        if (policy.Problem(w) is null)
-        {
-            // Never larger either (Ehsan 2026-11-03: a big game window hides the log and the app).
-            if ((w.Client.Width < FullWidth || w.Client.Width > FullWidth + 20) && WindowFit.Plan(w, FullWidth, FullHeight) is var full && full.Window.Width <= full.WorkArea.Width && full.Window.Height <= full.WorkArea.Height)
-            {
-                var (bigger, _) = WindowFit.Apply(w, full);
-                if (bigger is not null) log($"window fit: {w.Client.Width}x{w.Client.Height} → {bigger.Client.Width}x{bigger.Client.Height}");
-            }
-            return;
-        }
+        // Always the smallest size the bot can run on, at the work area's bottom-right (Ehsan 2026-11-20: "when the bot runs we don't need a big screen;
+        // banner top-left, game bottom-right, both visible"): a game launched or switched at 1280x720 is set to the minimum client again.
+        if (policy.Problem(w) is null && AtMinimum(w)) return;
         _before ??= WindowFit.Save(w);
         var from = w.Minimized ? "minimized" : $"{w.Client.Width}x{w.Client.Height}";
         // A minimized window is still restoring (and changing DPI) when the first size is applied: measured again and sized again.
@@ -809,9 +808,10 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
             var fit = WindowFit.Plan(w, policy.MinWidth, policy.MinHeight);
             var (after, problem) = WindowFit.Apply(w, fit);
             if (after is null) throw new StopException("window fit: " + problem);
-            if (policy.Problem(after) is not { } still)
+            var still = policy.Problem(after);
+            if (still is null && (AtMinimum(after) || attempt == 3))
             {
-                log($"window fit: {from} → {after.Client.Width}x{after.Client.Height} (the minimum){(attempt > 1 ? $", attempt {attempt}" : "")}");
+                log($"window fit: {from} → {after.Client.Width}x{after.Client.Height} (the minimum, bottom-right){(attempt > 1 ? $", attempt {attempt}" : "")}");
                 return;
             }
             if (attempt == 3) throw new StopException("window fit: " + still);

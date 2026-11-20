@@ -2127,6 +2127,13 @@
           "field": "_isBossStage",
           "source": "field",
           "status": "direct"
+        },
+        "_multiRun": {
+          "offset": "0x190",
+          "type": "MultiRunContext",
+          "field": "_multiRun",
+          "source": "field",
+          "status": "direct"
         }
       }
     },

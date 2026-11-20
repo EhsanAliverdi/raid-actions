@@ -72,6 +72,18 @@ public class FactionWarsActivityTests
     }
 
     [Fact]
+    public async Task No_forecast_is_no_push_the_crypt_farms_its_highest_beaten_stage()
+    {
+        // 2026-11-20, KaelStormVex: the crypt had no team set, the forecast came back empty and Barbarians stage 5 was pushed and lost, a key each.
+        var (host, game, engine) = Make(stopAfter: TimeSpan.FromHours(2), botTeam: false);
+        game.Forecast = null;
+        game.Open.Add(new FakeFactionWarsGame.Crypt { Faction = "OgrynTribes", Keys = 4, HighestPassed = 8, Team = [1, 2, 3] });
+        await engine.RunAsync(once: false, Limit());
+        Assert.DoesNotContain("fight OgrynTribes 9", game.Calls);
+        Assert.Contains(host.Events, e => e.Kind == "sim" && e.Text.Contains("no simulation", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task A_defeat_at_the_next_stage_farms_the_highest_beaten_stage_for_the_rest_of_the_day()
     {
         // With a team of the player's (the bot choosing retries the same stage with its next team instead).

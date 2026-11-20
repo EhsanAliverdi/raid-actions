@@ -218,12 +218,19 @@ public sealed class FactionWarsActivity(IFactionWarsGame game) : IActivity
                     (stage, super) = (bp.Stage, false);
                     ctx.Event(AreaId, "quest", $"{c.Name}: a quest asks for a boss: stage {stage} ({bp.Rate:P0})");
                 }
-                if (!ctx.DryRun && stage > c.HighestPassed && c.HighestPassed >= 1 && _forecast.Add($"{c.Name}|{stage}")
-                    && await ForecastAsync(c, stage, ct) is { } fc && fc.WinRate <= PushThreshold)
+                if (!ctx.DryRun && stage > c.HighestPassed && c.HighestPassed >= 1 && _forecast.Add($"{c.Name}|{stage}"))
                 {
-                    _farmAt[c.Name] = c.HighestPassed;
-                    ctx.Event(AreaId, "sim", $"{c.Name} stage {stage}: simulated win {fc.WinRate:P0} (needs over {PushThreshold:P0}), stays at stage {c.HighestPassed} today. {fc.Text}");
-                    return "";
+                    var fc = await ForecastAsync(c, stage, ct);
+                    // No forecast is no push (2026-11-20, KaelStormVex: the crypt had no team set, the forecast came back empty and Barbarians
+                    // stage 5 was pushed and lost again and again, a key each): a new stage is tried only on a simulated win over the threshold.
+                    if (fc is null || fc.WinRate <= PushThreshold)
+                    {
+                        _farmAt[c.Name] = c.HighestPassed;
+                        ctx.Event(AreaId, "sim", fc is null
+                            ? $"{c.Name} stage {stage}: no simulation (no team to simulate): stays at stage {c.HighestPassed} today"
+                            : $"{c.Name} stage {stage}: simulated win {fc.WinRate:P0} (needs over {PushThreshold:P0}), stays at stage {c.HighestPassed} today. {fc.Text}");
+                        return "";
+                    }
                 }
                 var outcome = await game.FightCryptAsync(c, stage, ctx.DryRun, ct, super);
                 if (outcome.Result == BattleResult.NotStarted && super && !ctx.DryRun)

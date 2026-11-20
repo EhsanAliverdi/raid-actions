@@ -35,8 +35,8 @@ public sealed class FakeFactionWarsGame(Func<DateTime> now) : IFactionWarsGame
     public TimeSpan BattleTime { get; set; } = TimeSpan.FromSeconds(60);
     public Func<TimeSpan, CancellationToken, Task>? Delay { get; set; }
 
-    /// <summary>The simulated win rate the push gate sees (null: no forecast).</summary>
-    public double? Forecast { get; set; }
+    /// <summary>The simulated win rate the push gate sees (null: no forecast, which is no push). Default: a sure win.</summary>
+    public double? Forecast { get; set; } = 1.0;
     /// <summary>A rate per crypt and stage (overrides Forecast): faction, stage.</summary>
     public Func<string, int, double?>? ForecastFor { get; set; }
     public List<string> Forecasts { get; } = [];

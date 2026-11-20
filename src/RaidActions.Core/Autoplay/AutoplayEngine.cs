@@ -30,6 +30,9 @@ public interface IAutoplayHost
     /// <summary>Why this account's turn ends now, to play another one (raid-extractor's account pool); null: it goes on. Asked between turns only.</summary>
     string? RotateDue(DateTime? nextUsefulUtc) => null;
 
+    /// <summary>The areas that want to act now (this loop): only their open tasks can hold the turn past its time (2026-11-20: a vault put-back of an area that was waiting held the turn for nothing).</summary>
+    void Acting(IReadOnlySet<string> areaIds) { }
+
     /// <summary>For the banner: this account's name, the account the rotation goes to next, and when this turn ends (UTC); null: no rotation.</summary>
     TurnView? BannerTurn() => null;
     /// <summary>Another account of the pool can be played now, whatever this turn's time or hold (the account taken by another device).</summary>
@@ -205,6 +208,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 ctx.YieldTo = self => YieldTo(ctx, enabled, self);
                 _decisions = activities.ToDictionary(a => a.Id, a => !a.IsEnabled(settings) ? Decision.Off("switched off")
                     : ctx.Held(a.Id) is { } held ? Decision.Wait(held.Until, held.Why) : a.Decide(ctx));
+                host.Acting(enabled.Where(a => _decisions[a.Id].Act).Select(a => a.Id).ToHashSet());
                 if (enabled.Count == 0)
                 {
                     if (once) return Stop("no area is switched on");
@@ -237,6 +241,15 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 // An urgent one (a free arena refresh due with nobody to fight) before anything: what a chain of runs was broken for.
                 if (!stepAside && enabled.FirstOrDefault(a => _decisions[a.Id].Act && a.Urgent(ctx)) is { } urgent) act = urgent;
                 if (waited is not null && act == waited) _fairOwed = false;
+                // Chores never hold back resources that sit (2026-11-20: 149 energy and a 28-energy run waiting 11 minutes while chores and arenas took every turn): an
+                // area that wants to act with its resource full or urgent goes first, and Chores play at most once per run while another area has something to do.
+                if (act?.Id == ChoresActivity.AreaId && !enabled.OfType<ChoresActivity>().Any(c => c.MasteryAsked))
+                {
+                    var spender = enabled.FirstOrDefault(a => a.Id != ChoresActivity.AreaId && _decisions[a.Id].Act && (a.Urgent(ctx) || a.Full(ctx)))
+                        ?? (_choresPlayed ? enabled.FirstOrDefault(a => a.Id != ChoresActivity.AreaId && _decisions[a.Id].Act) : null);
+                    if (spender is not null) act = spender;
+                }
+                if (act?.Id == ChoresActivity.AreaId) _choresPlayed = true;
                 if (act is not null)
                 {
                     _sameArea = act.Id == _lastArea ? _sameArea + 1 : 1;
@@ -459,11 +472,20 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     /// Faction Wars after Tag Team (Ehsan 2026-11-20: the daily "5 Tag Team Arena battles" quest pays the +6 crypt keys, so it comes first): while that quest is
     /// open and Tag Team can play now (tokens), Faction Wars waits. No tokens, or Tag Team off or held: Faction Wars plays.
     /// </summary>
+    private static string? _yieldSaid;
+    private bool _choresPlayed;
     private static string? YieldTo(PlayContext ctx, IReadOnlyList<IActivity> enabled, string self)
     {
         if (self != FactionWarsActivity.AreaId || ctx.QuestLeft(QuestNeedKind.TagArena) <= 0) return null;
         if (enabled.FirstOrDefault(a => a.Id == TagArenaActivity.AreaId) is not { } tag || ctx.Held(tag.Id) is not null) return null;
-        return tag.Decide(ctx) is { Act: true } d ? $"the Tag Team quest first (its reward is the crypt keys): {d.Why}" : null;
+        if (tag.Decide(ctx) is not { Act: true } d) return null;
+        // Wait only while Tag Team really fights this turn and has the tokens to finish the quest (2026-11-20: 3 tokens of 5, only a free refresh).
+        if (tag is TagArenaActivity ta && !ta.CanFinishQuest(ctx, ctx.QuestLeft(QuestNeedKind.TagArena), out var why))
+        {
+            if (why != _yieldSaid) { ctx.Event(self, "order", $"Faction Wars plays now: {why}"); _yieldSaid = why; }
+            return null;
+        }
+        return $"the Tag Team quest first (its reward is the crypt keys): {d.Why}";
     }
 
     /// <summary>
@@ -485,6 +507,8 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
         foreach (var (a, i) in enabled.Select((a, i) => (a, i)).Where(x => x.a.Id != self))
         {
             if (ctx.Held(a.Id) is not null) continue;
+            // Chores that played already in this run do not break a chain again (once per run; masteries asked from the app still do).
+            if (a is ChoresActivity { MasteryAsked: false } && _choresPlayed && !a.Urgent(ctx)) continue;
             var d = a.Decide(ctx);
             if (d.Act && (a.Urgent(ctx) || !meUrgent && a.Full(ctx) && (!meFull || i < myIndex))) return $"{a.Name}: {d.Why}";
         }

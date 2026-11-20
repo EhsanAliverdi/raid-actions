@@ -90,6 +90,9 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
     // the fair turns, spent them on quest jobs, and the dots and the check-in never came in a whole rotation).
     public bool Full(PlayContext ctx) => game.MasteryRequested() || CleanupDue(ctx) || RewardsDue(ctx);
 
+    /// <summary>The app asked for masteries: that goes first whatever else sits.</summary>
+    public bool MasteryAsked => game.MasteryRequested();
+
     private readonly HashSet<string> _brought = [];
 
     /// <summary>When each job last ran: a red dot brings a job back only after <see cref="DotJobGap"/> (2026-11-16: the Shop's dot stays lit, so every
@@ -119,7 +122,10 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
     /// <summary>How long a champion taken out of a vault stays out before it goes back.</summary>
     public static readonly TimeSpan PutBackAfter = TimeSpan.FromHours(1);
 
-    private bool Open(PlayContext ctx, string job) => !_paused.TryGetValue(job, out var until) || ctx.Utc >= until;
+    /// <summary>The Forge Pass is claimed once per run (2026-11-20: it came again and again between battles).</summary>
+    private bool _passRun;
+
+    private bool Open(PlayContext ctx, string job) => !(job == "pass" && _passRun) && (!_paused.TryGetValue(job, out var until) || ctx.Utc >= until);
 
     /// <summary>The job due now, or null; the quests' first.</summary>
     private static string JobLabel(string job) => job switch
@@ -290,6 +296,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
                     _pitAt = ctx.Utc + TimeSpan.FromMinutes(Math.Max(15, s.PitEveryMinutes));
                     return await game.FillSparringPitAsync(ctx.DryRun, ct) is { } trained ? Report(ctx, "pit", $"Sparring Pit: {trained} training") : "";
                 case "pass":
+                    _passRun = true;
                     _passAt = ctx.Utc + TimeSpan.FromMinutes(Math.Max(15, s.PassEveryMinutes));
                     var claims = await game.ClaimPassRewardsAsync(ctx.DryRun, ct);
                     return claims > 0 ? Report(ctx, "pass", $"claimed {claims} Forge Pass or Challenges reward(s)") : "";

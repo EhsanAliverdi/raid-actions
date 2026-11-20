@@ -1403,7 +1403,8 @@ public static partial class PlayTargets
             {
                 if (x.IsOn is not null && x.Name is "Packs" or "Bank" or "Gem" or "Daily_h" or "Limited_h") targets.Add(Make("shop-section", $"shop: {x.Name}", x, x, x.Name));
                 else if (x.Context?.Class.EndsWith(".DailyAndLimitedTabsButtonContext", StringComparison.Ordinal) == true && int.TryParse(x.Name, out var k))
-                    targets.Add(Make("shop-subtab", $"shop: tab {k}", x, x, x.Path, id: k));
+                    // A tab with a red dot (an active Indicator under it) says so in its name: only those are visited each time (2026-11-20: all 11 took 30 s).
+                    targets.Add(Make("shop-subtab", $"shop: tab {k}" + (nodes.Any(n => n.ActiveInHierarchy && RedDot(n.Name) && n.Path.StartsWith(x.Path + "/", StringComparison.Ordinal)) ? ShopDotSuffix : ""), x, x, x.Path, id: k));
             }
 
         // Clan vs Clan (seen 2026-11-19 with Ehsan, KaelStormVex): the left tabs (Versus, Milestones, PersonalMilestones_h, ...) and the Claim buttons.
@@ -1763,6 +1764,9 @@ public static partial class PlayTargets
             tagRows is not null || tagFree is not null ? new ArenaBoardRead(tagRows ?? [], tagFree, tagFreeText, null, null) : null, TeamSlots: teamSlots, TowerStage: towerStage,
             RedDots: redDots);
     }
+
+    /// <summary>The end of a Shop tab target's name when the tab shows a red dot.</summary>
+    public const string ShopDotSuffix = " (dot)";
 
     /// <summary>The overlays of the daily login programs (7/14-day, monthly, 90-day, advent calendar, the aggregator that lists them).</summary>
     public static readonly IReadOnlySet<string> LoyaltyViews = new HashSet<string>

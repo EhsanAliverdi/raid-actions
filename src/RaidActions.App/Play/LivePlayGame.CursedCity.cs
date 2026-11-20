@@ -408,8 +408,18 @@ public sealed partial class LivePlayGame : ICursedCityGame
             if (w is null) throw new PlayStopException(why!);
             if (t?.Rect is not { } r) return;
             var (cx, cy) = r.Center;
-            var inside = cx > w.Client.Width * 0.08 && cx < w.Client.Width * 0.92 && cy > w.Client.Height * 0.1 && cy < w.Client.Height * 0.9;
-            if (inside) return;
+            // Well inside (2026-11-20, an 896-wide window: Spider's Keep tapped at x 818, near the edge, twice without effect; the view was
+            // still sliding after the drag): 15% margins, and only once the target stands still between two reads.
+            var inside = cx > w.Client.Width * 0.15 && cx < w.Client.Width * 0.85 && cy > w.Client.Height * 0.12 && cy < w.Client.Height * 0.88;
+            if (inside)
+            {
+                if (i == 0) return;
+                await Pause(400, ct);
+                var (_, again, _) = await Read(ct);
+                var t2 = again.FirstOrDefault(x => x.Kind == kind && x.Rect is not null && (which is null || which(x)));
+                if (t2?.Rect is { } r2 && Math.Abs(r2.Center.Item1 - cx) < 3 && Math.Abs(r2.Center.Item2 - cy) < 3) return;
+                continue;
+            }
             var dx = Math.Clamp(w.Client.Width / 2f - cx, -w.Client.Width * 0.6f, w.Client.Width * 0.6f);
             var dy = Math.Clamp(w.Client.Height / 2f - cy, -w.Client.Height * 0.5f, w.Client.Height * 0.5f);
             var (x1, y1) = (w.Client.Width / 2f - dx / 2, w.Client.Height / 2f - dy / 2);

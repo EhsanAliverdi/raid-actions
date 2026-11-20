@@ -273,4 +273,27 @@ public class PlayTargetsTests
         Assert.False(PlayTargets.RedDot("SpiningProgressVisualizer"));
         Assert.False(PlayTargets.RedDot("NameLabel"));
     }
+
+    [Fact]
+    public void The_win_streak_overlays_register_button_is_a_target_and_the_dont_ask_toggle_is_not()
+    {
+        var g = new Objects();
+        var tree = Tree("LiveArenaWinStreakRegisterOverlay",
+            N("Overlay/RegisterButton", 10, interactable: true, ctx: g.Ctx("Client.ViewModel.Contextes.LiveArenaWinStreakRegisterOverlay.LiveArenaWinStreakRegisterButtonContext")),
+            N("Overlay/DontAskAgain", 50, interactable: true));
+        var targets = PlayTargets.Scan(tree, g).Targets;
+        Assert.Single(targets, t => t.Kind == "live-register");
+        Assert.Contains("live-register", PlayTargets.Kinds);
+        Assert.DoesNotContain(targets, t => t.Kind == "live-register" && t.Path.Contains("DontAsk", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("LiveArenaWinStreakRegisterOverlay", 1, "register")]
+    [InlineData("LiveArenaWinStreakRegisterOverlay", 0, "close")]
+    [InlineData("SomeNewOverlay", 5, "close")]
+    [InlineData("LiveArenaDraftDialog", 5, "none")]
+    [InlineData("LiveArenaMatchMakingDialog", 5, "none")]
+    [InlineData("ResourceRefillOverlay", 5, "none")]
+    public void The_live_arena_flow_registers_with_a_ticket_and_closes_what_it_does_not_know(string view, double tickets, string want) =>
+        Assert.Equal(want, PlayTargets.LiveOverlayAction(view, tickets));
 }

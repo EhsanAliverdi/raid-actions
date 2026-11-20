@@ -118,6 +118,20 @@ public class UiTargetsTests
     }
 
     [Fact]
+    public void The_equip_warning_has_only_a_close_target_and_it_is_allowed()
+    {
+        var g = new Ctx();
+        var tree = new UiTree("ArtifactEquipWarningOverlay",
+        [
+            N("O/Window/Buttons/Cancel", R(500, 500, 200, 60), interactable: true),
+        ], 1600, 900, null, 0.8333f);
+        var t = UiTargets.Find(tree, g);
+        Assert.Null(UiTargets.Resolve(t, "equip-warning-close").Problem);
+        Assert.Contains("equip-warning-close", App.Input.NavigatingDriver.AllowedClicks);
+        Assert.DoesNotContain(t, x => x.Kind is "swap-continue" or "popup-equip");
+    }
+
+    [Fact]
     public void An_item_whose_context_sits_on_two_nested_elements_is_one_target()
     {
         var g = new Ctx();

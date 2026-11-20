@@ -154,6 +154,9 @@ public static partial class PlayTargets
     // its state is read from MultiRunContext._active, which the team context keeps as MultiRun).
     private const string PveTeam = "Client.ViewModel.Contextes.HeroesSelectionDialog.HeroesSelectionPveDialogContext";
     private const string FwTeamCtx = "Client.ViewModel.Contextes.HeroesSelectionDialog.HeroesSelectionFractionWarsDialogContext";
+    // The Doom Tower's team screen does not derive from the PvE one: its MultiRunContext is its own field (_multiRun, 0x190; Ehsan 2026-11-20:
+    // "Super Raid not set" on boss floor 30), under the same 'MultiRun' block (210x46, with BTN_Info at its right end).
+    private const string DtTeamCtx = "Client.ViewModel.Contextes.HeroesSelectionDialog.HeroesSelectionDoomTowerDialogContext";
     private const string MultiRunCtx = "Client.ViewModel.Contextes.MultiRun.MultiRunContext";
     private const string StageCtx = "Client.ViewModel.Contextes.RegionDialog.StageContext";
     private const string FwResult = "Client.ViewModel.Contextes.BattleFinishDialog.BattleFinishFractionWarsDialogContext";
@@ -1190,15 +1193,18 @@ public static partial class PlayTargets
         // The Super Raid box: on or off from the team context's MultiRunContext; "locked" or "unavailable" when it cannot be ticked.
         // The crypt's team screen's context derives from the PvE one (HeroesSelectionFractionWarsDialogContext : HeroesSelectionPveDialogContext; its
         // MultiRun at the same place): its box read the same way (2026-11-12 16:33: "the Super Raid box is not found" on the High Elves crypt).
-        if (PlayTargets.IsTeamView(t.View) && nodes.FirstOrDefault(x => x.Context?.Class is PveTeam or FwTeamCtx) is { } pveTeam)
+        if (PlayTargets.IsTeamView(t.View) && nodes.FirstOrDefault(x => x.Context?.Class is PveTeam or FwTeamCtx or DtTeamCtx) is { } pveTeam)
         {
-            var mr = Try(() => g.Ref(pveTeam.Context!.Address, PveTeam, "MultiRun"), 0UL, notes, "HeroesSelectionPveDialogContext.MultiRun");
+            var isDt = pveTeam.Context!.Class == DtTeamCtx;
+            var mr = isDt ? Try(() => g.Ref(pveTeam.Context!.Address, DtTeamCtx, "_multiRun"), 0UL, notes, "HeroesSelectionDoomTowerDialogContext._multiRun")
+                : Try(() => g.Ref(pveTeam.Context!.Address, PveTeam, "MultiRun"), 0UL, notes, "HeroesSelectionPveDialogContext.MultiRun");
             if (mr != 0)
             {
                 var active = Try(() => BoolValue(g, g.Ref(mr, MultiRunCtx, "_active")), null, notes, "MultiRunContext._active");
                 var enabled = Try(() => BoolValue(g, g.Ref(mr, MultiRunCtx, "_enabled")), null, notes, "MultiRunContext._enabled");
                 var locked = Try(() => BoolValue(g, g.Ref(mr, MultiRunCtx, "_locked")), null, notes, "MultiRunContext._locked");
                 var blocks = nodes.Where(x => x.BindingPath == "MultiRun").Select(x => x.Index).ToHashSet();
+                var found = false;
                 foreach (var x in nodes)
                 {
                     if (x.Name != "Checkbox" || !x.ActiveInHierarchy || x.Screen is null || !blocks.Contains(x.Parent)) continue;
@@ -1209,9 +1215,21 @@ public static partial class PlayTargets
                     var lockShown = shown.FirstOrDefault(y => y.Name == "Locked_h")?.ActiveInHierarchy;
                     var on = tick is not null ? tick.ActiveInHierarchy : active;
                     var state = locked == true || lockShown == true ? "locked" : enabled == false ? "unavailable" : on switch { true => "on", false => "off", _ => "unknown" };
+                    found = true;
                     targets.Add(new UiTarget("super-raid", "team screen: Super Raid", null, t.View, x.Screen, true, true, x.FullyVisible, false, x.Path, state,
                         ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
                 }
+                // The Doom Tower's screen dump (2026-11-20 12:28) lists no Checkbox, only the 'MultiRun' block (210x46) and its BTN_Info: the block's left
+                // part (clear of BTN_Info at the right end) is the control, its state from the context.
+                if (!found && isDt)
+                    foreach (var b in nodes.Where(x => x.BindingPath == "MultiRun" && x.ActiveInHierarchy && x.Screen is { } r && r.Width > 0).Take(1))
+                    {
+                        var r = b.Screen!.Value;
+                        var state = locked == true ? "locked" : enabled == false ? "unavailable" : active switch { true => "on", false => "off", _ => "unknown" };
+                        targets.Add(new UiTarget("super-raid", "Doom Tower team screen: Super Raid (the MultiRun block)", null, t.View,
+                            new ClientRect(r.X + r.Width * 0.08f, r.Y + r.Height * 0.15f, r.Width * 0.55f, r.Height * 0.7f), true, true, b.FullyVisible, false, b.Path, state,
+                            ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
+                    }
             }
         }
 
@@ -1304,7 +1322,7 @@ public static partial class PlayTargets
 
         // A campaign or dungeon result's ways on (Ehsan 2026-11-05: "don't go back to base after each play"): Replay, Next and its team button, by name;
         // each only when exactly one element says so (the names are checked live: the bot dumps the screen when one is missing).
-        if (t.View is DungeonResultView or StoryResultView or TwinsResultView)
+        if (t.View is DungeonResultView or StoryResultView or TwinsResultView or DtResultView)
             foreach (var (kind, want, label) in new[] { ("result-replay", ResultReplayName(), "Replay"), ("result-next", ResultNextName(), "Next"), ("result-team", ResultTeamName(), "team") })
             {
                 var hits = nodes.Where(x => x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null

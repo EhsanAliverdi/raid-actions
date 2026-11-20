@@ -91,4 +91,16 @@ public class WindowFitTests : IDisposable
         Assert.Equal((1040, 515), (WindowFit.Keep(work, 1208, 603, 880, 525, 864, 486, false).Window.X, WindowFit.Keep(work, 1208, 603, 880, 525, 864, 486, false).Window.Y));
         Assert.Equal((0, 0), (WindowFit.Keep(work, -50, -20, 880, 525, 864, 486, false).Window.X, WindowFit.Keep(work, -50, -20, 880, 525, 864, 486, false).Window.Y));
     }
+
+    [Fact]
+    public void The_game_is_anchored_to_the_work_areas_bottom_right_banner_room_stays_top_left()
+    {
+        // 864x486 client = a 880x525 window on this PC's 1280x760 work area: x 400, y 235; the banner's top-left 390x230 stays free.
+        var small = WindowFit.BottomRight(new PixelRect(0, 0, 1280, 760), 880, 525, 864, 486, false);
+        Assert.Equal((400, 235), (small.Window.X, small.Window.Y));
+        Assert.Equal((1040, 515), (WindowFit.BottomRight(new PixelRect(0, 0, 1920, 1040), 880, 525, 864, 486, false).Window.X, WindowFit.BottomRight(new PixelRect(0, 0, 1920, 1040), 880, 525, 864, 486, false).Window.Y));
+        // Bigger than the work area: its top-left corner stays at the work area's.
+        var big = WindowFit.BottomRight(new PixelRect(0, 0, 1280, 760), 1298, 780, 1280, 720, false);
+        Assert.Equal((0, 0), (big.Window.X, big.Window.Y));
+    }
 }

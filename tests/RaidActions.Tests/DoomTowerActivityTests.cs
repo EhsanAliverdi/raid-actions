@@ -30,7 +30,9 @@ public class DoomTowerActivityTests
         var (_, game, engine) = Make(new DoomTowerSettings { Enabled = true });
         (game.Silver, game.Gold) = (2, 2);
         await engine.RunAsync(once: false, Limit());
-        Assert.Equal(["fight 7021050", "fight 7021050", "fight 7021060", "fight 7021060"], game.Calls);
+        // Two silver keys on the beaten boss: one Super Raid (x2) battle.
+        Assert.Equal(["fight 7021050", "fight 7021060", "fight 7021060"], game.Calls);
+        Assert.Equal([true, false, false], game.Supers);
         Assert.Equal((0d, 0d), (game.Silver, game.Gold));
     }
 
@@ -40,11 +42,11 @@ public class DoomTowerActivityTests
         var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, DoomTower = new DoomTowerSettings { Enabled = true, KeepGold = 1 } } };
         var game = new FakeDoomTowerGame();
         game.Stages.AddRange([S(7021801, 2), S(7021802, 1), S(7021040, 2), S(7021050, 2), S(7021060, 1)]);
-        (game.Silver, game.Gold) = (2, 3);
+        (game.Silver, game.Gold) = (3, 3);
         var ctx = new PlayContext(host.Settings, new FakeArenaGame(() => host.UtcNow), host, false, host.Events.Add);
         var result = await new DoomTowerActivity(game).RunTurnAsync(ctx, CancellationToken.None);
-        // 2 silver + 2 gold (1 kept) in ONE visit.
-        Assert.Equal(["fight 7021050", "fight 7021050", "fight 7021060", "fight 7021060"], game.Calls);
+        // 3 silver (a Super Raid battle, then a replay from the result screen) + 2 gold (1 kept) in ONE visit.
+        Assert.Equal(["fight 7021050", "replay 7021050", "fight 7021060", "fight 7021060"], game.Calls);
         Assert.Equal((0d, 1d), (game.Silver, game.Gold));
         Assert.Contains("4 battles in a row", result, StringComparison.Ordinal);
 
@@ -64,7 +66,7 @@ public class DoomTowerActivityTests
         (game.Silver, game.Gold) = (3, 2);
         game.Loses.Add(7021050);
         await engine.RunAsync(once: false, Limit());
-        Assert.Equal(["fight 7021050", "fight 7021040", "fight 7021040"], game.Calls);
+        Assert.Equal(["fight 7021050", "fight 7021040"], game.Calls);
         Assert.Equal(2, game.Gold);
     }
 
@@ -116,5 +118,47 @@ public class DoomTowerActivityTests
         Arena!.Resources = new() { [DoomTowerRules.Gold] = 0, [DoomTowerRules.Silver] = 0 };
         await engine.RunAsync(once: false, Limit());
         Assert.Equal(0, game.NormalClimbs + game.Climbs + game.Reads);
+    }
+
+    private static async Task<(FakeDoomTowerGame Game, string Result)> Chain(double silver, Action<FakeDoomTowerGame>? set = null)
+    {
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, DoomTower = new DoomTowerSettings { Enabled = true, UseGold = false } } };
+        var game = new FakeDoomTowerGame();
+        game.Stages.AddRange([S(7021030, 2), S(7021040, 1)]);
+        game.Silver = silver;
+        set?.Invoke(game);
+        var ctx = new PlayContext(host.Settings, new FakeArenaGame(() => host.UtcNow), host, false, host.Events.Add);
+        return (game, await new DoomTowerActivity(game).RunTurnAsync(ctx, CancellationToken.None));
+    }
+
+    [Fact]
+    public async Task A_won_boss_is_replayed_from_the_result_screen_with_Super_Raid_while_the_keys_cover_it()
+    {
+        var (game, result) = await Chain(5);
+        Assert.Equal(["fight 7021030", "replay 7021030", "replay 7021030"], game.Calls);
+        Assert.Equal([true, true, false], game.Supers);
+        Assert.Equal(0d, game.Silver);
+        Assert.Equal(2, game.Reads); // the first look, and the last one that finds no key left
+        Assert.Contains("3 battles in a row", result, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public async Task Without_a_Super_Raid_box_each_replay_costs_one_battle_of_keys()
+    {
+        var (game, _) = await Chain(3, g => g.NoSuperRaid = true);
+        Assert.Equal(["fight 7021030", "replay 7021030", "replay 7021030"], game.Calls);
+        Assert.Equal(0d, game.Silver);
+    }
+
+    [Fact]
+    public async Task A_loss_ends_the_chain_and_a_missing_replay_takes_the_long_way()
+    {
+        var (lost, r) = await Chain(5, g => g.Loses.Add(7021030));
+        Assert.Single(lost.Calls);
+        Assert.StartsWith("Defeat", r, StringComparison.Ordinal);
+
+        var (longWay, _) = await Chain(3, g => g.NoResultScreen = true);
+        Assert.Equal(["fight 7021030", "fight 7021030"], longWay.Calls);
+        Assert.Equal(3, longWay.Reads);
     }
 }

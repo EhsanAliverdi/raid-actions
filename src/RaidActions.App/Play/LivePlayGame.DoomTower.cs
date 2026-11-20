@@ -41,7 +41,7 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         return new DoomTowerMap(stages, r.GetValueOrDefault(DoomTowerRules.Gold), r.GetValueOrDefault(DoomTowerRules.Silver));
     }
 
-    public async Task<BattleOutcome> FightDoomTowerAsync(DtStage stage, bool dryRun, CancellationToken ct)
+    public async Task<BattleOutcome> FightDoomTowerAsync(DtStage stage, bool dryRun, CancellationToken ct, bool superRaid = false)
     {
         var started = DateTime.UtcNow;
         var name = DoomTowerRules.Name(stage);
@@ -63,11 +63,16 @@ public sealed partial class LivePlayGame : IDoomTowerGame
             var want = raw > 0 ? raw / 10_000 * 10_000 + (stage.Hard ? 2 : 1) * 1000 + stage.Floor : 0;
             if (await FindTowerFloor(diffName, stage.Floor, want, ct) is { } notFound) return new BattleOutcome(BattleResult.NotStarted, notFound);
             var teamView = Top(await Settled(ct)) ?? "";
-            try { await SetSuperRaid(!dryRun, teamView, ct); }
+            // Super Raid (x2) when the keys cover it (the activity decides); the box is the 'MultiRun' block of the Doom Tower team screen.
+            var superOn = false;
+            try { superOn = await SetSuperRaid(superRaid && !dryRun, teamView, ct); }
             catch (PlayStopException e) { log($"autoplay: Doom Tower {name}: Super Raid not set ({e.Message}); a normal run"); }
+            _dtSuper = superOn;
             var replayBoss = RaidExtractor.GdTowerBoss.Load(Path.Combine(extractorRoot, "output", "gamedata")).GetValueOrDefault(want)?.Boss;
-            return await PlayTowerTeam(name, started, dryRun, ct, replayBoss);
+            var played = await PlayTowerTeam(name, started, dryRun, ct, replayBoss);
+            return superRaid && !superOn && played.Result is BattleResult.Victory or BattleResult.Defeat ? played with { Text = played.Text + NormalRunMark } : played;
         }
+        _dtSuper = false;
         // Choosing a difficulty moves the map, so only when the bot left it on Hard; a miss (Hard left from elsewhere) chooses Normal and tries once more.
         if (_towerOnHard) await SelectTowerDifficulty("Normal", ct);
         try
@@ -95,10 +100,72 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         // The boss on this floor (output/gamedata/doomtower.json, read from the game's stage data): its own team on the page, when set.
         var boss = RaidExtractor.GdTowerBoss.Load(Path.Combine(extractorRoot, "output", "gamedata")).GetValueOrDefault(stage.Id)?.Boss;
         if (boss is not null) log($"autoplay: Doom Tower {name}: {boss}");
-        return await PlayTowerTeam(name, started, dryRun, ct, boss);
+        var final = await PlayTowerTeam(name, started, dryRun, ct, boss);
+        // The Final Boss's team screen is not given Super Raid here: a normal run (the activity counts one battle of keys).
+        return superRaid && final.Result is BattleResult.Victory or BattleResult.Defeat ? final with { Text = final.Text + NormalRunMark } : final;
     }
 
     private bool _towerOnHard;
+
+    /// <summary>The last battle's result screen is still open (for Replay), and whether that battle ran with Super Raid.</summary>
+    private bool _dtResultOpen, _dtSuper;
+
+    public async Task LeaveDoomTowerResultAsync(CancellationToken ct)
+    {
+        if (!_dtResultOpen) return;
+        _dtResultOpen = false;
+        if (Top(await ReadState(ct)) is { } top && top == PlayTargets.DtResultView) await LeaveResult(ct, PlayTargets.DtResultView);
+    }
+
+    /// <summary>
+    /// Replay from the Doom Tower result screen (Ehsan 2026-11-20: "why are you going back to the village between boss floor 30 farms"): the same stage, the
+    /// same team, the same Super Raid. Null (the result left, the long way taken) when the screen is gone, Replay is missing or Super Raid would change.
+    /// </summary>
+    public async Task<BattleOutcome?> ReplayDoomTowerAsync(DtStage stage, bool superRaid, CancellationToken ct)
+    {
+        if (!_dtResultOpen) return null;
+        _dtResultOpen = false;
+        var started = DateTime.UtcNow;
+        if (Top(await ReadState(ct)) != PlayTargets.DtResultView) return null;
+        var (_, targets, _) = await Read(ct);
+        if (superRaid != _dtSuper || !targets.Any(t => t.Kind == "result-replay" && t.View == PlayTargets.DtResultView && t.NotClickable is null))
+        {
+            if (superRaid == _dtSuper) log($"autoplay: no Replay on the Doom Tower result: the long way. Screen dump: {DumpScreen("doom tower result")}");
+            await LeaveResult(ct, PlayTargets.DtResultView);
+            return null;
+        }
+        try
+        {
+            await Click("result-replay", t => t.View == PlayTargets.DtResultView, (s2, _) => Top(s2) is { } top && (PlayTargets.IsTeamView(top) || top is PlayTargets.RefillView or UiState.MessageBoxView)
+                || s2.Active.Any(v => BattleViews.Contains(v.Name)) && !Has(s2, PlayTargets.DtResultView), "Replay leads on", ct, within: TimeSpan.FromSeconds(15));
+        }
+        catch (PlayStopException e)
+        {
+            log($"autoplay: Replay did not lead on ({e.Message}): the long way");
+            return null;
+        }
+        var after = await Settled(ct);
+        if (!after.Active.Any(v => BattleViews.Contains(v.Name)) || Has(after, PlayTargets.DtResultView))
+        {
+            // No key for it (the refill offer) or its team screen: closed, and the map's way taken.
+            if (Top(after) is { } over && over != PlayTargets.DtResultView) await Back(over, ct);
+            return null;
+        }
+        log($"autoplay: Doom Tower {DoomTowerRules.Name(stage)} replayed from the result screen{(_dtSuper ? " (Super Raid)" : "")}");
+        return await FinishTowerBattle(started, ct);
+    }
+
+    /// <summary>A started battle to its end; its result screen is left open after a win or a loss, for Replay (<see cref="LeaveDoomTowerResultAsync"/> closes it).</summary>
+    private async Task<BattleOutcome> FinishTowerBattle(DateTime started, CancellationToken ct)
+    {
+        var result = await WaitBattle(ct, PlayTargets.DtResultView);
+        await ClearOverResult(ct, PlayTargets.DtResultView);
+        var outcome = result?.Pve?.ResultType switch { 1 => BattleResult.Victory, 2 => BattleResult.Defeat, 3 => BattleResult.Draw, _ => BattleResult.Unknown };
+        _dtResultOpen = outcome is BattleResult.Victory or BattleResult.Defeat && Top(await ReadState(ct)) == PlayTargets.DtResultView;
+        if (!_dtResultOpen) await LeaveResult(ct, PlayTargets.DtResultView);
+        RecordTry(outcome);
+        return new BattleOutcome(outcome, $"{(DateTime.UtcNow - started).TotalSeconds:0} s", _fielded);
+    }
 
     /// <summary>
     /// A floor's team screen opened from the map (the floors have no rectangles): the spots seen on the screen (boss portraits, gold banners) tapped and the
@@ -332,11 +399,7 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         }
         if (!inBattle.Active.Any(v => BattleViews.Contains(v.Name))) await Refuse(inBattle, $"Start Doom Tower {name}", ct);
         log($"autoplay: Doom Tower {name} started");
-        var result = await WaitBattle(ct, PlayTargets.DtResultView);
-        await LeaveResult(ct, PlayTargets.DtResultView);
-        var outcome = result?.Pve?.ResultType switch { 1 => BattleResult.Victory, 2 => BattleResult.Defeat, 3 => BattleResult.Draw, _ => BattleResult.Unknown };
-        RecordTry(outcome);
-        return new BattleOutcome(outcome, $"{(DateTime.UtcNow - started).TotalSeconds:0} s", _fielded);
+        return await FinishTowerBattle(started, ct);
     }
 
     /// <summary>The tower map on top (its stages read), from wherever the game is.</summary>

@@ -483,7 +483,15 @@ public sealed partial class LivePlayGame : IChoresGame
             bool MenuShows(IReadOnlyList<UiTarget> ts) => ts.Any(t => t.Kind == "menu-item" && t.Note == item && t.Rect is { X: >= 0 });
             // The menu slides in: its buttons are tapped once they are on the screen (2026-11-03: a tap at x -214 was refused). Already open (the previous
             // item was absent): not tapped again, that would close it.
-            if (!MenuShows((await Read(ct)).Targets))
+            // Open already (an earlier item was absent and the menu stayed out; 2026-11-20: tapping the toggle then hit (-37,379), off the window, and
+            // the open menu then swallowed the Events tap): an item it does not show is left without touching the toggle.
+            var shown = (await Read(ct)).Targets;
+            if (shown.Any(t => t.Kind == "menu-item" && t.Rect is { X: >= 0 }) && !MenuShows(shown))
+            {
+                log($"autoplay: side menu: {item} is not in the menu: left");
+                continue;
+            }
+            if (!MenuShows(shown))
                 await Click("menu-open", null, (_, scan) => scan().Targets.Any(t => t.Kind == "menu-item" && t.Rect is { X: >= 0 }), "the side menu opens", ct,
                     within: TimeSpan.FromSeconds(6));
             await Pause(500, ct);
@@ -521,7 +529,20 @@ public sealed partial class LivePlayGame : IChoresGame
             await Back(view, ct);
             await Pause(1200, ct);
         }
+        await CloseSideMenuAsync(ct);
         return claimed;
+    }
+
+    /// <summary>The side menu left open (its last items absent) covers the village's buttons: closed with its toggle, or Esc when the toggle is off the window.</summary>
+    private async Task CloseSideMenuAsync(CancellationToken ct)
+    {
+        var (s, ts, _) = await Read(ct);
+        if (Top(s) != PlayTargets.VillageHudView || !ts.Any(t => t.Kind == "menu-item" && t.Rect is { X: >= 0 })) return;
+        if (ts.FirstOrDefault(t => t.Kind == "menu-open") is { Rect: { X: >= 0 } })
+            try { await Click("menu-open", null, (_, scan) => !scan().Targets.Any(t => t.Kind == "menu-item" && t.Rect is { X: >= 0 }), "the side menu closes", ct, within: TimeSpan.FromSeconds(4)); return; }
+            catch (PlayStopException) { }
+        if (Game.Window.GameWindow.Find().Window is { } w && Input.MouseInput.SendEscape(w) is null) log("autoplay: side menu: Esc sent to close it");
+        await Pause(800, ct);
     }
 
     /// <summary>

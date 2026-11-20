@@ -33,6 +33,39 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
 
     public bool StopRequested() => File.Exists(AutoplayStatus.StopPathIn(dir));
 
+    /// <summary>The app's pause request (the banner's Pause button): its time, UTC; null when there is none.</summary>
+    public DateTime? PausedSince()
+    {
+        var path = RaidActions.Autoplay.PauseGate.PathIn(dir);
+        try
+        {
+            if (!File.Exists(path)) return null;
+            return DateTime.TryParse(File.ReadAllText(path).Trim(), System.Globalization.CultureInfo.InvariantCulture, System.Globalization.DateTimeStyles.RoundtripKind, out var t)
+                ? t.ToUniversalTime() : File.GetLastWriteTimeUtc(path);
+        }
+        catch (IOException) { return DateTime.UtcNow; }
+    }
+
+    public void PauseBegan() => MouseInput.ReleaseStuck();
+
+    /// <summary>Set by the command: re-reads the game after a pause (the account it shows, whether it is still open); null: go on.</summary>
+    public Func<string?>? AfterPause { get; set; }
+
+    /// <summary>The slice clock stood still: the turn's start moves on by the pause; then the game is looked at again.</summary>
+    public string? PauseEnded(TimeSpan pausedFor)
+    {
+        try
+        {
+            if (RaidExtractor.AccountTurn.Load(dir) is { } turn && pausedFor > TimeSpan.Zero)
+            {
+                _turn = turn with { StartedUtc = turn.StartedUtc + pausedFor };
+                _turn.Save(dir);
+            }
+        }
+        catch (IOException) { }
+        return AfterPause?.Invoke();
+    }
+
     public DateTime? PersonLastInputUtc()
     {
         if (!watchPerson) return null;

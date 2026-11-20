@@ -128,6 +128,10 @@ public static class AutoplayCommand
                 Print(e.Message);
                 return Cli.Failed;
             }
+            // A new bot is not paused (a request left from an older run is dropped); from now on the banner's Pause stops every input (PauseGate).
+            try { File.Delete(PauseGate.PathIn(dir)); } catch (IOException) { }
+            PauseGate.IsPaused = () => host.PausedSince() is not null;
+            host.AfterPause = () => AfterPause(dir, live, args);
             var folder = Path.Combine(outDir, "autoplay", DateTime.Now.ToString("yyyyMMdd-HHmmss"));
             Directory.CreateDirectory(folder);
             var policy = Game.Window.WindowPolicy.Load(GameCommands.WindowConfig);
@@ -190,6 +194,19 @@ public static class AutoplayCommand
             // The account's turn is over: the game on the next one, and a new bot for it (this one is tied to the old game process).
             // Stopped on errors (2026-11-14 02:09, BlackLord65: an offer window that would not close, and the whole rotation ended): the next account, the
             // switch closes the game (and the stuck window with it); this account comes again in its turn.
+            if (why.StartsWith("pause:", StringComparison.Ordinal))
+            {
+                live.Dispose();
+                var yieldArg = args.Contains("--no-yield") ? " --no-yield" : "";
+                if (why == PauseGate.SwitchBack && RaidExtractor.OutputLayout.ActiveId(dir) is { } own)
+                {
+                    Print($"pause: the game is on an account that is not played; back to {own}");
+                    var back = await SwitchAccountCommand.RunAsync(["switch-account", own.ToString(System.Globalization.CultureInfo.InvariantCulture)], outDir, output);
+                    LiveAutoplayHost.Relaunch(dir, "autoplay" + (back != Cli.Ok ? " --restart-first" : "") + yieldArg);
+                }
+                LiveAutoplayHost.Relaunch(dir, (why == PauseGate.GameClosed ? "autoplay --restart-first" : "autoplay") + yieldArg);
+                return Cli.Ok;
+            }
             var onErrors = why.Contains("errors in a row", StringComparison.Ordinal) && !once;
             // The game not taking clicks (Ehsan 2026-11-14: "you should not pause the bot; try even closing the game and start again"): first the game
             // closed and started again on this account; stuck again within the hour: the next account (its switch restarts the game too).
@@ -228,6 +245,31 @@ public static class AutoplayCommand
             }
             return why.Contains("errors in a row", StringComparison.Ordinal) ? Cli.Failed : Cli.Ok;
         }
+    }
+
+    /// <summary>
+    /// After a pause the game is looked at again (the person may have switched accounts or closed it): closed, the bot starts it again; on another account of
+    /// the pool (enabled), that account plays on; on one the bot does not play, it goes back to its own; unsure (not readable), the game's account stays.
+    /// </summary>
+    private static string? AfterPause(string dir, LiveGame live, string[] args)
+    {
+        if (RaidExtractor.OutputLayout.ActiveId(dir) is not { } want) return null;
+        var running = System.Diagnostics.Process.GetProcessesByName("Raid");
+        var up = running.Length > 0;
+        foreach (var p in running) p.Dispose();
+        if (!up) return PauseGate.GameClosed;
+        long? inGame;
+        try { inGame = live.UserId(); }
+        catch (Exception e) when (e is not OperationCanceledException) { inGame = null; }
+        if (inGame is not { } now || now == want) return null;
+        var pool = RaidExtractor.AccountPool.Load(dir);
+        if (pool.Find(now) is { Enabled: true })
+        {
+            RaidExtractor.AccountTurn.Begin(dir, now, pool.SliceOf(now), DateTime.UtcNow);
+            RaidExtractor.OutputLayout.SetActive(dir, now);
+            return PauseGate.NowOn;
+        }
+        return PauseGate.SwitchBack;
     }
 
     private static int Explore(string outDir, Action<string> print, bool tree = false)

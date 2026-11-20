@@ -190,6 +190,15 @@ public sealed class FakeHost(DateTime start) : IAutoplayHost
 
     public AutoplaySettings LoadSettings() => Settings;
     public bool StopRequested() => Stop;
+
+    /// <summary>The pause a test asks for (UTC); null: none. <see cref="PauseEndedFor"/> is what the resume re-read says.</summary>
+    public DateTime? Paused { get; set; }
+    public string? PauseEndedFor { get; set; }
+    public List<TimeSpan> Resumes { get; } = [];
+    public int PauseStarts { get; private set; }
+    public DateTime? PausedSince() => Paused;
+    public void PauseBegan() => PauseStarts++;
+    public string? PauseEnded(TimeSpan pausedFor) { Resumes.Add(pausedFor); return PauseEndedFor; }
     public DateTime? PersonLastInputUtc() => Person;
 
     public void WriteStatus(AutoplayStatus status)

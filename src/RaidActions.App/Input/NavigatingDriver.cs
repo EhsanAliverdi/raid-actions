@@ -35,6 +35,8 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
     {
         "open-champions", "screen-close", "champion-tile", "gear-tab", "gear-slot", "inventory-item",
         "picker-close", "popup-close-selected", "popup-close-worn", "manage-close", "dialog-close", "swap-cancel", "back",
+        // The game's equip warning (ascension/faction/grade, 2026-11-21): only its close/cancel, never a confirm; the piece is skipped.
+        "equip-warning-close",
         // The picker's filter (2026-11-09): its button, Free and Equipped (pieces other champions wear are listed only with Equipped on), the kinds.
         "picker-filter", "picker-filter-free", "picker-filter-equipped", "picker-filter-kind",
     };

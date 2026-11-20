@@ -128,6 +128,24 @@ public sealed class PlayContext(AutoplaySettings settings, IPlayGame game, IAuto
     /// </summary>
     public Func<string, string?>? YieldTo { get; set; }
 
+    /// <summary>The task under way as an activity reported it (null: nothing reported this turn); the engine puts it in status.json for the app's banner.</summary>
+    public BotTask? Task { get; private set; }
+
+    internal Action? Reported { get; set; }
+
+    /// <summary>
+    /// Tells the banner what this turn is doing (Ehsan 2026-11-20): <paramref name="task"/> ("Faction Wars (Dark Elves): gearing up Kael"),
+    /// <paramref name="why"/> ("crypt stage 6, sim 64%"), step <paramref name="step"/> of <paramref name="steps"/>, and <paramref name="detail"/>
+    /// (what this step does). Cheap: call it at each step; an area that never calls it shows its name and "step 1 of 1".
+    /// </summary>
+    public void Report(string task, string why, int step, int steps, string detail = "")
+    {
+        Task = new BotTask(task, why, step, Math.Max(1, steps), detail);
+        Reported?.Invoke();
+    }
+
+    internal void ClearTask(BotTask? initial) => Task = initial;
+
     /// <summary>A person's pause before an action (the pacing settings' range).</summary>
     public Task ThinkAsync(CancellationToken ct)
     {

@@ -122,6 +122,14 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
     private bool Open(PlayContext ctx, string job) => !_paused.TryGetValue(job, out var until) || ctx.Utc >= until;
 
     /// <summary>The job due now, or null; the quests' first.</summary>
+    private static string JobLabel(string job) => job switch
+    {
+        "masteries" => "champion masteries", "cleanup" => "gear clean-up", "putback" => "champions back to the vault", "market" => "market shards",
+        "referral" => "referral link", "level" => "Tavern level-up", "attempts" or "piece" or "advised" => "gear upgrades", "dots" => "red dots in the village",
+        "clan" => "joining a clan", "checkin" => "clan check-in", "inbox" => "inbox items about to expire", "pass" => "pass rewards", "pit" => "Sparring Pit",
+        "free" => "free items", "cvc" => "Clan vs Clan rewards", _ => job,
+    };
+
     private string? Next(PlayContext ctx)
     {
         var s = ctx.Settings.Chores;
@@ -187,7 +195,7 @@ public sealed class ChoresActivity(IChoresGame game) : IActivity
     {
         var s = ctx.Settings.Chores;
         var job = Next(ctx);
-        if (job is not null) { _brought.Remove(job); _ranAt[job] = ctx.Utc; }
+        if (job is not null) { _brought.Remove(job); _ranAt[job] = ctx.Utc; ctx.Report("Chores: " + JobLabel(job), "daily upkeep and quests", 1, 1, ""); }
         try
         {
             switch (job)

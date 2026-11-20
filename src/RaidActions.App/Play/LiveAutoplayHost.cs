@@ -311,6 +311,27 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
 
     private string? _heldNote;
 
+    /// <summary>The banner's goal and switch: this account's name, the next account of the pool and the end of this turn.</summary>
+    public TurnView? BannerTurn()
+    {
+        if (NoRotation || RaidExtractor.OutputLayout.GameId(dir) is not { } current) return null;
+        var pool = RaidExtractor.AccountPool.Load(dir);
+        var who = NameOf(current);
+        if (!pool.Rotate || _turn is null || _turn.Id != current) return new TurnView(who, null, null);
+        var next = pool.Next(current, DateTime.UtcNow);
+        return new TurnView(who, next is { } n ? NameOf(n) : null, next is null ? null : _turn.EndsUtc(pool.SliceOf(current)));
+    }
+
+    private string NameOf(long id)
+    {
+        try
+        {
+            using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(Path.Combine(RaidExtractor.OutputLayout.AccountDir(dir, id), "account.json")));
+            return doc.RootElement.GetProperty("account").GetProperty("name").GetString() ?? $"Account {id}";
+        }
+        catch (Exception e) when (e is IOException or System.Text.Json.JsonException or KeyNotFoundException or InvalidOperationException) { return $"Account {id}"; }
+    }
+
     /// <summary>Why the turn goes on past its time (a task in progress, an open follow-up, within the planner's extra minutes); null: it ends.</summary>
     private string? TurnHeldFor(DateTime now, DateTime ends)
     {

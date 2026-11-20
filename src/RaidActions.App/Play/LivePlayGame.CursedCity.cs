@@ -381,7 +381,18 @@ public sealed partial class LivePlayGame : ICursedCityGame
             {
                 // The battle menu's cards run sideways past the window (seen 2026-10-29: Cursed City at x 1263 of 864): drag it into view.
                 await DragIntoView("mode-cc", ct);
-                await Click("mode-cc", null, (s2, _) => Has(s2, PlayTargets.CcMapView), "the Cursed City map opens", ct, within: TimeSpan.FromSeconds(15));
+                // The cards tween after the menu moves (SiblingTweenActivator, CanvasGroupAlphaTween): a tap too early does nothing (2026-11-20: 8 of 9
+                // taps failed with the 896x504 window). One more tap after a short wait before it counts as an error.
+                var opened = true;
+                try { await Click("mode-cc", null, (s2, _) => Has(s2, PlayTargets.CcMapView), "the Cursed City map opens", ct, within: TimeSpan.FromSeconds(8)); }
+                catch (PlayStopException) { opened = false; }
+                if (!opened)
+                {
+                    if (Top(await ReadState(ct)) != PlayTargets.BattleMenuView) continue;
+                    log("autoplay: battle menu: Cursed City did not open: tapped again after a pause");
+                    await Pause(1500, ct);
+                    await Click("mode-cc", null, (s2, _) => Has(s2, PlayTargets.CcMapView), "the Cursed City map opens", ct, within: TimeSpan.FromSeconds(15));
+                }
                 continue;
             }
             if (!NavigatingDriver.AtVillage(s)) { await TowardsBattleMenu(s, ct); continue; }

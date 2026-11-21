@@ -177,6 +177,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
         else { ids = [.. level.Team.Members.Select(m => m.Id)]; names = [.. level.Team.Members.Select(m => m.Name)]; }
         plan ??= RaidExtractor.Battle.Prepare.Make(d, g, r, ids, what, locks: l);
         var (rate, why) = RaidExtractor.Battle.StageSim.WinRate(d, g, ExtractorOutput, level.Stage.Id, ids, gear: plan);
+        if (!why.Contains("not in the static data", StringComparison.Ordinal)) SecondOpinion(CursedCityActivity.AreaId, level.Stage.Id, ids, plan, rate, d, g);
         return why.Contains("not in the static data", StringComparison.Ordinal) ? null : new CcSim(ids, names, rate, why);
     }
 

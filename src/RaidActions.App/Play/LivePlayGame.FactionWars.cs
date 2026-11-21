@@ -290,6 +290,7 @@ public sealed partial class LivePlayGame : IFactionWarsGame
         var (d, g, r, l) = await Account(ct);
         var plan = RaidExtractor.Battle.Prepare.Make(d, g, r, crypt.Team, $"Faction Wars: {crypt.Name}", locks: l);
         var (rate, why) = RaidExtractor.Battle.StageSim.WinRate(d, g, ExtractorOutput, stageId, crypt.Team, gear: plan);
+        if (!why.Contains("not in the static data", StringComparison.Ordinal)) SecondOpinion(FactionWarsActivity.AreaId, stageId, crypt.Team, plan, rate, d, g);
         return why.Contains("not in the static data", StringComparison.Ordinal) ? null : new StageForecast(rate, why);
     }
 

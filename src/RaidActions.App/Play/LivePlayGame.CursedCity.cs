@@ -424,7 +424,10 @@ public sealed partial class LivePlayGame : ICursedCityGame
             // Well inside (2026-11-20, an 896-wide window: Spider's Keep tapped at x 818, near the edge, twice without effect; the view was
             // still sliding after the drag): 15% margins, and only once the target stands still between two reads.
             var inside = cx > w.Client.Width * 0.15 && cx < w.Client.Width * 0.85 && cy > w.Client.Height * 0.12 && cy < w.Client.Height * 0.88;
-            if (inside)
+            // Inside the window but clipped by its own list (2026-11-21: Clan Boss Hard "not fully visible (outside its scroll viewport)" in the
+            // 896x504 window): drag on, at least a fifth of the window towards its middle.
+            var clipped = inside && !t.FullyVisible;
+            if (inside && !clipped)
             {
                 if (i == 0) return;
                 await Pause(400, ct);
@@ -435,6 +438,7 @@ public sealed partial class LivePlayGame : ICursedCityGame
             }
             var dx = Math.Clamp(w.Client.Width / 2f - cx, -w.Client.Width * 0.6f, w.Client.Width * 0.6f);
             var dy = Math.Clamp(w.Client.Height / 2f - cy, -w.Client.Height * 0.5f, w.Client.Height * 0.5f);
+            if (clipped && Math.Abs(dy) < w.Client.Height * 0.2f) dy = (cy > w.Client.Height / 2f ? -1 : 1) * w.Client.Height * 0.2f;
             var (x1, y1) = (w.Client.Width / 2f - dx / 2, w.Client.Height / 2f - dy / 2);
             if (MouseInput.Drag(w, x1, y1, x1 + dx, y1 + dy) is { } notSent) throw new PlayStopException("Not dragged: " + notSent);
             log($"autoplay: dragged the view {dx:0},{dy:0} to bring {t.Name} into view");

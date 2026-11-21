@@ -241,8 +241,8 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             if (rows.Any(r => r.Id == id)) continue;
             // "On Normal or Hard": Hard when a stage that counts is beaten there.
             var hard = n.Region is { } r1 && n.MinStage is { } least && n.Text.Contains("Hard", StringComparison.OrdinalIgnoreCase)
-                ? EnergyPlanner.HighestBeaten(new EnergyTarget { Area = "Dungeon", Region = r1, Difficulty = "Hard" }, _account?.Progress ?? []) is { } h && h >= least ? h : (int?)null : null;
-            var highest = n.Region is { } r0 ? EnergyPlanner.HighestBeaten(new EnergyTarget { Area = "Dungeon", Region = r0, Difficulty = "Normal" }, _account?.Progress ?? []) : null;
+                ? EnergyPlanner.HighestReliable(new EnergyTarget { Area = "Dungeon", Region = r1, Difficulty = "Hard" }, _account?.Progress ?? []) is { } h && h >= least ? h : (int?)null : null;
+            var highest = n.Region is { } r0 ? EnergyPlanner.HighestReliable(new EnergyTarget { Area = "Dungeon", Region = r0, Difficulty = "Normal" }, _account?.Progress ?? []) : null;
             // "Beat a Dungeon Boss" counts on any stage: the cheapest (8 Energy, not 20, and a much shorter run; Ehsan's energy goes to the farm).
             // A quest for artifacts or accessories needs the drops: the highest stage.
             var anyBoss = n.Region is null && n.MinStage is null && n.Text.Contains("Boss", StringComparison.OrdinalIgnoreCase);
@@ -290,7 +290,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
             // beaten, lost in a Super Raid and replayed at once: 56 Energy on two losses).
             // A row without a stage of its own ("Win 3 Artifacts from clearing the Dungeons") plays the highest beaten one: its losses step down from there.
             if (_questRowLosses.GetValueOrDefault(id) is > 0 and var lostTimes
-                && (stage ?? EnergyPlanner.HighestBeaten(new EnergyTarget { Area = "Dungeon", Region = buildRegion ?? "DragonsLair", Difficulty = "Normal" }, _account?.Progress ?? [])) is { } s0)
+                && (stage ?? EnergyPlanner.HighestReliable(new EnergyTarget { Area = "Dungeon", Region = buildRegion ?? "DragonsLair", Difficulty = "Normal" }, _account?.Progress ?? [])) is { } s0)
                 stage = Math.Max(n.MinStage ?? 1, s0 - 3 * lostTimes);
             rows.Add(new EnergyTarget { Id = id, Area = "Dungeon", Region = buildRegion ?? "DragonsLair", Difficulty = best && hard is not null ? "Hard" : "Normal", Stage = stage });
             _rowNeed[id] = SuperRaidRules.OfQuest(n.Text);
@@ -408,7 +408,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         if (r.SmartSuperRaid && t.Food && _account?.Champions is { } champions) return SmartFood(ctx, t, w, champions);
         if (!r.SmartSuperRaid || t.Area != "Dungeon" || t.Food || t.Progress) return t;
         var need = _rowNeed.TryGetValue(t.Id, out var n) ? n : SuperRaidRules.Need.Farm;
-        if ((t.Stage ?? EnergyPlanner.HighestBeaten(t, w.Progress)) is not { } number) return t;
+        if ((t.Stage ?? EnergyPlanner.HighestReliable(t, w.Progress)) is not { } number) return t;
         var (resource, cost, known, _) = EnergyPlanner.Cost(t with { SuperRaid = false }, number, w);
         var (won, lost) = _stageResults.GetValueOrDefault(StageKey(t.Area, t.Region, t.Difficulty, number));
         // Keys (Iron Twins) and stages won every time: Super Raid whenever it can be paid (a quest that counts clears still never).
@@ -424,7 +424,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     /// <summary>A food row: Super Raid by the food the planner puts in the team (<see cref="SuperRaidRules.UseForFood"/>); normal when the cost is not known.</summary>
     private static EnergyTarget SmartFood(PlayContext ctx, EnergyTarget t, EnergyWorld w, IReadOnlyList<ChampionOut> champions)
     {
-        if ((t.Stage ?? EnergyPlanner.HighestBeaten(t, w.Progress)) is not { } number) return t with { SuperRaid = false };
+        if ((t.Stage ?? EnergyPlanner.HighestReliable(t, w.Progress)) is not { } number) return t with { SuperRaid = false };
         var (resource, cost, known, _) = EnergyPlanner.Cost(t with { SuperRaid = false }, number, w);
         if (resource != "Energy" || !known) return t with { SuperRaid = false };
         var picks = FoodPlanner.Plan(t.Team, champions, ctx.Settings.Energy.Food, 4).Food.ToHashSet();

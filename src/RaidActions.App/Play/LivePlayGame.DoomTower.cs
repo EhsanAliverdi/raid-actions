@@ -414,7 +414,7 @@ public sealed partial class LivePlayGame : IDoomTowerGame
             if (Top(s) is { } fin && fin.StartsWith("BattleFinish", StringComparison.Ordinal)) { await LeaveResult(ct, fin); continue; }
             if (Top(s) is { } top && PlayTargets.IsTeamView(top)) { await Back(top, ct); continue; }
             var (_, targets, _) = await Read(ct);
-            if (targets.Any(t => t.Kind == "dt-stage")) return;
+            if (targets.Any(t => t.Kind == "dt-stage")) { await CollectBackgroundResults("the Doom Tower", ct); return; }
             if (Top(s) == PlayTargets.BattleMenuView)
             {
                 await DragIntoView("mode-dt", ct);

@@ -307,4 +307,24 @@ public class PlayTargetsTests
             .Targets.First(t => t.Kind == "mode-cc");
         Assert.NotEqual("locked", open.Note);
     }
+
+    [Fact]
+    public void A_finished_background_run_shows_a_bg_result_target_and_a_running_one_a_note()
+    {
+        var scan = PlayTargets.Scan(Tree("DungeonsDialog",
+            N("List/Row/BackgroundBattle"), N("List/Row/BackgroundBattle/ActiveBackgroundBattle_h"),
+            N("List/Row/BackgroundBattle/ActiveBackgroundBattle_h/Icon/BackgroundAutoClimb_h"),
+            N("List/Row/Button/ButtonOn_h/ResultBattleButton_h", 50, interactable: true)), new Objects());
+        Assert.Contains(scan.Targets, t => t.Kind == "bg-result" && t.NotClickable is null);
+        Assert.Contains(scan.Targets, t => t.Kind == "bg-running" && t.Note == "auto-climb");
+        Assert.Contains("bg-result", PlayTargets.Kinds);
+    }
+
+    [Fact]
+    public void What_starts_or_stops_a_background_run_is_forbidden_and_not_an_auto_play_kind()
+    {
+        var scan = PlayTargets.Scan(Tree("DungeonsDialog", N("Row/StopBattleButton_h", 10, interactable: true), N("Team/AutoBattleButton_h", 50, interactable: true)), new Objects());
+        Assert.Equal(2, scan.Targets.Count(t => t.Kind == "forbidden" && t.Forbidden));
+        Assert.DoesNotContain("forbidden", PlayTargets.Kinds);
+    }
 }

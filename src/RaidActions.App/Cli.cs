@@ -53,7 +53,8 @@ public static class Cli
           RaidActions window minimum           measure the minimum window size from the champion screen's targets
           RaidActions capture [--out f.png]    save a capture of the game's client area
           RaidActions ui-state [--watch [--for <minutes>]]  the game's UI from memory: views, battle, selected champion and artifact
-          RaidActions recognize [--image f]    recognize the screen (live, or an image) and save an annotated copy
+          RaidActions background-battles       the game's background battle from memory: stage, state (running / results waiting), runs done
+          RaidActions recognize [--image f]   recognize the screen (live, or an image) and save an annotated copy
           RaidActions templates seed|recut     cut the anchor templates (from reference screenshots | from the live window)
           RaidActions ui-tree [View] [--watch --for <min>]  Unity UI from memory: elements, rectangles, contexts (output\ui-trees)
           RaidActions ui-rects [View]          clickable elements with their rectangles, interactable and context

@@ -1,5 +1,6 @@
 namespace RaidActions.App.Play;
 
+using RaidActions.Autoplay;
 using RaidActions.Game.Memory;
 
 /// <summary>
@@ -40,4 +41,41 @@ public sealed partial class LivePlayGame
         }
         return collected;
     }
+
+    // ------------------------------------------------------------------ the game's background battle state (memory)
+
+    /// <summary>The background battle from memory, with its area and region from the stage costs (null Progress: left unknown).</summary>
+    public async Task<IReadOnlyList<BackgroundBattleInfo>> ReadBackgroundBattlesAsync(CancellationToken ct)
+    {
+        var list = game.ReadBackgroundBattles();
+        if (list.Count == 0 || list.All(b => b.AutoClimb || b.StageId == 0)) return list;
+        var costs = (await game.Account.ReadAsync(ct)).Progress?.StageCosts ?? [];
+        return [.. list.Select(b => costs.FirstOrDefault(c => c.StageId == b.StageId) is { } c && !b.AutoClimb ? b with { Area = c.Area, Region = $"{c.Region} {c.Difficulty}" } : b)];
+    }
+
+    public async Task<string> CollectBackgroundBattleAsync(BackgroundBattleInfo b, CancellationToken ct)
+    {
+        var costs = (await game.Account.ReadAsync(ct)).Progress?.StageCosts ?? [];
+        var stage = costs.FirstOrDefault(c => c.StageId == b.StageId);
+        log($"autoplay: collecting the background battle ({b})");
+        if (b.AutoClimb) await OpenDoomTower(ct);
+        else if (stage is { Area: "Story" }) await OpenCampaign(stage.Region, stage.Difficulty, stage.StageId, ct);
+        else if (stage is { Area: "Dungeon" })
+        {
+            await OpenDungeon(stage.Region, ct);
+            await SetDifficulty(stage.Difficulty, stage.StageId, ct);
+            await CollectBackgroundResults($"{stage.Region}'s stages", ct);
+        }
+        else if (stage is { Area: "DoomTower" }) await OpenDoomTower(ct);
+        else
+        {
+            // Faction Wars crypts and unknown stages: only the status window's own button (it comes up over many screens while a run waits).
+            var s = await Settled(ct);
+            if (Top(s) is { } top && top.StartsWith("BackgroundBattleStatus", StringComparison.Ordinal)) await CollectBackgroundResults("the status window", ct);
+            else return $"stage {b.StageId} ({stage?.Area ?? "area unknown"}): no stage list to open for it; the status window did not show";
+        }
+        var left = game.ReadBackgroundBattles();
+        return left.Any(x => x.Finished) ? $"stage {b.StageId}: its results are still waiting after {stage?.Area ?? "the list"} was opened" : $"stage {b.StageId} ({b.Completed} runs, {b.Won} won) collected";
+    }
+
 }

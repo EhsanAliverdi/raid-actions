@@ -92,6 +92,13 @@
       "source": "dump/redux/il2cpp.h: StringProperty -> Property_1_System_String___Fields { ReadProperty fields (0x10, 0x18); bool _changing 0x20; String *_value 0x28 (pointer-aligned) }",
       "status": "verified",
       "verified": "2026-10-26 11:14: SwapArtifactsOverlayContext._title read \"SWAP ARTIFACT\" and _warning the dialog's full sentence, with the dialog's avatars reading worn #1115 and to-equip #2639 as planned"
+    },
+    "Client.Model.Guard.UserWrapper.BackgroundAutoBattle": {
+      "offset": "0x168",
+      "type": "AutoBattleWrapper",
+      "source": "dump/redux/cs/il2cpp.cs (UserWrapper, TypeDefIndex 16972: public readonly AutoBattleWrapper BackgroundAutoBattle; // 0x168). In raid-extractor's names.json the UserWrapper type is listed without it, so it is added here, not through ConfigGen (a type may not be in both files)",
+      "status": "unverified",
+      "verified": "not yet: check live with RaidActions background-battles"
     }
   }
 }

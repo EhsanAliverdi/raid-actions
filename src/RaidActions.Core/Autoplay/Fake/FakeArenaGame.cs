@@ -59,6 +59,19 @@ public sealed class FakeArenaGame(Func<DateTime> now, int seed = 7) : IPlayGame
         return Task.FromResult(new GameResources(now(), Tokens, Energy, Gems, left, null, TokenCap, All: Resources));
     }
 
+    /// <summary>The game's background battle in this fake (null: none). Collecting it ends it, like the game.</summary>
+    public BackgroundBattleInfo? Background { get; set; }
+
+    public Task<IReadOnlyList<BackgroundBattleInfo>> ReadBackgroundBattlesAsync(CancellationToken ct) =>
+        Task.FromResult<IReadOnlyList<BackgroundBattleInfo>>(Background is null ? [] : [Background]);
+
+    public Task<string> CollectBackgroundBattleAsync(BackgroundBattleInfo battle, CancellationToken ct)
+    {
+        Calls.Add($"collect-background {battle.StageId}");
+        Background = null;
+        return Task.FromResult($"stage {battle.StageId} collected");
+    }
+
     public Task GoHomeAsync(CancellationToken ct)
     {
         Calls.Add("home");

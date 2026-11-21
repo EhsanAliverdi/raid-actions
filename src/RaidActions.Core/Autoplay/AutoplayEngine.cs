@@ -221,6 +221,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                     try { await ctx.ReadResourcesAsync(ct); }
                     catch (Exception e) when (e is not OperationCanceledException) { }
                 }
+                await CheckBackgroundBattles(ctx, ct);
                 var enabled = activities.Where(a => a.IsEnabled(settings)).OrderBy(a => order.IndexOf(a.Id) is >= 0 and var at ? at : int.MaxValue).ToList();
                 _enabledOrder = enabled;
                 ctx.ChainBreak = self => ChainBreak(ctx, enabled, self, once);
@@ -335,7 +336,8 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                     if (e.Message.Contains("BackgroundBattle", StringComparison.Ordinal))
                     {
                         var over = e.Message.Contains("BackgroundBattleRewardListOverlay", StringComparison.Ordinal);
-                        var wait = over ? TimeSpan.FromMinutes(2) : TimeSpan.FromMinutes(15);
+                        // Only the battle areas wait the long time; chores and free rewards (no battle) try again in 2 minutes (2026-11-21: Chores held for a run it never touched).
+                        var wait = over || !BattleAreas.Contains(act.Id) ? TimeSpan.FromMinutes(2) : TimeSpan.FromMinutes(15);
                         ctx.Hold(act.Id, host.UtcNow + wait, over ? "a background battle's rewards came up: closed, tried again in 2 minutes"
                             : "a background battle is running (the game's status window came up): tried again in 15 minutes");
                         Remember(new AutoplayEvent(host.UtcNow, act.Id, "wait", over ? "a background battle's rewards came up: tried again in 2 minutes"
@@ -382,6 +384,61 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
         catch (OperationCanceledException) when (ct.IsCancellationRequested)
         {
             return Stop("aborted (Ctrl+Alt+Esc or Ctrl+C)");
+        }
+    }
+
+    /// <summary>The areas that start battles: held while a background battle runs (the game starts no other battle meanwhile). Chores and free rewards go on.</summary>
+    public static readonly IReadOnlySet<string> NonBattleAreas = new HashSet<string> { ChoresActivity.AreaId, FreeRewardsActivity.AreaId };
+
+    private IEnumerable<string> BattleAreas => activities.Select(a => a.Id).Where(id => !NonBattleAreas.Contains(id));
+
+    private string? _lastBackgroundNote;
+    private DateTime _backgroundCollectAfter;
+
+    /// <summary>
+    /// At each turn start (a cheap memory read): a finished background battle has its results collected from its stage list; a running one is logged
+    /// (stage, runs done) and holds only the battle areas for a few minutes (the read is repeated each turn, so the hold follows the run's end).
+    /// </summary>
+    private async Task CheckBackgroundBattles(PlayContext ctx, CancellationToken ct)
+    {
+        IReadOnlyList<BackgroundBattleInfo> list;
+        try { list = await ctx.Game.ReadBackgroundBattlesAsync(ct); }
+        catch (Exception e) when (e is not OperationCanceledException) { return; }
+        if (list.Count == 0) { _lastBackgroundNote = null; return; }
+        foreach (var b in list)
+        {
+            var note = b.ToString();
+            if (b.Finished)
+            {
+                if (dryRun || host.UtcNow < _backgroundCollectAfter)
+                {
+                    if (note != _lastBackgroundNote) Remember(new AutoplayEvent(host.UtcNow, "engine", "wait", $"background battle finished, results waiting ({note})" + (dryRun ? ": a real run collects them" : "")));
+                    _lastBackgroundNote = note;
+                    foreach (var id in BattleAreas) ctx.Hold(id, host.UtcNow + TimeSpan.FromMinutes(2), "a finished background battle's results wait");
+                    continue;
+                }
+                try
+                {
+                    var before = await Holdings(ct);
+                    var got = await ctx.Game.CollectBackgroundBattleAsync(b, ct);
+                    var gain = before is not null && await Holdings(ct) is { } after ? Gains.Describe(before, after) : null;
+                    Remember(new AutoplayEvent(host.UtcNow, "engine", "reward", $"background battle collected ({got})" + (gain is null ? "" : ": " + gain)));
+                    _backgroundCollectAfter = host.UtcNow + TimeSpan.FromMinutes(5);
+                }
+                catch (Exception e) when (e is not OperationCanceledException || !ct.IsCancellationRequested)
+                {
+                    if (e is OperationCanceledException) throw;
+                    Remember(new AutoplayEvent(host.UtcNow, "engine", "error", "collecting the background battle failed: " + e.Message));
+                    _backgroundCollectAfter = host.UtcNow + TimeSpan.FromMinutes(5);
+                    try { await game.GoHomeAsync(ct); } catch (Exception) when (!ct.IsCancellationRequested) { }
+                }
+            }
+            else if (b.Running)
+            {
+                if (note != _lastBackgroundNote) Remember(new AutoplayEvent(host.UtcNow, "engine", "wait", $"background battle running ({note}): battle areas wait, chores go on"));
+                _lastBackgroundNote = note;
+                foreach (var id in BattleAreas) ctx.Hold(id, host.UtcNow + TimeSpan.FromMinutes(3), $"a background battle is running ({note})");
+            }
         }
     }
 

@@ -351,7 +351,7 @@ public sealed partial class LivePlayGame : IEnergyGame
             var (_, targets, _) = await Read(ct);
             if (targets.Any(t => t.Kind == "dungeon-stage"))
             {
-                if (_openDungeon == region) return;
+                if (_openDungeon == region) { await CollectBackgroundResults($"{region}'s stages", ct); return; }
                 _openDungeon = null;
                 await Back(Top(s)!, ct); // a stage list this bot did not open (or another dungeon's): back to the dungeons
                 continue;
@@ -375,6 +375,7 @@ public sealed partial class LivePlayGame : IEnergyGame
                 if (!(await Read(ct)).Item2.Any(t => t.Kind == "dungeon-stage"))
                     throw new PlayStopException($"{region} opened but no stage is recognised. Screen dump: {DumpScreen("dungeon stages not recognised")}");
                 _openDungeon = region;
+                await CollectBackgroundResults($"{region}'s stages", ct);
                 continue;
             }
             // The dungeons screen (DungeonsHUD, seen live 2026-10-30) open but no tile recognised: the rule is to fix from the dump.

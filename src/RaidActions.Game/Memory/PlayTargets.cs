@@ -317,7 +317,7 @@ public static partial class PlayTargets
         "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "menu-open", "menu-item", "reward-claim", "reward-tab", "event-card", "event-claimall", "event-close", "challenge-confirm", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-gift", "shop-claim", "shop-section", "shop-subtab", "village-pass", "village-challenges", "village-clan", "clan-tab", "clan-checkin", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-referral", "referral-getlink", "village-cvc", "cvc-tab", "cvc-claim", "cvc-reward", "cvc-status", "loyalty-claim",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
-        "arena-tag", "tag-opponent", "tag-refresh", "arena-defence-slot", "defence-save", "noaura-confirm", "tag-tab", "pit-levelup", "brew-open", "brew-grade", "brew-item", "brew-hero", "brew-upgrade", "brew-close", "ascend-tab", "ascend-max", "ascend-go",
+        "arena-tag", "tag-opponent", "tag-refresh", "arena-defence-slot", "defence-save", "noaura-confirm", "tag-tab", "pit-levelup", "brew-open", "brew-grade", "brew-item", "brew-hero", "brew-upgrade", "brew-close", "ascend-tab", "ascend-max", "ascend-go", "bg-result", "bg-running",
     };
 
     [GeneratedRegex(@"Vault|Storage", RegexOptions.IgnoreCase)] private static partial Regex VaultName();
@@ -329,9 +329,10 @@ public static partial class PlayTargets
 
     [GeneratedRegex(@"Battle|Start|Fight|Attack", RegexOptions.IgnoreCase)] private static partial Regex FightName();
     [GeneratedRegex(@"Confirm|Ready|Accept|Start", RegexOptions.IgnoreCase)] private static partial Regex ConfirmName();
-    [GeneratedRegex(@"Info|Avatar|Profile|Hero|Skin|Preset|Auto|Relic|Filter|Sort", RegexOptions.IgnoreCase)] private static partial Regex NotFightName();
+    [GeneratedRegex(@"Info|Avatar|Profile|Hero|Skin|Preset|Auto|Relic|Filter|Sort|Result|Stop", RegexOptions.IgnoreCase)] private static partial Regex NotFightName();
     [GeneratedRegex(@"Refresh|Update|Reload", RegexOptions.IgnoreCase)] private static partial Regex RefreshName();
     [GeneratedRegex(@"Collect|Claim|Take|Get|Receive|Accept", RegexOptions.IgnoreCase)] private static partial Regex CollectName();
+    [GeneratedRegex(@"AutoClimb|BackgroundBattle(Start|Run)|StartBackground", RegexOptions.IgnoreCase)] private static partial Regex BackgroundStartName();
     [GeneratedRegex(@"Auto", RegexOptions.IgnoreCase)] private static partial Regex AutoName();
     [GeneratedRegex(@"Speed", RegexOptions.IgnoreCase)] private static partial Regex SpeedName();
     [GeneratedRegex(@"RankUp|Rank_Up|Upgrade|Confirm", RegexOptions.IgnoreCase)] private static partial Regex RankUpName();
@@ -1339,6 +1340,23 @@ public static partial class PlayTargets
             targets.Add(new UiTarget("result-close", "tag arena result: tap to continue", null, t.View,
                 new ClientRect(t.ClientWidth * 0.40f, t.ClientHeight * 0.86f, t.ClientWidth * 0.2f, t.ClientHeight * 0.06f), true, true, true, false, t.View,
                 "a tap on the empty bottom strip", ClientWidth: t.ClientWidth, ClientHeight: t.ClientHeight));
+
+        // The game's background battles (2026-11-21: they block every new battle until their results are collected). A finished run shows
+        // ResultBattleButton_h on its stage row (pressing it collects: free); a running one ActiveBackgroundBattle_h (icon BackgroundBattleRun_h or
+        // BackgroundAutoClimb_h). What starts or stops a run is never pressed: the team screen's AutoBattleButton_h, StopBattleButton_h, any auto-climb button.
+        for (var i = 0; i < nodes.Count; i++)
+        {
+            var x = nodes[i];
+            if (x.Name == "ResultBattleButton_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null)
+                targets.Add(Make("bg-result", $"background battle: collect results ({x.Path})", x, x, "finished run: its results wait"));
+            else if (x.Name == "ActiveBackgroundBattle_h" && x.ActiveInHierarchy)
+            {
+                var climb = Below(i).Any(c => c.Name == "BackgroundAutoClimb_h" && c.ActiveInHierarchy);
+                targets.Add(Make("bg-running", $"background battle: running ({x.Path})", x, null, climb ? "auto-climb" : "run"));
+            }
+            else if (x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null && (x.Name is "StopBattleButton_h" or "AutoBattleButton_h" || BackgroundStartName().IsMatch(x.Name)))
+                targets.Add(Make("forbidden", $"background battle: {x.Name} (starts or stops a background run, never)", x, x, null) with { Forbidden = true });
+        }
 
         // The team selection's Start (seen 2026-10-29: "Default_h", the big button bottom right; its Checkbox_h above is left alone).
         if (IsTeamView(t.View))

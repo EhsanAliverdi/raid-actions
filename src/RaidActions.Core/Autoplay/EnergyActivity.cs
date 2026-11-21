@@ -47,6 +47,12 @@ public interface IEnergyGame : IGearDropGame
     /// <summary>One run of the stage with the team the game shows there; Super Raid set as the row says. A dry run shows Start only.</summary>
     Task<BattleOutcome> RunStageAsync(EnergyRun run, bool dryRun, CancellationToken ct);
 
+    /// <summary>
+    /// The simulator's forecast for an unbeaten stage with the team the bot will field (the row's, or its pick topped up, geared as the row gears); null: none
+    /// possible (the push is not made). Both engines are asked where both can run; the activity decides on the trusted one (<see cref="PushGate"/>).
+    /// </summary>
+    Task<PushForecast?> ForecastPushAsync(EnergyRun run, CancellationToken ct) => Task.FromResult<PushForecast?>(null);
+
     /// <summary>Collects this resource from the inbox; what was collected (0: none there).</summary>
     Task<double> CollectInboxAsync(string resource, bool dryRun, CancellationToken ct);
 
@@ -387,6 +393,45 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     }
 
     /// <summary>A climbing row's rest after a defeat (2026-11-03: 12-1 lost with a 35 Kael; the energy goes to the farm row meanwhile).</summary>
+    /// <summary>Forecasts per stage and team, for the day (a forecast that failed is kept too: not asked again today).</summary>
+    private readonly Dictionary<string, PushForecast?> _pushForecasts = [];
+    private DateOnly _pushForecastDay;
+
+    /// <summary>
+    /// The simulator gate of a push (Ehsan 2026-11-21: a new stage only when the simulator gives over 50%). True: the stage is not played (a hold is set, the
+    /// row's farm stage plays below). No trusted engine for the area, no forecast or a failed one: no push.
+    /// </summary>
+    private async Task<bool> PushBlockedAsync(PlayContext ctx, IEnergyGame game, EnergyRun run, CancellationToken ct)
+    {
+        var where = EnergyPlanner.Describe(run);
+        var engine = PushGate.EngineFor(run.Target.Area, run.Region);
+        string why;
+        if (engine == PushEngine.None) why = $"no trusted forecast for {run.Target.Area switch { "Story" => "Campaign", _ => EnergyPlaces.All.FirstOrDefault(p => p.Region == run.Region)?.Name ?? run.Region }}: {where} not pushed";
+        else
+        {
+            var today = DateOnly.FromDateTime(ctx.Utc);
+            if (_pushForecastDay != today) { _pushForecasts.Clear(); _pushForecastDay = today; }
+            var key = $"{run.Target.Id}|{run.Region}|{run.Difficulty}|{run.Number}|{string.Join(",", run.Team ?? run.Target.Team)}";
+            if (!_pushForecasts.TryGetValue(key, out var f))
+            {
+                try { f = await game.ForecastPushAsync(run, ct); }
+                catch (Exception e) when (e is not OperationCanceledException) { f = null; ctx.Event(AreaId, "error", $"{where}: forecast failed ({e.Message})"); }
+                _pushForecasts[key] = f;
+            }
+            if (f is null || PushGate.Decisive(engine, f) is not { } rate) why = $"{where}: no forecast ({(engine == PushEngine.Old ? "old" : "new")} engine): not pushed";
+            else
+            {
+                var both = $"old {(f.OldRate is { } o ? $"{o:P0}" : "n/a")}, new {(f.NewRate is { } n ? $"{n:P0}" : "n/a")}";
+                if (rate > PushGate.Threshold) { ctx.Event(AreaId, "forecast", $"{where}: forecast {rate:P0} ({both}) over {PushGate.Threshold:P0}: pushed"); return false; }
+                why = $"{where}: forecast {rate:P0} ({both}), not over {PushGate.Threshold:P0}: not pushed";
+            }
+        }
+        var wait = run.Target.LossWaitHours is > 0 and var h ? TimeSpan.FromHours(h) : TimeSpan.FromHours(24);
+        ctx.Hold(PushKey(run.Target), ctx.Utc + wait, why);
+        ctx.Event(AreaId, "hold", why);
+        return true;
+    }
+
     private static string PushKey(EnergyTarget t) => $"{AreaId}:push:{t.Id}";
 
     /// <summary>Wins and losses per stage today (place/region/difficulty/number): a stage won every time is farmed with Super Raid.</summary>
@@ -613,6 +658,7 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
                     ctx.Event(AreaId, "hold", why);
                     return "";
                 }
+                if (run.Target.Progress && !ctx.DryRun && PushGate.IsUnbeaten(run, _account.Progress) && await PushBlockedAsync(ctx, game, run, ct)) return "";
                 var before = _account.Resources.GetValueOrDefault(run.Resource);
                 var rosterBefore = _account.Champions;
                 await ctx.ThinkAsync(ct);

@@ -31,6 +31,8 @@ public sealed class Runner(IGameDriver driver, IAccountSource account, IPacer pa
         var plan = loaded.Plan;
         string? snapshot = null;
         var doneByRun = script.SkippedDone.ToList();
+        // Steps the game refused (an equip warning): not done, their piece stays put, the checks expect that and the rest of their actions are left.
+        var skippedSteps = new HashSet<int>();
         log.Write(0, "Run", $"{script.Mode} run of \"{plan.Name}\" ({plan.PlanId}, sha256 {loaded.Sha256}) with the {driver.Name} driver", "info",
             script.SkippedDone.Count > 0 ? $"already done, skipped: {string.Join(", ", script.SkippedDone)}" : null);
 
@@ -105,6 +107,11 @@ public sealed class Runner(IGameDriver driver, IAccountSource account, IPacer pa
                 if (script.Mode == RunMode.DryRun && a.ChangesGear)
                     throw new InvalidOperationException($"A dry run must not {a.Kind}."); // the planner never builds this; refuse anyway
 
+                if (a.Step > 0 && skippedSteps.Contains(a.Step) && a.Kind is not (ActionKind.VerifyStep or ActionKind.VerifyEnd or ActionKind.SaveSnapshot))
+                {
+                    Report(a, "ok", "left: its step was skipped (the game refused the piece)");
+                    return null;
+                }
                 Report(a, "started", null);
                 string? detail = null;
                 switch (a.Kind)
@@ -119,11 +126,12 @@ public sealed class Runner(IGameDriver driver, IAccountSource account, IPacer pa
                         // Real run: the steps done before this run, those this run verified, and this one (the order may differ from the plan's).
                         var expectDone = a.Kind == ActionKind.VerifyEnd ? plan.Steps.Select(s => s.Number).ToHashSet()
                             : script.Mode == RunMode.Real ? doneByRun.Append(a.Step).ToHashSet() : a.DoneThrough!.ToHashSet();
+                        expectDone.ExceptWith(skippedSteps);
                         var fresh = await account.ReadAsync(abort);
                         var issues = Verify(plan, fresh, expectDone);
                         if (issues.Count > 0) return await Stop(RunOutcome.Failed, a, "Verification failed: " + string.Join(" ", issues));
                         detail = $"verified: {expectDone.Count switch { 0 => "no step", 1 => "step " + expectDone.Single(), _ => "steps " + string.Join(", ", expectDone.Order()) }} done, every plan piece where expected";
-                        if (a.Kind == ActionKind.VerifyStep && script.Mode == RunMode.Real && !doneByRun.Contains(a.Step)) doneByRun.Add(a.Step);
+                        if (a.Kind == ActionKind.VerifyStep && script.Mode == RunMode.Real && !doneByRun.Contains(a.Step) && !skippedSteps.Contains(a.Step)) doneByRun.Add(a.Step);
                         break;
                     }
                     default:
@@ -133,6 +141,7 @@ public sealed class Runner(IGameDriver driver, IAccountSource account, IPacer pa
                         var r = await driver.PerformAsync(a, abort);
                         if (!r.Ok) return await Stop(RunOutcome.Failed, a, r.Message ?? $"{a.Kind} failed.");
                         detail = r.Message;
+                        if (r.Skipped && a.Step > 0) skippedSteps.Add(a.Step);
                         break;
                     }
                 }

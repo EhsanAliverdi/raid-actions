@@ -80,6 +80,17 @@ public class RunnerTests : IDisposable
     }
 
     [Fact]
+    public async Task A_skipped_equip_does_not_fail_the_check_and_the_plan_goes_on()
+    {
+        var r = await RunFake(RunMode.Real, (g, _, _) => g.RefusedEquips.Add(2));
+        Assert.Equal(RunOutcome.Completed, r.Result.Outcome);
+        Assert.DoesNotContain(2, r.Result.DoneSteps);
+        Assert.Contains(1, r.Result.DoneSteps);
+        Assert.Contains(3, r.Result.DoneSteps);
+        Assert.Equal(2, r.Game.Performed.Count(a => a.Kind == ActionKind.Equip && a.Step != 2) + 0);
+    }
+
+    [Fact]
     public async Task Abort_stops_at_once_and_reports_what_is_done()
     {
         var r = await RunFake(RunMode.Real, (g, cts, _) => g.BeforeAction = a =>

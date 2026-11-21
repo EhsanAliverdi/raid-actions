@@ -347,4 +347,38 @@ public class EnergyActivityTests
         Assert.Equal(1, status.Counters["Refills"]);
         Assert.Equal(1, status.Counters["Wins"]);
     }
+
+    [Fact]
+    public async Task A_row_without_a_team_plays_the_bots_full_team_not_the_slots_left_by_the_last_fight()
+    {
+        var (host, game, engine) = Make(On(Row("keep", "Hard")));
+        game.Energy = 100;
+        game.Champions = [.. Enumerable.Range(1, 7).Select(i => TestData.Champ(i, "H" + i))];
+        await engine.RunAsync(once: true, new CancellationTokenSource(TimeSpan.FromSeconds(20)).Token);
+        var run = game.Calls.First(c => c.StartsWith("run", StringComparison.Ordinal));
+        Assert.Contains(" team ", run);
+        Assert.Equal(5, run[(run.IndexOf(" team ", StringComparison.Ordinal) + 6)..].Split(',').Length);
+    }
+
+    [Fact]
+    public async Task A_start_that_did_nothing_with_enough_energy_is_not_called_a_lack_of_energy()
+    {
+        var (host, game, engine) = Make(On(Row("farm", "Hard")), stopAfter: TimeSpan.FromMinutes(5));
+        game.Energy = 153;
+        game.NotStartedText = RaidActions.App.Play.LivePlayGame.StartNothingText(153, 40, "Energy");
+        await engine.RunAsync(once: false, Limit());
+        Assert.Contains("not an energy problem", RaidActions.App.Play.LivePlayGame.StartNothingText(153, 40, "Energy"));
+        Assert.Contains("not enough energy", RaidActions.App.Play.LivePlayGame.StartNothingText(10, 40, "Energy"));
+        Assert.DoesNotContain(host.Events, e => e.Text.Contains("not enough energy to start", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_row_on_hold_after_a_start_is_not_tried_again_before_the_hold_ends()
+    {
+        var (host, game, engine) = Make(On(Row("farm", "Hard")), stopAfter: TimeSpan.FromMinutes(15));
+        game.Energy = 100;
+        game.NotStartedText = "Start did nothing (not enough energy: Energy 10 of 40)";
+        await engine.RunAsync(once: false, Limit());
+        Assert.Equal(1, game.Calls.Count(c => c == "start did nothing"));
+    }
 }

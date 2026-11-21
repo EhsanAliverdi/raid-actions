@@ -57,7 +57,7 @@ public sealed partial class LivePlayGame : IEnergyGame
         var placeTeam = run.Target.RegionTeams.GetValueOrDefault(run.Region);
         var rowChoice = placeTeam ?? new TeamChoice
         {
-            Mode = run.Target.BotTeam && run.Target.Team.Count == 0 ? TeamMode.BotChooses : TeamMode.Current, GearUp = run.Target.GearUp, PutBack = run.Target.PutBack,
+            Mode = run.Target.Team.Count == 0 && (run.Target.BotTeam || !run.Target.Food) ? TeamMode.BotChooses : TeamMode.Current, GearUp = run.Target.GearUp, PutBack = run.Target.PutBack,
         };
         await PrepareTeam($"{where} team", "energy", BotTeams.ContentArea(run.Target.Area, run.Region, run.AtDifficulty ?? run.Target.Difficulty), EnergyPlaces.Slots(run.Target.Area),
             rowChoice, dryRun, ct);
@@ -107,10 +107,12 @@ public sealed partial class LivePlayGame : IEnergyGame
         var placeChoice = run.Target.RegionTeams.GetValueOrDefault(run.Region);
         if (placeChoice is { Mode: TeamMode.Current }) run = run with { Team = null };
         else if (placeChoice is { Mode: TeamMode.Saved, Ids.Count: > 0 }) run = run with { Team = placeChoice.Ids };
-        else if (placeChoice is { Mode: TeamMode.BotChooses } || run.Target is { BotTeam: true, Food: false, Team.Count: 0 })
+        else if (placeChoice is { Mode: TeamMode.BotChooses } || run.Target is { Food: false, Team.Count: 0 })
         {
             var (bd, bgd, _, _) = await Account(ct);
             var pick = BotTeams.Pick(bd, bgd, extractorRoot, BotTeams.ContentArea(run.Target.Area, run.Region, run.AtDifficulty ?? run.Target.Difficulty), EnergyPlaces.Slots(run.Target.Area));
+            // Every free slot filled (2026-11-21: 4- and 2-champion teams played from the slots the last fight left).
+            pick = TopUpTeam(bd, pick, EnergyPlaces.Slots(run.Target.Area), [], "energy");
             if (pick.Count > 0) run = run with { Team = pick };
         }
         if (run.Team is { Count: > 0 } planned)
@@ -172,6 +174,9 @@ public sealed partial class LivePlayGame : IEnergyGame
         // A run with its own team (the food farm) keeps it; any other uses the Teams card.
         if (run.Team is not { Count: > 0 } && !await ApplyDefaultTeam("energy", teamView, ct))
             return new BattleOutcome(BattleResult.NotStarted, "the Teams card's team was refused here");
+        await ThrowIfBackgroundBattle(where, ct);
+        if ((await Read(ct)).Play is { TeamSlots: > 0 } shownTeam && (shownTeam.TeamIds?.Count ?? 0) < shownTeam.TeamSlots)
+            log($"autoplay: WARNING team of {shownTeam.TeamIds?.Count ?? 0} of {shownTeam.TeamSlots} slots at Start: {string.Join(", ", (shownTeam.TeamIds ?? []).Select(Who))}");
         await SetSuperRaid(run.Target.SuperRaid, teamView, ct);
         // An empty team screen (no team ever saved there; seen 2026-10-31 on the Hydra): nothing to start with, the row waits.
         if (((await Read(ct)).Play.TeamIds ?? []).Count == 0)
@@ -200,14 +205,20 @@ public sealed partial class LivePlayGame : IEnergyGame
         catch (PlayStopException)
         {
             var nothing = await ReadState(ct);
+            if (BackgroundBattleView(nothing) is { } bg)
+            {
+                log($"autoplay: Start did nothing: the game's background battle is on the screen ({bg}); the area waits");
+                throw new PlayStopException($"{bg}: the game has a background battle (running, or its results waiting) over {where}: Start does nothing until it is over");
+            }
             // 2026-11-06 (Brutal 12-3, BlackLord65): the game's Energy box (an inbox potion and a gem refill) opened but was not the expected view:
             // the screen is dumped to learn its name, then closed with the team screen.
             var dump = DumpScreen("start did nothing");
-            log($"autoplay: Start did nothing; the screen shows {string.Join(" > ", nothing.Active.Select(v => v.Name))}; energy read {(await ReadAccountAsync(ct)).Resources.GetValueOrDefault("Energy")}. Screen dump: {dump}");
+            var have = (await ReadAccountAsync(ct)).Resources.GetValueOrDefault(run.Resource);
+            log($"autoplay: Start did nothing; the screen shows {string.Join(" > ", nothing.Active.Select(v => v.Name))}; {run.Resource} read {have}, the run costs {run.Cost}. Screen dump: {dump}");
             if (Top(nothing) != teamView && !Has(nothing, teamView)) throw;
             if (Top(nothing) != teamView) await Back(Top(nothing)!, ct);
             await Back(teamView, ct);
-            return new BattleOutcome(BattleResult.NotStarted, "Start did nothing (not enough energy?)");
+            return new BattleOutcome(BattleResult.NotStarted, StartNothingText(have, run.Cost, run.Resource));
         }
         return await Fought(run, where, resultView, teamView, started, ct);
     }
@@ -419,6 +430,11 @@ public sealed partial class LivePlayGame : IEnergyGame
 
     /// <summary>The team screen's Super Raid box set as the row says (none shown: fine only when the row does not want it).</summary>
     /// <summary>Super Raid on or off; true when the box is on for this run.</summary>
+    /// <summary>Why a Start did nothing: "not enough energy" only when the resource read is under the cost (never a guess).</summary>
+    public static string StartNothingText(double have, double cost, string resource) =>
+        have < cost ? $"Start did nothing (not enough energy: {resource} {have:0.#} of {cost:0.#})"
+            : $"Start did nothing ({resource} {have:0.#} covers the {cost:0.#} cost: not an energy problem)";
+
     private async Task<bool> SetSuperRaid(bool wanted, string teamView, CancellationToken ct)
     {
         // The box's state settles after the team screen opens (2026-10-30, Campaign: read "on", then "unavailable"): read after a pause.

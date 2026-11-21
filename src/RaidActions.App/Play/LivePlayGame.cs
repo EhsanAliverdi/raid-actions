@@ -1314,8 +1314,11 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     /// The game's background battle window or its result list on the screen (BackgroundBattleStatusOverlay, BackgroundBattleRewardListOverlay, ...;
     /// 2026-11-21 BlackLord65: a background run blocked every Start for 1.5 h and "Start did nothing" was read as no energy); null when none shows.
     /// </summary>
+    /// Only the windows, not the game's notification layer (BackgroundBattleFinishedNotificationsView is always active, 2026-11-21: it made every
+    /// area hold "a background battle is running" on accounts with none, the state reader saying UnStarted).
     public static string? BackgroundBattleView(UiState s) =>
-        s.Active.Select(v => v.Name).FirstOrDefault(n => n.StartsWith("BackgroundBattle", StringComparison.Ordinal));
+        s.Active.Where(v => v.Visible).Select(v => v.Name).FirstOrDefault(n => n.StartsWith("BackgroundBattleStatus", StringComparison.Ordinal)
+            || n.StartsWith("BackgroundBattleRewardList", StringComparison.Ordinal));
 
     /// <summary>A background battle on the screen: the turn ends with its name (the engine holds the area, never presses Start meanwhile).</summary>
     private async Task ThrowIfBackgroundBattle(string where, CancellationToken ct)

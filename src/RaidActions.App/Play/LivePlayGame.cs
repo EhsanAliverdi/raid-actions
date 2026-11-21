@@ -1122,8 +1122,12 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             if (!bgClosed && target.Kind is not ("team-start" or "battle-start") && Top(s2) is { } bgTop && bgTop.StartsWith("BackgroundBattleStatus", StringComparison.Ordinal))
             {
                 bgClosed = true;
-                log($"autoplay: the background-battle window came up over {target.Name}: closed");
+                log($"autoplay: the background-battle window came up over {target.Name}: closed, tapped again");
                 await Back(bgTop, ct);
+                // Closing it takes the screen back to where the tap was made (2026-11-21: the Tavern tap ended on the champion screen): the tap once more.
+                await Pause(600, ct);
+                if (!expect(await ReadState(ct), () => ReadSync().Play) && MouseInput.Click(w, x, y, _random) is { } again)
+                    log($"autoplay: the tap again was not sent: {again}");
                 until = DateTime.UtcNow + (within ?? TimeSpan.FromSeconds(8));
                 continue;
             }

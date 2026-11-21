@@ -11,7 +11,7 @@ namespace RaidActions.App.Play;
 /// before every decision, status.json written, events-&lt;day&gt;.jsonl appended, stop.request), and the person's own input
 /// (GetLastInputInfo, minus the input this process sent).
 /// </summary>
-public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watchPerson, Func<AutoplaySettings, AutoplaySettings>? overrideSettings = null) : IAutoplayHost
+public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watchPerson, Func<AutoplaySettings, AutoplaySettings>? overrideSettings = null, string? simCompareDir = null) : IAutoplayHost
 {
     /// <summary>A check of the game itself (LivePlayGame.SessionTaken): why it cannot be played now, or null.</summary>
     public Func<string?>? GameBlocked { get; set; }
@@ -238,6 +238,7 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
     public void Event(AutoplayEvent e)
     {
         print($"{e.Utc.ToLocalTime():HH:mm:ss} [{e.Area}] {e.Kind}: {e.Text}");
+        if (simCompareDir is not null && e.Kind == "battle") SimCompare.ResolveFromEvent(simCompareDir, e);   // the real outcome of a battle the second opinion simulated
         try
         {
             var path = AutoplayStatus.EventsPathIn(dir, e.Utc.ToLocalTime());

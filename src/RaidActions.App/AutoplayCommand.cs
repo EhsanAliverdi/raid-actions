@@ -76,7 +76,7 @@ public static class AutoplayCommand
 
         using var abort = new CancellationTokenSource();
         abortHook?.Invoke(() => { try { abort.Cancel(); } catch (ObjectDisposedException) { } });
-        var host = new LiveAutoplayHost(dir, Print, watchPerson: !fake, force);
+        var host = new LiveAutoplayHost(dir, Print, watchPerson: !fake, force, outDir);
         if (!fake) host.GuardSession();
         var arena = new ClassicArenaActivity();
         arena.Restore(LiveAutoplayHost.Recent(dir), DateOnly.FromDateTime(DateTime.UtcNow));

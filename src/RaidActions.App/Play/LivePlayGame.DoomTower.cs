@@ -274,6 +274,7 @@ public sealed partial class LivePlayGame : IDoomTowerGame
                 var plan = pick.Gear ?? RaidExtractor.Battle.Prepare.Make(sd, sgd, sr, pick.Ids, $"Auto Play: Doom Tower {tower} {floorBoss}", locks: sl);
                 var (rate, simWhy) = RaidExtractor.Battle.StageSim.WinRate(sd, sgd, ExtractorOutput, current, pick.Ids, gear: plan);
                 log($"autoplay: Doom Tower {tower} floor {openFloor}: best team {string.Join(", ", pick.Names)}: simulated win {rate:P0} after gear-up ({simWhy})");
+                SecondOpinion(DoomTowerActivity.AreaId, current, pick.Ids, plan, rate, sd, sgd);
                 if (!RaidExtractor.Battle.StageTeam.ShouldPush(rate))
                     return new BattleOutcome(BattleResult.NotStarted, $"floor {openFloor} ({floorBoss}): best team {string.Join(", ", pick.Names)} wins {rate:P0} in simulation (needs over 50%): not tried");
                 nextTry = pick.Ids;

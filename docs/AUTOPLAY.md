@@ -134,3 +134,6 @@ RaidActions autoplay --dry-run --once --enable      # navigate, show the battle 
 RaidActions autoplay --once --enable                # play until nothing is to be done now
 RaidActions autoplay --fake                         # the made-up arena (no game), for the page
 ```
+
+## Second opinion of the simulating gates (2026-11-21)
+Doom Tower's boss gate, Faction Wars' ForecastStageAsync and Cursed City's SimulateAsync also run the ported engine (GameSimBuilder.WinRate: 50 runs, 10 s box, same stage, team and gear plan) after the old StageSim. READ ONLY: the decision uses the old number. Each pair is logged (`sim2: <area> <stage>: old X% new Y% (n runs)`, or `new engine: not ported: X`) and appended to `output/sim-compare.csv` (time, account, area, stage, team, old, new, runs, note, real). `real` (win/loss) is filled when the area's next battle event arrives (LiveAutoplayHost.Event -> SimCompare.ResolveFromEvent: newest open row of that area, within 6 h; a Cursed City event naming its team must name the row's champions).

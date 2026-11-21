@@ -1321,10 +1321,16 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             || n.StartsWith("BackgroundBattleRewardList", StringComparison.Ordinal));
 
     /// <summary>A background battle on the screen: the turn ends with its name (the engine holds the area, never presses Start meanwhile).</summary>
+    private bool _bgDumped;
+
     private async Task ThrowIfBackgroundBattle(string where, CancellationToken ct)
     {
         if (BackgroundBattleView(await ReadState(ct)) is { } bg)
+        {
+            // Its contents saved once per run while the window is up (2026-11-21: the state reader said "none" while the window came up on every Start).
+            if (!_bgDumped) { _bgDumped = true; log($"autoplay: the background-battle window. Screen dump: {DumpScreen("background battle window")}"); }
             throw new PlayStopException($"{bg}: the game has a background battle (running, or its results waiting) over {where}: Start does nothing until it is over");
+        }
     }
 
     private static bool Has(UiState s, string view) => s.Active.Any(v => v.Name == view);

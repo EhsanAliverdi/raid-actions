@@ -211,6 +211,7 @@ public sealed partial class LivePlayGame : IEnergyGame
             if (BackgroundBattleView(nothing) is { } bg)
             {
                 log($"autoplay: Start did nothing: the game's background battle is on the screen ({bg}); the area waits");
+                if (!_bgDumped) { _bgDumped = true; log($"autoplay: the background-battle window. Screen dump: {DumpScreen("background battle window")}"); }
                 throw new PlayStopException($"{bg}: the game has a background battle (running, or its results waiting) over {where}: Start does nothing until it is over");
             }
             // 2026-11-06 (Brutal 12-3, BlackLord65): the game's Energy box (an inbox potion and a gem refill) opened but was not the expected view:

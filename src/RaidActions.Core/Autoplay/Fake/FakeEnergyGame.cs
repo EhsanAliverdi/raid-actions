@@ -48,6 +48,10 @@ public sealed class FakeEnergyGame(Func<DateTime> now) : IEnergyGame
     public IReadOnlyDictionary<string, ThreeStarState> LoadThreeStars() => new Dictionary<string, ThreeStarState>(ThreeStars);
     public void SaveThreeStars(IReadOnlyDictionary<string, ThreeStarState> states) { ThreeStars.Clear(); foreach (var (k, v) in states) ThreeStars[k] = v; }
 
+    /// <summary>The forecast an unbeaten push stage gets (default: a sure win, 100% on both engines); null: none.</summary>
+    public Func<EnergyRun, PushForecast?> Forecast { get; set; } = _ => new PushForecast(1, 1, "fake");
+    public Task<PushForecast?> ForecastPushAsync(EnergyRun run, CancellationToken ct) { Calls.Add($"forecast {run.Region} {run.Number}"); return Task.FromResult(Forecast(run)); }
+
     public Dictionary<string, PushLoss> PushLossBook { get; } = [];
     public Dictionary<string, PushLoss> LoadPushLosses() => new(PushLossBook);
     public void SavePushLosses(IReadOnlyDictionary<string, PushLoss> losses) { PushLossBook.Clear(); foreach (var (k, v) in losses) PushLossBook[k] = v; }

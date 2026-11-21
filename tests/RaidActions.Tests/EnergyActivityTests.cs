@@ -1,5 +1,6 @@
 using RaidActions.Autoplay;
 using RaidActions.Autoplay.Fake;
+using RaidExtractor;
 using RaidExtractor.Autoplay;
 
 namespace RaidActions.Tests;
@@ -381,4 +382,89 @@ public class EnergyActivityTests
         await engine.RunAsync(once: false, Limit());
         Assert.Equal(1, game.Calls.Count(c => c == "start did nothing"));
     }
+}
+
+/// <summary>The simulator gate of the dungeon push rows (Ehsan 2026-11-21: a new stage only when the simulator gives over 50%).</summary>
+public class PushGateTests
+{
+    private static readonly DateTime Start = new(2026, 10, 30, 1, 0, 0, DateTimeKind.Utc);
+
+    private static (FakeHost Host, FakeEnergyGame Game, AutoplayEngine Engine) Make(EnergyTarget row)
+    {
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 }, Energy = new() { Enabled = true, Targets = [row] } } };
+        var game = new FakeEnergyGame(() => host.UtcNow);
+        game.Costs.Add(new StageCostOut(5_206_026, "Dungeon", "DragonsLair", "Dragon's Lair", "None", 26, new() { ["Energy"] = 16 }));
+        return (host, game, new AutoplayEngine([new EnergyActivity(game)], new FakeArenaGame(() => host.UtcNow), host, false));
+    }
+
+    private static EnergyTarget Push(string region = "DragonsLair", int stage = 26) =>
+        new() { Id = "push", Area = "Dungeon", Region = region, Difficulty = "Normal", Stage = stage, Progress = true, LossWaitHours = 24 };
+
+    private static CancellationToken Limit() => new CancellationTokenSource(TimeSpan.FromSeconds(20)).Token;
+
+    [Fact]
+    public async Task A_forecast_over_half_pushes_the_new_stage()
+    {
+        var (host, game, engine) = Make(Push());
+        game.Forecast = _ => new PushForecast(0.62, 0.40, "x");
+        await engine.RunAsync(once: true, Limit());
+        Assert.Contains(game.Calls, c => c.StartsWith("forecast DragonsLair 26", StringComparison.Ordinal));
+        Assert.Contains(game.Calls, c => c.StartsWith("run", StringComparison.Ordinal));
+        Assert.Contains(host.Events, e => e.Kind == "forecast" && e.Text.Contains("62%", StringComparison.Ordinal) && e.Text.Contains("new 40%", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_forecast_of_half_or_less_does_not_push()
+    {
+        var (host, game, engine) = Make(Push());
+        game.Forecast = _ => new PushForecast(0.50, 0.90, "x"); // the old engine is the trusted one for Dragon's Lair
+        await engine.RunAsync(once: true, Limit());
+        Assert.DoesNotContain(game.Calls, c => c.StartsWith("run", StringComparison.Ordinal));
+        Assert.Contains(host.Events, e => e.Kind == "hold" && e.Text.Contains("not pushed", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task An_area_with_no_trusted_forecast_is_not_pushed_and_not_forecast()
+    {
+        var (host, game, engine) = Make(Push("SpiderCave", 10));
+        await engine.RunAsync(once: true, Limit());
+        Assert.DoesNotContain(game.Calls, c => c.StartsWith("forecast", StringComparison.Ordinal));
+        Assert.DoesNotContain(game.Calls, c => c.StartsWith("run", StringComparison.Ordinal));
+        Assert.Contains(host.Events, e => e.Kind == "hold" && e.Text.Contains("no trusted forecast for Spider's Den", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_beaten_stage_is_not_gated()
+    {
+        var (_, game, engine) = Make(Push(stage: 20) with { Progress = false });
+        game.Forecast = _ => new PushForecast(0.01, 0.01, "x");
+        await engine.RunAsync(once: true, Limit());
+        Assert.DoesNotContain(game.Calls, c => c.StartsWith("forecast", StringComparison.Ordinal));
+        Assert.Contains(game.Calls, c => c.StartsWith("run", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_failed_forecast_does_not_push()
+    {
+        var (host, game, engine) = Make(Push());
+        game.Forecast = _ => null;
+        await engine.RunAsync(once: true, Limit());
+        Assert.DoesNotContain(game.Calls, c => c.StartsWith("run", StringComparison.Ordinal));
+        Assert.Contains(host.Events, e => e.Kind == "hold" && e.Text.Contains("no forecast", StringComparison.Ordinal));
+
+        var (_, g2, e2) = Make(Push());
+        g2.Forecast = _ => throw new InvalidOperationException("boom");
+        await e2.RunAsync(once: true, Limit());
+        Assert.DoesNotContain(g2.Calls, c => c.StartsWith("run", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData("DragonsLair", PushEngine.Old)]
+    [InlineData("IceGolemCave", PushEngine.Old)]
+    [InlineData("MagicKeep", PushEngine.Old)]
+    [InlineData("ArcaneKeep", PushEngine.New)]
+    [InlineData("VoidDoubleAscendDungeon", PushEngine.New)]
+    [InlineData("SpiderCave", PushEngine.None)]
+    [InlineData("FireGolemCave", PushEngine.None)]
+    public void Each_area_has_its_engine(string region, PushEngine engine) => Assert.Equal(engine, PushGate.EngineFor("Dungeon", region));
 }

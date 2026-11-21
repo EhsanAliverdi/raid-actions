@@ -379,6 +379,9 @@ public sealed partial class LivePlayGame : IDoomTowerGame
             await Back(teamView, ct);
             return new BattleOutcome(BattleResult.NotStarted, start?.NotClickable is null && start is not null ? "Start shown, not pressed" : $"Start not identified: {start?.Note ?? "no team-start target"}");
         }
+        // 2026-11-22: the tower's Start launched the 11.95 background AUTO-CLIMB twice (04:07 and 08:10, KaelStormVex). The team screen's tree
+        // from before 11.95 is all we have: save it once per run, to find the auto-climb control and keep it off.
+        if (!_towerTeamDumped) { _towerTeamDumped = true; log($"autoplay: the tower team screen before Start. Screen dump: {DumpScreen("doom tower team screen (auto-climb check)")}"); }
         try
         {
             await Click("team-start", t => t.View == teamView, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView,

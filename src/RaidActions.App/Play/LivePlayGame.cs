@@ -1326,6 +1326,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
 
     /// <summary>A background battle on the screen: the turn ends with its name (the engine holds the area, never presses Start meanwhile).</summary>
     private bool _bgDumped;
+    private bool _towerTeamDumped;
 
     private async Task ThrowIfBackgroundBattle(string where, CancellationToken ct)
     {

@@ -1325,6 +1325,10 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
 
     private async Task ThrowIfBackgroundBattle(string where, CancellationToken ct)
     {
+        // A finished run's window (2026-11-21, BlackLord65: a campaign background run, its ResultButton clickable on every Start): its results are
+        // collected first; only a window still up afterwards (a run going on) holds the area.
+        if (BackgroundBattleView(await ReadState(ct)) is { } first && first.StartsWith("BackgroundBattleStatus", StringComparison.Ordinal))
+            await CollectBackgroundResults("the status window", ct);
         if (BackgroundBattleView(await ReadState(ct)) is { } bg)
         {
             // Its contents saved once per run while the window is up (2026-11-21: the state reader said "none" while the window came up on every Start).

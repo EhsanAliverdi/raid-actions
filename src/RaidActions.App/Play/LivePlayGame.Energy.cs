@@ -210,6 +210,9 @@ public sealed partial class LivePlayGame : IEnergyGame
             var nothing = await ReadState(ct);
             if (BackgroundBattleView(nothing) is { } bg)
             {
+                // A finished run's results are collected first (its ResultButton); the area then waits a moment and plays on its next turn.
+                if (bg.StartsWith("BackgroundBattleStatus", StringComparison.Ordinal) && await CollectBackgroundResults("the status window", ct) > 0)
+                    throw new PlayStopException("BackgroundBattleRewardListOverlay: a finished run's results were collected from the status window; the area again shortly");
                 log($"autoplay: Start did nothing: the game's background battle is on the screen ({bg}); the area waits");
                 if (!_bgDumped) { _bgDumped = true; log($"autoplay: the background-battle window. Screen dump: {DumpScreen("background battle window")}"); }
                 throw new PlayStopException($"{bg}: the game has a background battle (running, or its results waiting) over {where}: Start does nothing until it is over");

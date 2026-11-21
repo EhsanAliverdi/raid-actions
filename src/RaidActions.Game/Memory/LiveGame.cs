@@ -127,6 +127,12 @@ public sealed class LiveGame : IDisposable
         return (core, null);
     }
 
+    /// <summary>The game's background battle (empty when none runs or waits); throws UiReadException when the object graph is not what the offsets describe.</summary>
+    public IReadOnlyList<RaidActions.Autoplay.BackgroundBattleInfo> ReadBackgroundBattles()
+    {
+        lock (_lock) return new BackgroundBattleReader(new CoreObjects(_session, _offsets)).Read();
+    }
+
     /// <summary>The UI state, read until two consecutive reads agree (the game changes its UI while we read).</summary>
     public (UiState? State, string? Problem) ReadUi()
     {

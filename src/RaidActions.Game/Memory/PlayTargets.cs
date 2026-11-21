@@ -1347,7 +1347,10 @@ public static partial class PlayTargets
         for (var i = 0; i < nodes.Count; i++)
         {
             var x = nodes[i];
-            if (x.Name == "ResultBattleButton_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null)
+            // The status window's own ResultButton (seen 2026-11-15 under BackgroundBattleStatusOverlay; ResultClick opens the reward list). Its Stop/EndCurrent buttons are the game's message boxes, never pressed.
+            if (x.Name == "ResultButton" && t.View.StartsWith("BackgroundBattleStatus", StringComparison.Ordinal) && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null)
+                targets.Add(Make("bg-result", $"background battle window: show results ({x.Path})", x, x, "the status window's results button"));
+            else if (x.Name == "ResultBattleButton_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null)
                 targets.Add(Make("bg-result", $"background battle: collect results ({x.Path})", x, x, "finished run: its results wait"));
             else if (x.Name == "ActiveBackgroundBattle_h" && x.ActiveInHierarchy)
             {

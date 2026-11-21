@@ -2377,6 +2377,128 @@
           "status": "direct"
         }
       }
+    },
+    "Client.Model.Gameplay.AutoBattle.AutoBattleWrapperReadOnly": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "State": {
+          "offset": "0x44",
+          "type": "AutoBattleState",
+          "field": "State",
+          "source": "field",
+          "status": "direct"
+        },
+        "BattleData": {
+          "offset": "0x58",
+          "type": "UpdatableUserBattleData",
+          "field": "BattleData",
+          "source": "field",
+          "status": "direct"
+        },
+        "_report": {
+          "offset": "0x60",
+          "type": "AutoBattleReport",
+          "field": "_report",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.Model.Gameplay.AutoBattle.AutoBattleReport": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "StageId": {
+          "offset": "0x10",
+          "type": "int",
+          "field": "StageId",
+          "source": "field",
+          "status": "direct"
+        },
+        "FirstStageId": {
+          "offset": "0x14",
+          "type": "int",
+          "field": "FirstStageId",
+          "source": "field",
+          "status": "direct"
+        },
+        "BattleCount": {
+          "offset": "0x38",
+          "type": "int",
+          "field": "BattleCount",
+          "source": "field",
+          "status": "direct"
+        },
+        "VictoryBattlesCount": {
+          "offset": "0x3C",
+          "type": "int",
+          "field": "VictoryBattlesCount",
+          "source": "field",
+          "status": "direct"
+        },
+        "IsAutoClimb": {
+          "offset": "0xB0",
+          "type": "bool",
+          "field": "IsAutoClimb",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "SharedModel.Meta.Battle.UserBattleData": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "BackgroundBattleStats": {
+          "offset": "0x70",
+          "type": "UserBackgroundBattleStats",
+          "field": "BackgroundBattleStats",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "SharedModel.Meta.Battle.AutoBattle.UserBackgroundBattleStats": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "LastStageId": {
+          "offset": "0x20",
+          "type": "int",
+          "field": "LastStageId",
+          "source": "field",
+          "status": "direct"
+        },
+        "FirstStageId": {
+          "offset": "0x24",
+          "type": "int",
+          "field": "FirstStageId",
+          "source": "field",
+          "status": "direct"
+        },
+        "CompletedBattles": {
+          "offset": "0x30",
+          "type": "int",
+          "field": "CompletedBattles",
+          "source": "field",
+          "status": "direct"
+        },
+        "WonBattles": {
+          "offset": "0x34",
+          "type": "int",
+          "field": "WonBattles",
+          "source": "field",
+          "status": "direct"
+        },
+        "IsAutoClimb": {
+          "offset": "0x50",
+          "type": "bool",
+          "field": "IsAutoClimb",
+          "source": "field",
+          "status": "direct"
+        }
+      }
     }
   },
   "enums": {
@@ -3060,6 +3182,14 @@
       "None": 0,
       "Defeated": 1,
       "Won": 2
+    },
+    "Client.Model.Gameplay.AutoBattle.AutoBattleState": {
+      "UnStarted": 0,
+      "Started": 1,
+      "Finished": 2,
+      "EndedOnCurrentBattle": 3,
+      "StoppedMultiBattle": 4,
+      "EndedAfterStoppedBattle": 5
     }
   },
   "needsReview": []

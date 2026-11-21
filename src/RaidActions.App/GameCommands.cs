@@ -11,7 +11,7 @@ namespace RaidActions.App;
 /// </summary>
 public static class GameCommands
 {
-    public static readonly string[] Names = ["window", "capture", "ui-state", "recognize", "templates", "probe"];
+    public static readonly string[] Names = ["window", "capture", "ui-state", "background-battles", "recognize", "templates", "probe"];
 
     public static LiveGamePaths LivePaths(string output) => new(AppPaths.RaidExtractorRoot(),
         Path.Combine(AppPaths.Config(), "ui-offsets.json"), Path.Combine(AppPaths.Config(), "ui-offsets.manual.json"), output);
@@ -48,6 +48,22 @@ public static class GameCommands
                 Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(file))!);
                 cap.Image.SaveImage(file);
                 o.WriteLine($"Captured {cap.Image.Width}x{cap.Image.Height} ({cap.Source}) → {file}");
+                return Cli.Ok;
+            }
+            case "background-battles":
+            {
+                var (bg, bgProblem) = LiveGame.Open(LivePaths(output));
+                if (bg is null) { o.WriteLine(bgProblem); return Cli.Failed; }
+                using (bg)
+                {
+                    try
+                    {
+                        var list = bg.ReadBackgroundBattles();
+                        if (list.Count == 0) o.WriteLine("No background battle (state UnStarted).");
+                        foreach (var b in list) o.WriteLine($"{b} [running={b.Running}, results waiting={b.Finished}]");
+                    }
+                    catch (Exception e) when (e is UiReadException or KeyNotFoundException) { o.WriteLine("Cannot read it: " + e.Message); return Cli.Failed; }
+                }
                 return Cli.Ok;
             }
             case "ui-state":

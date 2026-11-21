@@ -19,6 +19,15 @@ public interface IPlayGame
     /// <summary>What the account holds now, for the rewards log (<see cref="Gains"/>); null when it cannot be read (the fakes).</summary>
     Task<Holdings?> ReadHoldingsAsync(CancellationToken ct) => Task.FromResult<Holdings?>(null);
 
+    /// <summary>The game's background battle (a run it plays by itself, or the Doom Tower auto-climb), read from the client's state; empty when none (the fakes).</summary>
+    Task<IReadOnlyList<BackgroundBattleInfo>> ReadBackgroundBattlesAsync(CancellationToken ct) => Task.FromResult<IReadOnlyList<BackgroundBattleInfo>>([]);
+
+    /// <summary>
+    /// Collects a finished background battle's results: goes to its stage list (campaign chapter, dungeon, Doom Tower) and presses the results button
+    /// (or the status window's), closes the reward list. Returns what happened for the log; never stops or starts a run.
+    /// </summary>
+    Task<string> CollectBackgroundBattleAsync(BackgroundBattleInfo battle, CancellationToken ct) => Task.FromResult("");
+
     /// <summary>Back to the village with back/close elements only (waits out a running battle).</summary>
     Task GoHomeAsync(CancellationToken ct);
 

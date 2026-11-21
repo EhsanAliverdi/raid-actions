@@ -184,3 +184,13 @@ RaidActions recognize [--image f]  anchors and gear slots, with an annotated ima
 RaidActions templates seed|recut
 RaidActions validate <plan> --live
 ```
+
+## Background battles (2026-11-21)
+
+`RaidActions background-battles` prints the game's background battle (read-only): AppModel._userWrapper -> UserWrapper.BackgroundAutoBattle
+(0x168, manual offset, unverified until read live) -> AutoBattleWrapperReadOnly { State (AutoBattleState: Started = running; Finished,
+EndedOnCurrentBattle, StoppedMultiBattle, EndedAfterStoppedBattle = results waiting), _report (StageId, FirstStageId, BattleCount,
+VictoryBattlesCount, IsAutoClimb), BattleData.BackgroundBattleStats (LastStageId, FirstStageId, CompletedBattles, WonBattles, IsAutoClimb) }.
+The client keeps no end time or run total there. The engine reads it at every turn start: finished -> its stage list is opened (campaign
+chapter, dungeon, Doom Tower) and bg-result pressed (or the status window's ResultButton); running -> only battle areas are held (3 min, re-read).
+Never pressed: the window's Stop / End current buttons.

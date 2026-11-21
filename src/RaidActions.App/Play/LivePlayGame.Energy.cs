@@ -134,6 +134,9 @@ public sealed partial class LivePlayGame : IEnergyGame
                 return new BattleOutcome(BattleResult.NotStarted, $"the row's farmer {string.Join(", ", farmersGone.Select(Who))} is not available");
             }
             var team = planned.Except(gone).ToList();
+            // A slot freed by a left-out champion is filled again (2026-11-21: Thenasil not pickable at Arcane Keep 13, the team went in with 4 of 5).
+            if (!run.Target.Food && gone.Count > 0)
+                team = TopUpTeam((await Account(ct)).Data, team, EnergyPlaces.Slots(run.Target.Area), gone, "energy");
             // A champion already in the team stays until it is maxed, food or not (Ehsan 2026-11-06: "you keep removing existing champions from campaign
             // heroes even if not maxed"; "I am trying to level up an epic and you remove it"): the planned food only fills the slots that are empty or hold
             // a maxed champion. The row's own team (the farmers chosen in the settings, Kael and Pelops) always plays. Every Campaign row, the 3-star sweep too.

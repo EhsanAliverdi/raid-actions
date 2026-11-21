@@ -1107,6 +1107,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         async Task AnswerAsync()
         {
         var tutorialFollowed = false;
+        var bgClosed = false;
         var answered = System.Diagnostics.Stopwatch.StartNew();
 
         var until = DateTime.UtcNow + (within ?? TimeSpan.FromSeconds(8));
@@ -1116,6 +1117,16 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             var s2 = await ReadState(ct);
             PlayScan? cache = null;
             if (expect(s2, () => cache ??= ReadSync().Play)) { _lastAnswerMs = answered.ElapsedMilliseconds; return; }
+            // The game's background-battle status window popping over the screen the click opened (2026-11-21: every Tavern open while a background
+            // run went on, KaelStormVex): closed once, then the click's screen is looked for again. A battle's Start keeps its own handling.
+            if (!bgClosed && target.Kind is not ("team-start" or "battle-start") && Top(s2) is { } bgTop && bgTop.StartsWith("BackgroundBattleStatus", StringComparison.Ordinal))
+            {
+                bgClosed = true;
+                log($"autoplay: the background-battle window came up over {target.Name}: closed");
+                await Back(bgTop, ct);
+                until = DateTime.UtcNow + (within ?? TimeSpan.FromSeconds(8));
+                continue;
+            }
             // A tutorial step, level-up or intro the click brought (a new account, 2026-11-03): answered, then the click's screen is waited for again.
             if (target.Kind is not ("wizard-next" or "wizard-arrow") && (Top(s2) == "WizardView" || TapAway(Top(s2))))
             {

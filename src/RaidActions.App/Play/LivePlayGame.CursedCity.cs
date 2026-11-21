@@ -588,6 +588,11 @@ public sealed partial class LivePlayGame : ICursedCityGame
         Func<int, IReadOnlyList<TeamPickRead>, IReadOnlyCollection<int>, int?>? standIn = null, int? leader = null)
     {
         var team = planned.ToList();
+        // Every team set is logged with its size; one under the screen's slots is a warning (2026-11-21: 4- and 2-champion teams played).
+        var slotCount = (await Read(ct)).Play.TeamSlots ?? 0;
+        log($"autoplay: team set: {team.Count}{(slotCount > 0 ? $" of {slotCount} slots" : "")}: {string.Join(", ", team.Select(i => $"#{i}"))}");
+        if (slotCount > 0 && team.Count < slotCount)
+            log($"autoplay: WARNING team of {team.Count} of {slotCount} slots: {string.Join(", ", team.Select(Who))}");
         // The leader goes in first (a pick takes the first free slot): with any other champion in a slot before him, every slot is emptied once.
         if (leader is { } lead)
         {

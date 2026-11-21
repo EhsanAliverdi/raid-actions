@@ -61,6 +61,9 @@ public sealed class FakeEnergyGame(Func<DateTime> now) : IEnergyGame
         }
     }
 
+    /// <summary>When set, every Start does nothing with this text.</summary>
+    public string? NotStartedText { get; set; }
+
     public Task<EnergyAccount> ReadAccountAsync(CancellationToken ct)
     {
         Regen();
@@ -91,6 +94,7 @@ public sealed class FakeEnergyGame(Func<DateTime> now) : IEnergyGame
             if (Energy < cost) throw new PlayStopException($"not enough energy ({Energy} for {cost}): the game would offer a refill");
             Energy -= cost;
         }
+        if (NotStartedText is { } nothing) { Calls.Add("start did nothing"); return Task.FromResult(new BattleOutcome(BattleResult.NotStarted, nothing)); }
         Calls.Add($"run {run.Difficulty} {run.Number}{(run.Target.SuperRaid ? " super" : "")}{(run.Team is { } team ? " team " + string.Join(",", team) : "")}");
         if (run.Target.Area == "Story") Drops += DropsPerRun;
         if (Champions is not null && run.Team is { } members)

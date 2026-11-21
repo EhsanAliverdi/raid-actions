@@ -276,6 +276,28 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         return TeamTries.Pick(BotTeams.Tries(d0, gd0, extractorRoot, contentArea ?? BotTeams.ContentArea(area), size), tried);
     }
 
+    /// <summary>The team list's pick state (SelectableHeroState) in words, for the log.</summary>
+    public static string HeroStateName(int state) => state switch
+    {
+        2 => "state 2: disabled, not allowed on this stage (a stage condition)",
+        3 => "state 3: locked",
+        99 => "state 99: the screen will not take it",
+        _ => $"state {state}",
+    };
+
+    /// <summary>A pick shorter than the slots topped up with the strongest others, geared first, then levelled, one of each type (none refused, none unpickable).</summary>
+    private List<int> TopUpTeam(RaidExtractor.SavedExport data, List<int> pick, int size, IReadOnlyCollection<int> refusedNow, string area)
+    {
+        if (pick.Count >= size) return pick;
+        var types = pick.Select(id => data.Champions.FirstOrDefault(c => c.Id == id)?.BaseTypeId).ToHashSet();
+        var more = data.Champions.Where(c => !pick.Contains(c.Id) && !refusedNow.Contains(c.Id) && !_unpickable.Contains(c.Id) && !_notPickable.Contains(c.Id) && !c.InBathhouse
+                && !types.Contains(c.BaseTypeId) && (c.Artifacts.Count > 0 || c.Level > 1 || c.Rank > 1))
+            .OrderByDescending(c => c.Artifacts.Count > 0).ThenByDescending(RaidExtractor.Autoplay.ArenaAffinityTeam.Strength)
+            .DistinctBy(c => c.BaseTypeId).Take(size - pick.Count).Select(c => c.Id).ToList();
+        if (more.Count > 0) log($"autoplay: {area}: the pick has {pick.Count} of {size}: {more.Count} more added");
+        return [.. pick, .. more];
+    }
+
     /// <summary>A team screen open: what it shows noted, and the area's default set when the page says so. False: the game refused a champion.</summary>
     /// <param name="key">The team's own key on the page (Ehsan 2026-11-13: Doom Tower's floors per difficulty, "doom-tower:Hard:floors"); its choice
     /// first, else the area's. The team shown is noted under both.</param>
@@ -311,10 +333,47 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                 await Back(teamView, ct);
                 return false;
             }
-            _trying = (tryKey, choice);
-            log($"autoplay: STEP {area} {stage}: the bot's team {string.Join(", ", choice.Select(i => $"#{i}"))} ({tried.Count(t => !t.Won)} lost here so far)");
-            if (choice.ToHashSet().SetEquals(p0.TeamIds ?? [])) return true;
-            return await SetRunTeam(choice, teamView, ct);
+            // A team the game refuses (a champion not allowed on the floor, locked, or not takeable: 2026-11-21, Doom Tower floor 1 held the climb with
+            // "the team was refused"): the refused champions are left out, the strongest team without them is built and tried, up to five times; every
+            // free slot filled. Why each refusal is logged.
+            var refusedHere = new HashSet<int>();
+            for (var attempt = 0; ; attempt++)
+            {
+                choice = TopUpTeam(d0, choice, size, refusedHere, area);
+                _trying = (tryKey, choice);
+                log($"autoplay: STEP {area} {stage}: the bot's team {string.Join(", ", choice.Select(i => $"#{i}"))} ({tried.Count(t => !t.Won)} lost here so far)");
+                if (choice.ToHashSet().SetEquals(p0.TeamIds ?? []) && choice.Count >= size) return true;
+                try
+                {
+                    await SetTeam(choice, ct, teamView, true, null, choice[0]);
+                    return true;
+                }
+                catch (LockedHeroException e) when (attempt < 4)
+                {
+                    refusedHere.Add(e.HeroId);
+                    foreach (var (id, _) in e.Shown) refusedHere.Add(id);
+                    log($"autoplay: {area} {stage}: team refused: {Who(e.HeroId)} cannot be picked here ({HeroStateName(e.State)}); not takeable now: {string.Join(", ", refusedHere.Select(Who))}; trying another team");
+                    var left = d0 with { Champions = [.. d0.Champions.Where(c => !refusedHere.Contains(c.Id))] };
+                    if (TeamTries.Pick(BotTeams.Tries(left, gd0, extractorRoot, contentArea, size), tried.Where(t => !t.Ids.Intersect(refusedHere).Any()).ToList()) is not { } another)
+                    {
+                        log($"autoplay: {area} {stage}: no other team without the refused champions");
+                        await Back(teamView, ct);
+                        return false;
+                    }
+                    choice = another;
+                    p0 = (await Read(ct)).Play;
+                }
+                catch (LockedHeroException e)
+                {
+                    log($"autoplay: {area} {stage}: team refused again ({Who(e.HeroId)}: {HeroStateName(e.State)}); giving up for this turn");
+                    await Back(teamView, ct);
+                    return false;
+                }
+                catch (Exception e) when (e is not PlayStopException and not OperationCanceledException)
+                {
+                    throw new PlayStopException($"The team could not be set: {e.Message}. Screen dump: {DumpScreen("team not set")}");
+                }
+            }
         }
         var (_, _, play) = await Read(ct);
         var shown = play.TeamIds ?? [];
@@ -329,17 +388,7 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
         {
             // A pick shorter than the screen (2026-11-17, Smasher8465's Tag Team Arena: the fight's needs gave 2 of 12, and Start did nothing): topped up with
             // the strongest others, geared first, then levelled, one of each type; again after each pick without a refused champion.
-            List<int> TopUp(List<int> pick, IReadOnlyCollection<int> refusedNow)
-            {
-                if (pick.Count >= pickSize) return pick;
-                var types = pick.Select(id => data.Champions.FirstOrDefault(c => c.Id == id)?.BaseTypeId).ToHashSet();
-                var more = data.Champions.Where(c => !pick.Contains(c.Id) && !refusedNow.Contains(c.Id) && !_unpickable.Contains(c.Id) && !c.InBathhouse
-                        && !types.Contains(c.BaseTypeId) && (c.Artifacts.Count > 0 || c.Level > 1 || c.Rank > 1))
-                    .OrderByDescending(c => c.Artifacts.Count > 0).ThenByDescending(RaidExtractor.Autoplay.ArenaAffinityTeam.Strength)
-                    .DistinctBy(c => c.BaseTypeId).Take(pickSize - pick.Count).Select(c => c.Id).ToList();
-                if (more.Count > 0) log($"autoplay: {area}: the pick has {pick.Count} of {pickSize}: {more.Count} more added");
-                return [.. pick, .. more];
-            }
+            List<int> TopUp(List<int> pick, IReadOnlyCollection<int> refusedNow) => TopUpTeam(data, pick, pickSize, refusedNow, area);
             best = TopUp(best, []);
             // A champion this screen will not take (2026-11-13 23:56, BlackLord65's Hydra: Dorothy, used there already, and the whole pick refused): left out
             // and the bot picks again without it, up to five times.
@@ -1249,6 +1298,20 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
     private static string Signature(UiState s, List<UiTarget> targets) =>
         string.Join("|", s.Active.Where(v => v.Visible).Select(v => v.Name)) + "#"
         + string.Join("|", targets.Select(t => $"{t.Kind}:{t.Name}:{t.Rect}:{t.NotClickable is null}"));
+
+    /// <summary>
+    /// The game's background battle window or its result list on the screen (BackgroundBattleStatusOverlay, BackgroundBattleRewardListOverlay, ...;
+    /// 2026-11-21 BlackLord65: a background run blocked every Start for 1.5 h and "Start did nothing" was read as no energy); null when none shows.
+    /// </summary>
+    public static string? BackgroundBattleView(UiState s) =>
+        s.Active.Select(v => v.Name).FirstOrDefault(n => n.StartsWith("BackgroundBattle", StringComparison.Ordinal));
+
+    /// <summary>A background battle on the screen: the turn ends with its name (the engine holds the area, never presses Start meanwhile).</summary>
+    private async Task ThrowIfBackgroundBattle(string where, CancellationToken ct)
+    {
+        if (BackgroundBattleView(await ReadState(ct)) is { } bg)
+            throw new PlayStopException($"{bg}: the game has a background battle (running, or its results waiting) over {where}: Start does nothing until it is over");
+    }
 
     private static bool Has(UiState s, string view) => s.Active.Any(v => v.Name == view);
 

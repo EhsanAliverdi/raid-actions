@@ -446,6 +446,7 @@ public sealed partial class LivePlayGame : IFactionWarsGame
         }
         catch (PlayStopException)
         {
+            await ThrowIfBackgroundBattle(crypt.Name, ct);
             if (Top(await ReadState(ct)) != PlayTargets.FwTeamView) throw;
             // Start pressed and the team screen stays (2026-10-30: stage 9 costs 2 keys, 1 left; the game does nothing): not enough keys for
             // this stage. Left; the crypt is done for today.

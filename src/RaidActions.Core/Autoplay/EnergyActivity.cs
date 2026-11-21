@@ -306,7 +306,9 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         // A quest row that keeps losing stops taking the energy: the list goes on.
         // Nor one whose dungeon was seen closed today (2026-11-16: Minotaur's Labyrinth with every champion at the day's scrolls, visited each turn).
         return [.. rows.Where(r => !(r.Area == "Dungeon" && _closedToday.Contains(r.Region)) && _questRowLosses.GetValueOrDefault(r.Id) < MaxQuestRowLosses && _missionWins.GetValueOrDefault(r.Id).Stale < MaxQuestRowLosses
-            && ctx.Held($"{AreaId}:mission:{r.Id}") is null)];
+            && ctx.Held($"{AreaId}:mission:{r.Id}") is null
+            // The row's own hold (a start that did nothing, a loss) stands for quest rows too (2026-11-21: retried 7 s after a 20-minute hold).
+            && ctx.Held(PushKey(r)) is null)];
     }
 
     private readonly Dictionary<string, string> _gearToldBook = [];

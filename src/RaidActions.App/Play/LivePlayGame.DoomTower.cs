@@ -387,6 +387,7 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         {
             // Start with no key left does nothing (2026-11-12 05:57-07:38, BlackLord65: the count read 1, Start showed its key, four tries, each an error
             // that paused the tower): not an error; the tower waits for its keys.
+            await ThrowIfBackgroundBattle("the Doom Tower", ct);
             await Back(teamView, ct);
             return new BattleOutcome(BattleResult.NotStarted, "Start did nothing (no key left?)");
         }

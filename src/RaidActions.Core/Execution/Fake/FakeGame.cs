@@ -46,6 +46,9 @@ public sealed class FakeGame : IGameDriver, IAccountSource
     public IReadOnlyList<UiAction> Performed { get { lock (_lock) return _performed.ToList(); } }
     public int Reads { get; private set; }
 
+    /// <summary>Steps whose Equip the game refuses (an equip warning): the piece is not moved and the action says skipped.</summary>
+    public HashSet<int> RefusedEquips { get; } = [];
+
     public async Task<DriverResult> PerformAsync(UiAction a, CancellationToken ct)
     {
         BeforeAction?.Invoke(a);
@@ -73,6 +76,8 @@ public sealed class FakeGame : IGameDriver, IAccountSource
                     if (_openChampion != a.ChampionId || _selected != a.ArtifactId)
                         return DriverResult.Failure($"Selected: champion #{_openChampion}, piece #{_selected}; expected #{a.ChampionId}, #{a.ArtifactId}.");
                     return DriverResult.Success($"fake: champion #{a.ChampionId} and piece #{a.ArtifactId} selected");
+                case ActionKind.Equip when RefusedEquips.Contains(a.Step):
+                    return DriverResult.SkippedStep("fake: the game refused the piece (equip warning)");
                 case ActionKind.Equip:
                     Equip(a.ArtifactId!.Value, MisEquip is { } m && m.Step == a.Step ? m.WrongChampion : a.ChampionId!.Value);
                     break;

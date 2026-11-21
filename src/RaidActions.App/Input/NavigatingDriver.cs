@@ -251,7 +251,7 @@ public sealed partial class NavigatingDriver(LiveGame game, UnityUi ui, Plan? pl
     {
         log($"step {a.Step}: the game refused #{step.ArtifactId} for {step.ToName} (ArtifactEquipWarningOverlay); closing the warning and skipping this piece");
         await Click(a, "equip-warning-close", null, null, (s2, _) => s2.Top?.Name != UiState.EquipWarningView, "the equip warning closes", ct);
-        return DriverResult.Success($"SKIPPED: the game refused #{step.ArtifactId} on {step.ToName} (ArtifactEquipWarningOverlay); warning closed, not equipped");
+        return DriverResult.SkippedStep($"SKIPPED: the game refused #{step.ArtifactId} on {step.ToName} (ArtifactEquipWarningOverlay); warning closed, not equipped");
     }
 
     public static bool AtVillage(UiState s) => s.Top?.Name is "Village" or "VillageHUD";

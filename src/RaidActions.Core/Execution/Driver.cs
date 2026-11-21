@@ -3,9 +3,12 @@ using RaidExtractor;
 namespace RaidActions.Execution;
 
 /// <summary>The outcome of one action. A failed action stops the run; it is never retried.</summary>
-public sealed record DriverResult(bool Ok, string? Message = null)
+public sealed record DriverResult(bool Ok, string? Message = null, bool Skipped = false)
 {
     public static DriverResult Success(string? message = null) => new(true, message);
+
+    /// <summary>The action was refused by the game and left undone (an equip warning): the run goes on, and the step does not count as done (the piece stays where it was).</summary>
+    public static DriverResult SkippedStep(string message) => new(true, message, true);
     public static DriverResult Failure(string message) => new(false, message);
 }
 

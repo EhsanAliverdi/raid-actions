@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using RaidExtractor.Autoplay;
 
 namespace RaidActions.Autoplay;
@@ -81,6 +82,13 @@ public static class SimCompare
     /// A battle event arrived: the newest row of its area without a real outcome and no later than the event (within <see cref="JoinWindow"/>) gets it. A row's team is matched against
     /// the event text when the text names champions (Cursed City writes "team A, B"): a row whose team names do not appear is left for its own battle. Returns true when a row was filled.
     /// </summary>
+    /// <summary>
+    /// The row's area against the battle's: the same name, or an Energy push (rows "energy-push", battles "energy"; 2026-11-23: 64 push forecasts never got
+    /// their result) when the battle came from a push row ("[row push-keep-void]", "[row brutal-push]"), not a farm row whose battle would answer for it.
+    /// </summary>
+    private static bool SameArea(string rowArea, AutoplayEvent e) =>
+        rowArea == e.Area || rowArea == "energy-push" && e.Area == "energy" && Regex.IsMatch(e.Text, @"\[row [^\]]*push[^\]]*\]");
+
     public static bool ResolveFromEvent(string outDir, AutoplayEvent e, IReadOnlyDictionary<string, string>? teamNames = null)
     {
         if (e.Kind != "battle" || ResultOf(e.Text) is not { } result) return false;
@@ -94,7 +102,7 @@ public static class SimCompare
                 for (var i = lines.Length - 1; i >= 1; i--)
                 {
                     var f = Fields(lines[i]);
-                    if (f.Count < 10 || f[2] != e.Area || f[9].Length > 0) continue;
+                    if (f.Count < 10 || !SameArea(f[2], e) || f[9].Length > 0) continue;
                     if (!DateTime.TryParse(f[0], CultureInfo.InvariantCulture, DateTimeStyles.RoundtripKind, out var at) || at > e.Utc || e.Utc - at > JoinWindow) continue;
                     if (teamNames is not null && e.Text.Contains("team ", StringComparison.Ordinal))
                     {

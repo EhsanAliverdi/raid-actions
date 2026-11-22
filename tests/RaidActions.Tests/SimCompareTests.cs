@@ -37,6 +37,20 @@ public class SimCompareTests : IDisposable
     }
 
     [Fact]
+    public void An_energy_push_row_gets_the_result_of_a_push_rows_battle_not_of_a_farm_battle()
+    {
+        var t = new DateTime(2026, 11, 23, 10, 0, 0, DateTimeKind.Utc);
+        SimCompare.Append(_dir, SimCompare.Row(t, 1, "energy-push", 7041012, [1, 2], 0.9, 0.0, 50, null));
+        // A food farm battle right after: not the push's result.
+        Assert.False(SimCompare.ResolveFromEvent(_dir, new AutoplayEvent(t.AddMinutes(2), "energy", "battle", "Victory Campaign 12: Brimstone Path Hard 12-3: 6 Energy [row farm-12-3]. 60 s")));
+        // The push row's battle: its result.
+        Assert.True(SimCompare.ResolveFromEvent(_dir, new AutoplayEvent(t.AddMinutes(4), "energy", "battle", "Defeat Void Keep Normal stage 12: 12 Energy [row push-keep-void]. 80 s")));
+        Assert.Equal("loss", SimCompare.Fields(File.ReadAllLines(SimCompare.PathIn(_dir))[1])[9]);
+        SimCompare.Append(_dir, SimCompare.Row(t.AddMinutes(10), 1, "energy-push", 1123010, [1], 0.8, 0.9, 50, null));
+        Assert.True(SimCompare.ResolveFromEvent(_dir, new AutoplayEvent(t.AddMinutes(12), "energy", "battle", "Victory Campaign 10: Brutal 10-2: 6 Energy [row brutal-push]. 70 s")));
+    }
+
+    [Fact]
     public void A_battle_event_fills_the_newest_open_row_of_its_area_only()
     {
         var t = new DateTime(2026, 11, 21, 10, 0, 0, DateTimeKind.Utc);

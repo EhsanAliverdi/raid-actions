@@ -133,6 +133,12 @@ public sealed class LiveGame : IDisposable
         lock (_lock) return new BackgroundBattleReader(new CoreObjects(_session, _offsets)).Read();
     }
 
+    /// <summary>The account's stored Doom Tower auto-climb switch (true on, null unknown); throws when the object graph is not what the offsets describe.</summary>
+    public bool? ReadAutoClimbMode()
+    {
+        lock (_lock) return new AutoClimbReader(new CoreObjects(_session, _offsets)).Read();
+    }
+
     /// <summary>The UI state, read until two consecutive reads agree (the game changes its UI while we read).</summary>
     public (UiState? State, string? Problem) ReadUi()
     {

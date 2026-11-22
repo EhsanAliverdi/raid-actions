@@ -382,6 +382,19 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         // 2026-11-22: the tower's Start launched the 11.95 background AUTO-CLIMB twice (04:07 and 08:10, KaelStormVex). The team screen's tree
         // from before 11.95 is all we have: save it once per run, to find the auto-climb control and keep it off.
         if (!_towerTeamDumped) { _towerTeamDumped = true; log($"autoplay: the tower team screen before Start. Screen dump: {DumpScreen("doom tower team screen (auto-climb check)")}"); }
+        // Ehsan: never start an auto-climb. The checkbox above Start is read from the account (AutoClimbMode) and turned off by one tap if on;
+        // unknown or still on: Start is not pressed.
+        if (teamView == PlayTargets.DoomTowerTeamView)
+        {
+            var guard = await AutoClimbGuard.EnsureOffAsync(game.ReadAutoClimbMode,
+                () => Click("autoclimb-checkbox", t => t.View == teamView, (_, _) => true, "the checkbox answers", ct),
+                ms => Pause(ms, ct), log);
+            if (!guard.CanStart)
+            {
+                await Back(teamView, ct);
+                return new BattleOutcome(BattleResult.NotStarted, guard.Message);
+            }
+        }
         try
         {
             await Click("team-start", t => t.View == teamView, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView,

@@ -317,8 +317,11 @@ public static partial class PlayTargets
         "mode-dt", "dt-stage", "dt-final-boss", "live-badge", "pass-card", "menu-open", "menu-item", "reward-claim", "reward-tab", "event-card", "event-claimall", "event-close", "challenge-confirm", "wizard-next", "wizard-arrow", "mastery-tab", "mastery-open", "mastery-node", "mastery-learn", "mastery-getmax", "mastery-buy", "mastery-unlock", "village-academy", "pit-slot", "pit-hero", "pit-confirm", "dt-difficulty", "dt-difficulty-item", "battle-pause", "battle-giveup", "battle-giveup-yes", "village-market", "village-gems", "village-shop", "shop-free", "shop-gift", "shop-claim", "shop-section", "shop-subtab", "village-pass", "village-challenges", "village-clan", "clan-tab", "clan-checkin", "pass-tab", "challenge-tab", "pass-claim", "market-item", "market-get", "tavern-level-tab", "tavern-hero", "tavern-deselect", "tavern-levelup",
         "village-referral", "referral-getlink", "village-cvc", "cvc-tab", "cvc-claim", "cvc-reward", "cvc-status", "loyalty-claim",
         "village-gifts", "gift-prize", "village-quests", "quest-tab", "quest-claim-all", "quest-claim", "village-missions", "mission-item",
-        "arena-tag", "tag-opponent", "tag-refresh", "arena-defence-slot", "defence-save", "noaura-confirm", "tag-tab", "pit-levelup", "brew-open", "brew-grade", "brew-item", "brew-hero", "brew-upgrade", "brew-close", "ascend-tab", "ascend-max", "ascend-go", "bg-result", "bg-running",
+        "arena-tag", "tag-opponent", "tag-refresh", "arena-defence-slot", "defence-save", "noaura-confirm", "tag-tab", "pit-levelup", "brew-open", "brew-grade", "brew-item", "brew-hero", "brew-upgrade", "brew-close", "ascend-tab", "ascend-max", "ascend-go", "bg-result", "bg-running", "autoclimb-checkbox",
     };
+
+    /// <summary>The Doom Tower's team screen (game 11.95).</summary>
+    public const string DoomTowerTeamView = "DoomTowerHeroesSelectionDialog";
 
     [GeneratedRegex(@"Vault|Storage", RegexOptions.IgnoreCase)] private static partial Regex VaultName();
     [GeneratedRegex(@"SuperRaid|DoubleRun|MultiRun", RegexOptions.IgnoreCase)] private static partial Regex SuperRaidName();
@@ -1370,6 +1373,16 @@ public static partial class PlayTargets
             if (start.Count >= 1)
                 targets.Add(Make("team-start", "team selection: Start", start[0], start.Count == 1 ? start[0] : null,
                     start.Count == 1 ? null : $"{start.Count} elements named Default_h"));
+        }
+
+        // The tower team screen's auto-climb checkbox (11.95: the small Checkbox_h above Start; on = Start launches a background auto-climb, 2026-11-22).
+        // Offered only to turn it OFF (LivePlayGame checks the stored state first, never taps blind). Names that START a climb stay forbidden above.
+        if (t.View == DoomTowerTeamView)
+        {
+            var boxes = nodes.Where(x => x.Name == "Checkbox_h" && x.Interactable is not null && x.ActiveInHierarchy && x.Screen is not null).ToList();
+            if (boxes.Count >= 1)
+                targets.Add(Make("autoclimb-checkbox", "tower team screen: auto-climb checkbox (only to turn it off)", boxes[0], boxes.Count == 1 ? boxes[0] : null,
+                    boxes.Count == 1 ? null : $"{boxes.Count} elements named Checkbox_h"));
         }
 
         // The champion screen's Tavern button: a "Button_h" whose path names the Tavern (when its context is not bound on the node).

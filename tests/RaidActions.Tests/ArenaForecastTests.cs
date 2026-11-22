@@ -14,21 +14,23 @@ public class ArenaForecastTests
     private static ArenaOpponentInfo Opp(long id, int power) => new(id, $"P{id}", power, OpponentStatus.None, true);
 
     [Fact]
-    public void Highest_forecast_first_and_under_half_skipped()
+    public void Highest_forecast_first_and_under_ninety_skipped()
     {
         var list = new[] { Opp(1, 10_000), Opp(2, 20_000), Opp(3, 30_000), Opp(4, 40_000) };
-        var rates = new Dictionary<long, double> { [1] = 0.6, [2] = 0.9, [3] = 0.3, [4] = 0.9 };
+        var rates = new Dictionary<long, double> { [1] = 0.93, [2] = 0.99, [3] = 0.8, [4] = 0.99 };
         var r = ArenaForecastPick.Choose(list, o => new ArenaForecast(rates[o.UserId], 30));
         Assert.Equal([2L, 4L, 1L], r.Order.Select(o => o.UserId));
         Assert.Equal([3L], r.Skipped.Select(o => o.UserId));
-        Assert.Contains("forecast P2 (20,000): 90% over 30 runs", r.Lines[1].Replace('\u00a0', ' '));
+        Assert.Contains("forecast P2 (20,000): 99% over 30 runs, build: none", r.Lines[1].Replace('\u00a0', ' '));
     }
 
     [Fact]
-    public void Exactly_half_is_fought()
+    public void Exactly_the_threshold_is_fought_and_just_under_is_not()
     {
-        var r = ArenaForecastPick.Choose([Opp(1, 1)], _ => new ArenaForecast(0.5, 30));
+        var r = ArenaForecastPick.Choose([Opp(1, 1)], _ => new ArenaForecast(ArenaForecastSwitch.MinRate, 30));
         Assert.Single(r.Order);
+        Assert.Equal(0.9, ArenaForecastSwitch.MinRate);
+        Assert.Empty(ArenaForecastPick.Choose([Opp(1, 1)], _ => new ArenaForecast(0.89, 30)).Order);
     }
 
     [Fact]
@@ -73,7 +75,7 @@ public class ArenaForecastTests
         ArenaForecastSwitch.Enabled = true;
         try
         {
-            var (arena, game, host, ctx) = Setup(t => new ArenaForecast(t == 1003 ? 0.95 : 0.7, 30), cap: 100_000);
+            var (arena, game, host, ctx) = Setup(t => new ArenaForecast(t == 1003 ? 0.99 : 0.95, 30), cap: 100_000);
             await arena.RunTurnAsync(ctx, CancellationToken.None);
             var fought = game.Calls.Single(c => c.StartsWith("fight ", StringComparison.Ordinal));
             var id = long.Parse(fought[6..]);
@@ -91,7 +93,7 @@ public class ArenaForecastTests
         ArenaForecastSwitch.Enabled = true;
         try
         {
-            var (arena, game, host, ctx) = Setup(_ => new ArenaForecast(0.1, 30));
+            var (arena, game, host, ctx) = Setup(_ => new ArenaForecast(0.1, 30, null, "real"));
             await arena.RunTurnAsync(ctx, CancellationToken.None);
             Assert.DoesNotContain(game.Calls, c => c.StartsWith("fight ", StringComparison.Ordinal));
             Assert.Contains(host.Events, e => e.Kind == "forecast" && e.Text.Contains("skipped", StringComparison.Ordinal));
@@ -128,10 +130,63 @@ public class ArenaForecasterSmokeTests
         var gd = RaidExtractor.GameDataLookup.Load(output);
         if (data is null || !gd.IsLoaded) return;
         var team = data.Champions.OrderByDescending(c => c.Power ?? 0).Take(4).Select(c => c.Id).ToList();
-        var weak = ArenaForecaster.WinRate(data, gd, output, team, [new(1, 10430, 1, 1)], 5);
-        var strong = ArenaForecaster.WinRate(data, gd, output, team, [new(1, 10430, 60, 6), new(2, 10430, 60, 6), new(3, 10430, 60, 6), new(4, 10430, 60, 6)], 5);
+        var weak = ArenaForecaster.WinRate(data, gd, output, team, new([new(1, 10430, 1, 1)]), 5);
+        var strong = ArenaForecaster.WinRate(data, gd, output, team, new([new(1, 10430, 60, 6), new(2, 10430, 60, 6), new(3, 10430, 60, 6), new(4, 10430, 60, 6)]), 5);
         Assert.NotNull(weak.Rate);
         Assert.NotNull(strong.Rate);
         Assert.True(weak.Rate >= strong.Rate, $"weak {weak.Rate}, strong {strong.Rate}");
+    }
+}
+
+/// <summary>The enemy built from a HeroSlotSetup with gear (percent / flat bonuses, skills, leader) and the three build modes.</summary>
+public class ArenaEnemyBuildTests
+{
+    private static ArenaEnemyBuild Gear()
+    {
+        var pct = new double[11]; var flat = new double[11];
+        pct[1] = 0.25; pct[3] = 0.40; flat[1] = 8000; flat[4] = 30;   // HP +25% and +8000, DEF +40%, SPD +30
+        return new ArenaEnemyBuild(pct, flat, [new SkillLevel(104301, 4)], [new SkillLevel(100005, 1)], [500123], true);
+    }
+
+    [Fact]
+    public void Mode_is_real_with_gear_power_scaled_with_power_and_none_without()
+    {
+        var geared = new ArenaEnemyTeam([new(1, 10430, 50, 5, null, Gear())], 0, 90_000);
+        var bare = new ArenaEnemyTeam([new(1, 10430, 50, 5)], 0, 90_000);
+        var noPower = new ArenaEnemyTeam([new(1, 10430, 50, 5)]);
+        Assert.Equal("real", ArenaForecaster.Mode(geared, canScale: true));
+        Assert.Equal("power-scaled", ArenaForecaster.Mode(bare, canScale: true));
+        Assert.Equal("none", ArenaForecaster.Mode(bare, canScale: false));
+        Assert.Equal("none", ArenaForecaster.Mode(noPower, canScale: true));
+        // One hero without gear in a geared team: not "real".
+        Assert.Equal("power-scaled", ArenaForecaster.Mode(new ArenaEnemyTeam([new(1, 10430, 50, 5, null, Gear()), new(2, 10431, 50, 5)], 0, 90_000), true));
+    }
+
+    [Fact]
+    public void A_slot_with_gear_carries_the_summed_bonuses_skills_and_leader()
+    {
+        var gs = RaidExtractor.Core.GameBattle.GameSim.Data;
+        var gd = RaidExtractor.GameDataLookup.Load(Path.Combine(Environment.GetEnvironmentVariable("RaidExtractorRoot") ?? @"F:\MyGithub\raid-extractor", "output"));
+        var slot = ArenaForecaster.Slot(gs, gd, new ArenaEnemyHero(2, 10430, 50, 5, null, Gear()), 0, 1, 1);
+        Assert.Equal(1, slot.TeamLeaderSlot);
+        Assert.True(slot.HasModifiers);
+        Assert.Equal(0.25, slot.SlotPercent![RaidExtractor.Core.GameBattle.StatKind.Health].ToDouble(), 6);
+        Assert.Equal(0.40, slot.SlotPercent![RaidExtractor.Core.GameBattle.StatKind.Defence].ToDouble(), 6);
+        Assert.Equal(8000, slot.SlotFlat![RaidExtractor.Core.GameBattle.StatKind.Health].ToDouble(), 3);
+        Assert.Equal(30, slot.SlotFlat![RaidExtractor.Core.GameBattle.StatKind.Speed].ToDouble(), 3);
+        Assert.Contains((104301, 4), slot.Skills);
+        Assert.Contains((100005, 1), slot.Skills);
+        Assert.Contains((500123, 1), slot.Skills);
+    }
+
+    [Fact]
+    public void Power_scaling_raises_only_hp_attack_and_defence()
+    {
+        var gs = RaidExtractor.Core.GameBattle.GameSim.Data;
+        var gd = RaidExtractor.GameDataLookup.Load(Path.Combine(Environment.GetEnvironmentVariable("RaidExtractorRoot") ?? @"F:\MyGithub\raid-extractor", "output"));
+        var slot = ArenaForecaster.Slot(gs, gd, new ArenaEnemyHero(1, 10430, 50, 5), 0, null, 2.5);
+        Assert.Equal(1.5, slot.SlotPercent![RaidExtractor.Core.GameBattle.StatKind.Attack].ToDouble(), 6);
+        Assert.Equal(0, slot.SlotPercent![RaidExtractor.Core.GameBattle.StatKind.Speed].ToDouble(), 6);
+        Assert.Equal(0, slot.TeamLeaderSlot);
     }
 }

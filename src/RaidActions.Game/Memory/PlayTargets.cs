@@ -6,14 +6,14 @@ namespace RaidActions.Game.Memory;
 /// <param name="Status">ArenaOpponentStatus: 0 not fought, 1 defeated (beaten by us), 2 won (they beat us).</param>
 /// <param name="Team">The opponent's defence heroes (ArenaOpponent.TeamSetup), null when not read. UNVERIFIED live (2026-11-20, from the dump).</param>
 public sealed record ArenaRow(long UserId, string? Name, int Power, int Status, bool Playable, bool Quarantined, string? TeamPowerText, UiTarget? Battle,
-    List<OpponentHero>? Team = null, int? TeamCombatPower = null)
+    List<OpponentHero>? Team = null, int? TeamCombatPower = null, int? LeaderSlot = null)
 {
     /// <summary>"type 123 L60 G5, ..." for the log.</summary>
     public string TeamText => OpponentHero.Describe(Team, TeamCombatPower);
 }
 
 /// <summary>One hero of an opponent's defence (HeroSlotSetup): HeroTypeId, Level, Grade (stars, HeroGrade), DoubleAscendGrade (null none), EmpowerLevel.</summary>
-public sealed record OpponentHero(int Slot, int TypeId, int Level, int Grade, int? DoubleAscend, int Empower)
+public sealed record OpponentHero(int Slot, int TypeId, int Level, int Grade, int? DoubleAscend, int Empower, HeroBuildRead? Build = null)
 {
     public override string ToString() => $"{TypeId} L{Level} G{Grade}" + (DoubleAscend is { } a ? $" A{a}" : "") + (Empower > 0 ? $" E{Empower}" : "");
 
@@ -570,7 +570,7 @@ public static partial class PlayTargets
                         $"user {id}, team power {power:N0} (account {accountPower:N0}), status {status}, {(playable ? "playable" : "not playable")}" + (why is null ? "" : "; " + why), key: id);
                     targets.Add(target);
                     rows ??= [];
-                    rows.Add(new ArenaRow(id, name, power, status, playable, quarantine, teamText, target, oppTeam, teamCp));
+                    rows.Add(new ArenaRow(id, name, power, status, playable, quarantine, teamText, target, oppTeam, teamCp, ReadLeaderSlot(g, o, notes)));
                     break;
                 }
                 case FwRegionItem:
@@ -1913,8 +1913,89 @@ public static partial class PlayTargets
             heroes.Add(new OpponentHero(Try(() => g.Int(h, HeroSlot, "Slot"), -1, notes, "HeroSlotSetup.Slot"), Try(() => g.Int(h, HeroSlot, "HeroTypeId"), 0, notes, "HeroSlotSetup.HeroTypeId"),
                 Try(() => g.Int(h, HeroSlot, "Level"), 0, notes, "HeroSlotSetup.Level"), Try(() => g.Int(h, HeroSlot, "Grade"), 0, notes, "HeroSlotSetup.Grade"),
                 Try(() => g.NullableInt(h, HeroSlot, "DoubleAscendGrade"), null, notes, "HeroSlotSetup.DoubleAscendGrade"),
-                Try(() => g.Int(h, HeroSlot, "EmpowerLevel"), 0, notes, "HeroSlotSetup.EmpowerLevel")));
-        return (heroes, null); // CombatPower (TeamSetup+0x10, int) has no raw int reader yet; the row text has the power
+                Try(() => g.Int(h, HeroSlot, "EmpowerLevel"), 0, notes, "HeroSlotSetup.EmpowerLevel"), ReadBuild(g, h, notes)));
+        return (heroes, Try(() => (int?)g.IntAt(setup, 0x10), null, notes, "TeamSetup.CombatPower"));
+    }
+
+    /// <summary>TeamSetup.LeaderSlotIndex (0x58; the leader is the slot LeaderSlotIndex + 1) of the opponent's team.</summary>
+    internal static int? ReadLeaderSlot(IGameObjects g, ulong opponent, List<string> notes)
+    {
+        var setup = Try(() => g.Ref(opponent, Opponent, "TeamSetup"), 0UL, notes, "ArenaOpponent.TeamSetup");
+        return setup == 0 ? null : Try(() => (int?)g.IntAt(setup, 0x58), null, notes, "TeamSetup.LeaderSlotIndex");
+    }
+
+    private const int SlotSkillSetups = 0x70, SlotArtifactSetups = 0x78, SlotArtifactSets = 0x80, SlotMasteries = 0x88, SlotAcademy = 0xA0, SlotBlessing = 0xB8, SlotRelic = 0xC0, SlotPower = 0xD0, SlotModifiers = 0x60;
+
+    /// <summary>Adds a BattleStats object (Fixed fields 0x10..0x58 for StatKindId 1..10) into the sums.</summary>
+    private static void AddStats(IGameObjects g, ulong stats, double[] into)
+    {
+        if (stats == 0) return;
+        for (var k = 1; k <= 10; k++) into[k] += g.LongAt(stats, 0x10 + (k - 1) * 8) / 4294967296.0;
+    }
+
+    private static void AddBonus(IGameObjects g, ulong bonus, double[] percent, double[] flat)
+    {
+        if (bonus == 0) return;
+        var kind = g.IntAt(bonus, 0x10);
+        if (kind is < 1 or > 10) return;
+        (((g.IntAt(bonus, 0x20) & 0xFF) != 0) ? flat : percent)[kind] += g.LongAt(bonus, 0x18) / 4294967296.0;
+    }
+
+    private static List<(int Id, int Level)> SkillSetups(IGameObjects g, ulong list) =>
+        list == 0 ? [] : [.. g.RefList(list, 32).Select(s => (g.IntAt(s, 0x10), g.IntAt(s, 0x14)))];
+
+    /// <summary>One HeroSlotSetup's build (dump 11.95.0 raw offsets; see <see cref="HeroBuildRead"/>); null when it could not be read at all.</summary>
+    internal static HeroBuildRead? ReadBuild(IGameObjects g, ulong h, List<string> notes)
+    {
+        try
+        {
+            var percent = new double[11]; var flat = new double[11];
+            var arts = g.RefAt(h, SlotArtifactSetups);
+            var artList = arts == 0 ? [] : g.RefList(arts, 16);
+            foreach (var a in artList) { AddStats(g, g.RefAt(a, 0x38), percent); AddStats(g, g.RefAt(a, 0x40), flat); }
+            // The Percent / Flat arrays above are the BattleStats halves: PercentBonus is a fraction, FlatBonus absolute (BattleStats.UpdateWithBonuses).
+            var extra = new List<(int, int)>();
+            var sets = g.RefAt(h, SlotArtifactSets);
+            var setList = sets == 0 ? [] : g.RefList(sets, 16);
+            foreach (var s in setList)
+            {
+                var sk = g.RefAt(s, 0x10);
+                if (sk != 0) extra.Add((g.IntAt(sk, 0x10), 1));
+                AddBonus(g, g.RefAt(s, 0x18), percent, flat);
+                var many = g.RefAt(s, 0x20);
+                if (many != 0) foreach (var b in g.RefList(many, 16)) AddBonus(g, b, percent, flat);
+            }
+            var relic = g.RefAt(h, SlotRelic);
+            if (relic != 0)
+            {
+                AddStats(g, g.RefAt(relic, 0x28), percent); AddStats(g, g.RefAt(relic, 0x30), flat);
+                var lvl = g.IntAt(relic, 0x10);
+                extra.AddRange(SkillSetups(g, g.RefAt(relic, 0x18)).Select(x => (x.Id, x.Level > 0 ? x.Level : lvl)));
+                extra.AddRange(SkillSetups(g, g.RefAt(relic, 0x20)));
+            }
+            var blessing = g.RefAt(h, SlotBlessing);
+            if (blessing != 0)
+            {
+                AddStats(g, g.RefAt(blessing, 0x28), percent); AddStats(g, g.RefAt(blessing, 0x30), flat);
+                var bs = g.RefAt(blessing, 0x18);
+                if (bs != 0) extra.Add((g.IntAt(bs, 0x10), Math.Max(1, g.IntAt(bs, 0x14))));
+            }
+            var academy = g.RefAt(h, SlotAcademy);
+            if (academy != 0) { AddStats(g, g.RefAt(academy, 0x10), percent); AddStats(g, g.RefAt(academy, 0x18), flat); }
+            var mod = g.RefAt(h, SlotModifiers);
+            if (mod != 0) { AddStats(g, g.RefAt(mod, 0x10), percent); AddStats(g, g.RefAt(mod, 0x18), flat); }
+            var mast = g.RefAt(h, SlotMasteries);
+            var masteries = mast == 0 ? [] : g.IntListAt(mast, 64).ToList();
+            var own = SkillSetups(g, g.RefAt(h, SlotSkillSetups));
+            double? power = null;
+            try { power = g.NullableDoubleAt(h, SlotPower); } catch (Exception e) when (e is KeyNotFoundException or RaidExtractor.ReadCheckException) { notes.Add($"HeroSlotSetup.Power: {e.Message}"); }
+            return new HeroBuildRead(artList.Count, setList.Count, masteries.Count, own.Count, blessing != 0, relic != 0, academy != 0, power, percent, flat, masteries, own, extra);
+        }
+        catch (Exception e) when (e is KeyNotFoundException or RaidExtractor.ReadCheckException or InvalidOperationException or NotSupportedException)
+        {
+            notes.Add($"HeroSlotSetup build: {e.Message}");
+            return null;
+        }
     }
 
     /// <summary>A read that older offsets may lack, or that fails on a stale object: the fallback, with a note (shown by autoplay-explore).</summary>

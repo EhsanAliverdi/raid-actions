@@ -11,7 +11,7 @@ namespace RaidActions.App;
 /// </summary>
 public static class UiCommands
 {
-    public static readonly string[] Names = ["ui-tree", "ui-rects", "overlay"];
+    public static readonly string[] Names = ["ui-tree", "ui-rects", "overlay", "arena-builds"];
 
     public static string NativeLayoutPath => Path.Combine(AppPaths.Config(), "ui-native.json");
 
@@ -78,6 +78,8 @@ public static class UiCommands
                 return Cli.Ok;
             }
 
+            if (command == "arena-builds") return ArenaBuilds(game, ui, w, o);
+
             var (state, stateProblem) = game.ReadUi();
             if (state is null)
             {
@@ -112,6 +114,37 @@ public static class UiCommands
             }
         }
         return Cli.Usage;
+    }
+
+    /// <summary>
+    /// arena-builds (read only): what the open Classic Arena board holds for each opponent's heroes (counts of artifacts, sets, masteries, own skills,
+    /// blessing / relic / academy, power, leader slot, summed stat bonuses). Needs the Classic Arena dialog to be open; nothing is clicked.
+    /// </summary>
+    private static int ArenaBuilds(LiveGame game, UnityUi ui, GameWindowInfo w, TextWriter o)
+    {
+        var (s, problem) = game.ReadUi();
+        if (s is null) { o.WriteLine("UI state unavailable: " + problem); return Cli.Failed; }
+        var dialog = game.Views().Where(v => v.Name == PlayTargets.ArenaDialogView && s.Active.Any(a => a.Visible && a.Name == v.Name)).ToList();
+        if (dialog.Count == 0) { o.WriteLine("The Classic Arena dialog is not open: no opponent objects to read."); return Cli.Failed; }
+        foreach (var (name, view) in dialog)
+        {
+            var tree = ui.Read(view, name, w.Client.Width, w.Client.Height);
+            var scan = PlayTargets.Scan(tree, game.Objects);
+            if (scan.Arena is null || scan.Arena.Rows.Count == 0) { o.WriteLine("No opponent rows read (board loading, or another tab)."); return Cli.Failed; }
+            foreach (var r in scan.Arena.Rows)
+            {
+                o.WriteLine($"{r.Name} ({r.UserId}) power {r.Power:N0}, status {r.Status}, leader slot {r.LeaderSlot?.ToString() ?? "?"}, team cp {r.TeamCombatPower?.ToString("N0") ?? "?"}");
+                foreach (var h in r.Team ?? [])
+                {
+                    o.WriteLine($"  slot {h.Slot} {h}  {(h.Build is { } b ? b.ToString() : "no build read")}");
+                    if (h.Build is { } bb)
+                        o.WriteLine("    bonus% " + string.Join(" ", Enumerable.Range(1, 10).Select(k => bb.Percent[k].ToString("0.###", System.Globalization.CultureInfo.InvariantCulture))) + " | flat " + string.Join(" ", Enumerable.Range(1, 10).Select(k => bb.Flat[k].ToString("0.#", System.Globalization.CultureInfo.InvariantCulture)))
+                            + $" | extra skills [{string.Join(",", bb.ExtraSkills.Select(x => x.Id))}] masteries [{string.Join(",", bb.MasteryIds)}]");
+                }
+            }
+            o.WriteLine("memory notes: " + (scan.Notes.Count == 0 ? "none" : string.Join("; ", scan.Notes.Take(8))));
+        }
+        return Cli.Ok;
     }
 
     /// <summary>Elements a click could target: active in the hierarchy, with a Selectable, on screen.</summary>

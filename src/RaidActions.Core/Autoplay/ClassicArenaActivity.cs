@@ -192,7 +192,7 @@ public sealed class ClassicArenaActivity : IActivity
 
     /// <summary>
     /// The Classic Arena forecast (Ehsan 2026-11-23), only with <see cref="ArenaForecastSwitch.Enabled"/>: among the opponents already under the power cap
-    /// (<paramref name="eligible"/>, so the cap is never touched), the best forecast first, those under 50% skipped for this board. No forecast: today's pick.
+    /// (<paramref name="eligible"/>, so the cap is never touched), the best forecast first, those under the threshold (ArenaForecastSwitch.MinRate, 90%) skipped for this board. No forecast: today's pick.
     /// </summary>
     private async Task<List<ArenaOpponentInfo>> ForecastAsync(PlayContext ctx, ArenaBoard board, List<ArenaOpponentInfo> eligible, CancellationToken ct)
     {
@@ -200,7 +200,7 @@ public sealed class ClassicArenaActivity : IActivity
         var fresh = eligible.Where(o => !_forecasts.ContainsKey(o.UserId)).Select(o => o.UserId).ToHashSet();
         foreach (var o in eligible.Where(o => fresh.Contains(o.UserId)))
         {
-            if (board.Teams is null || !board.Teams.TryGetValue(o.UserId, out var team) || team.Count == 0)
+            if (board.Teams is null || !board.Teams.TryGetValue(o.UserId, out var team) || team.Heroes.Count == 0)
             {
                 _forecasts[o.UserId] = new ArenaForecast(null, 0, "the board did not give his team");
                 continue;

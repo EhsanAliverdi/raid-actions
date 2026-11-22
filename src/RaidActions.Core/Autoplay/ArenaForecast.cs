@@ -2,11 +2,23 @@ using RaidExtractor.Autoplay;
 
 namespace RaidActions.Autoplay;
 
-/// <summary>One hero of an opponent's defence as the board shows it (type id, level, grade = stars, double ascension): all the forecast needs to build the enemy.</summary>
-public sealed record ArenaEnemyHero(int Slot, int TypeId, int Level, int Grade, int? DoubleAscend = null);
+/// <summary>A skill id and level (a HeroSlotSetup's SkillSetup).</summary>
+public sealed record SkillLevel(int Id, int Level);
 
-/// <summary>The simulated win rate of our attack team against one opponent; Rate null = it could not be computed (Why says why).</summary>
-public sealed record ArenaForecast(double? Rate, int Runs, string? Why = null);
+/// <summary>
+/// An opponent hero's build as its HeroSlotSetup holds it: the stat bonuses of gear, set bonuses, relic, blessing, academy and the slot's modifiers summed per
+/// stat (index StatKindId 1..10; percent as fractions, flat absolute), its own skills with levels, the skills sets / relic / blessing add, its masteries.
+/// </summary>
+public sealed record ArenaEnemyBuild(double[] Percent, double[] Flat, List<SkillLevel> OwnSkills, List<SkillLevel> ExtraSkills, List<int> MasteryIds, bool HasGear);
+
+/// <summary>One hero of an opponent's defence as the board shows it (type id, level, grade = stars, double ascension) and, when the board holds it, its build.</summary>
+public sealed record ArenaEnemyHero(int Slot, int TypeId, int Level, int Grade, int? DoubleAscend = null, ArenaEnemyBuild? Build = null);
+
+/// <summary>An opponent's defence team: heroes, the leader slot index (TeamSetup.LeaderSlotIndex; the leader is the slot after it) and its power as the board shows it.</summary>
+public sealed record ArenaEnemyTeam(List<ArenaEnemyHero> Heroes, int? LeaderSlot = null, int? Power = null);
+
+/// <summary>The simulated win rate of our attack team against one opponent; Rate null = it could not be computed (Why says why). Build: how the enemy was built (real, power-scaled, none).</summary>
+public sealed record ArenaForecast(double? Rate, int Runs, string? Why = null, string Build = "none");
 
 /// <summary>
 /// The switch for the Classic Arena forecast (Ehsan 2026-11-23: "the simulator can predict the outcome, then we use that for deciding whether to fight an
@@ -17,8 +29,8 @@ public static class ArenaForecastSwitch
 {
     public const string Flag = "--arena-forecast", EnvVar = "RAID_ARENA_FORECAST";
     public const int Runs = 30;
-    /// <summary>An opponent whose forecast is under this is not fought.</summary>
-    public const double MinRate = 0.5;
+    /// <summary>An opponent is fought only when the forecast is at least this (Ehsan 2026-11-23: 90%).</summary>
+    public const double MinRate = 0.9;
 
     public static bool Enabled { get; set; } = FromEnvironment();
 
@@ -52,7 +64,7 @@ public static class ArenaForecastPick
                 unknown.Add(o);
                 continue;
             }
-            lines.Add($"forecast {who}: {rate:P0} over {f.Runs} runs" + (rate < minRate ? $", under {minRate:P0}: skipped" : ""));
+            lines.Add($"forecast {who}: {rate:P0} over {f.Runs} runs, build: {f.Build}" + (rate < minRate ? $", under {minRate:P0}: skipped" : ""));
             if (rate < minRate) skipped.Add(o); else known.Add((o, rate, i));
         }
         var order = known.OrderByDescending(k => k.Rate).ThenBy(k => k.Index).Select(k => k.O).Concat(unknown).ToList();

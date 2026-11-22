@@ -386,7 +386,9 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         // unknown or still on: Start is not pressed.
         if (teamView == PlayTargets.DoomTowerTeamView)
         {
-            var guard = await AutoClimbGuard.EnsureOffAsync(game.ReadAutoClimbMode,
+            // The checkbox itself (the account's AutoClimbMode follows it only at Start: 20:17, one tap, the stored value still on).
+            bool? CheckboxOn() => ReadSync().Targets.FirstOrDefault(t => t.Kind == "autoclimb-state")?.Note switch { "on" => true, "off" => false, _ => null };
+            var guard = await AutoClimbGuard.EnsureOffAsync(CheckboxOn,
                 () => Click("autoclimb-checkbox", t => t.View == teamView, (_, _) => true, "the checkbox answers", ct),
                 ms => Pause(ms, ct), log);
             if (!guard.CanStart)

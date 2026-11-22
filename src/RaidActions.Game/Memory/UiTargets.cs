@@ -39,6 +39,8 @@ public sealed record UiTarget(string Kind, string Name, int? Id, string View, Cl
 public static partial class UiTargets
 {
     public const string HeroSlotContext = "Client.ViewModel.Contextes.HeroesInfoDialog.HeroSlot.HeroSlotContext";
+    public const string DoomTowerTeamContext = "Client.ViewModel.Contextes.HeroesSelectionDialog.HeroesSelectionDoomTowerDialogContext";
+    public const string AutoClimbCheckboxContext = "Client.ViewModel.Contextes.HeroesSelectionDialog.AutoClimbCheckboxContext";
     public const string InventoryArtifactContext = "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Items.InventoryArtifactContext";
     private const string InventoryItemContext = "Client.ViewModel.Contextes.HeroesInfoDialog.Inventory.Items.InventoryItemContext";
     private const string ArtifactAvatarContext = "Client.ViewModel.Contextes.Generic.ArtifactAvatarContext";
@@ -98,6 +100,15 @@ public static partial class UiTargets
         for (var i = 0; i < nodes.Count; i++)
         {
             var n = nodes[i];
+
+            // The Doom Tower team screen's auto-climb checkbox (2026-11-22): its "Selected" is what Start sends (StartBattle: SetAutoClimbCmd with the
+            // checkbox's value); the account's AutoClimbMode changes only at Start. Not clickable: the note says "on", "off" or "unknown".
+            if (n.Context?.Class == DoomTowerTeamContext)
+            {
+                var box = g.Ref(n.Context.Address, DoomTowerTeamContext, "_autoClimbCheckbox");
+                var on = box == 0 ? null : BoolValue(g, g.Ref(box, AutoClimbCheckboxContext, "_selected"));
+                targets.Add(Make("autoclimb-state", "tower team screen: auto-climb state", null, n, null, on switch { true => "on", false => "off", _ => "unknown" }));
+            }
 
             // Champion tiles: the tile's own context says which champion it shows.
             if (n.Context?.Class == HeroSlotContext)

@@ -2134,6 +2134,33 @@
           "field": "_multiRun",
           "source": "field",
           "status": "direct"
+        },
+        "_autoClimbCheckbox": {
+          "offset": "0x178",
+          "type": "AutoClimbCheckboxContext",
+          "field": "_autoClimbCheckbox",
+          "source": "field",
+          "status": "direct"
+        }
+      }
+    },
+    "Client.ViewModel.Contextes.HeroesSelectionDialog.AutoClimbCheckboxContext": {
+      "kind": "class",
+      "offsetsRelativeTo": "object",
+      "fields": {
+        "_selected": {
+          "offset": "0x50",
+          "type": "BoolProperty",
+          "field": "_selected",
+          "source": "field",
+          "status": "direct"
+        },
+        "_enabled": {
+          "offset": "0x48",
+          "type": "bool",
+          "field": "_enabled",
+          "source": "field",
+          "status": "direct"
         }
       }
     },

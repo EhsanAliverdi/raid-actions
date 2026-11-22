@@ -327,4 +327,14 @@ public class PlayTargetsTests
         Assert.Equal(2, scan.Targets.Count(t => t.Kind == "forbidden" && t.Forbidden));
         Assert.DoesNotContain("forbidden", PlayTargets.Kinds);
     }
+
+    [Fact]
+    public void The_tower_team_screens_auto_climb_checkbox_is_a_target_only_there()
+    {
+        var scan = PlayTargets.Scan(Tree("DoomTowerHeroesSelectionDialog", N("D/Default_h", 400, interactable: true), N("D/Checkbox_h", 360, interactable: true)), new Objects());
+        Assert.Contains(scan.Targets, t => t.Kind == "autoclimb-checkbox" && t.NotClickable is null);
+        Assert.Contains("autoclimb-checkbox", PlayTargets.Kinds);
+        var other = PlayTargets.Scan(Tree("HeroesSelectionDialog", N("D/Checkbox_h", 360, interactable: true)), new Objects());
+        Assert.DoesNotContain(other.Targets, t => t.Kind == "autoclimb-checkbox");
+    }
 }

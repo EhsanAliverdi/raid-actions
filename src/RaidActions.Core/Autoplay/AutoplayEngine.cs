@@ -394,6 +394,9 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
 
     private string? _lastBackgroundNote;
     private DateTime _backgroundCollectAfter;
+    // A finished Doom Tower auto-climb report that stays "Finished" after its collect found nothing to press (2026-11-22: stage 7031002 from 08:10
+    // still read Finished at 16:07 and held every battle area): the game keeps the last climb's report; ignored after one collect try.
+    private readonly HashSet<string> _staleBackground = [];
 
     /// <summary>
     /// At each turn start (a cheap memory read): a finished background battle has its results collected from its stage list; a running one is logged
@@ -408,6 +411,7 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
         foreach (var b in list)
         {
             var note = b.ToString();
+            if (b.Finished && _staleBackground.Contains(note)) continue;
             if (b.Finished)
             {
                 if (dryRun || host.UtcNow < _backgroundCollectAfter)
@@ -421,6 +425,11 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 {
                     var before = await Holdings(ct);
                     var got = await ctx.Game.CollectBackgroundBattleAsync(b, ct);
+                    if (b.AutoClimb && got.Contains("still waiting", StringComparison.Ordinal))
+                    {
+                        _staleBackground.Add(note);
+                        got += "; nothing to press: the game's last auto-climb report, ignored from now on";
+                    }
                     var gain = before is not null && await Holdings(ct) is { } after ? Gains.Describe(before, after) : null;
                     Remember(new AutoplayEvent(host.UtcNow, "engine", "reward", $"background battle collected ({got})" + (gain is null ? "" : ": " + gain)));
                     _backgroundCollectAfter = host.UtcNow + TimeSpan.FromMinutes(5);

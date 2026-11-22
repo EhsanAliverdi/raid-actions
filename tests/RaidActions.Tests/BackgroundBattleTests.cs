@@ -66,10 +66,10 @@ public class BackgroundBattleTests
 
     private static readonly DateTime Start = new(2026, 11, 21, 18, 0, 0, DateTimeKind.Utc);
 
-    private static async Task<(FakeHost Host, FakeArenaGame Game)> Run(BackgroundBattleInfo? bg, bool dryRun = false)
+    private static async Task<(FakeHost Host, FakeArenaGame Game)> Run(BackgroundBattleInfo? bg, bool dryRun = false, bool sticks = false)
     {
         var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, ClassicArena = new ClassicArenaSettings { Enabled = true }, Pacing = new PacingSettings() with { SessionMinutes = 0 } } };
-        var game = new FakeArenaGame(() => host.UtcNow) { Delay = host.DelayAsync, Background = bg };
+        var game = new FakeArenaGame(() => host.UtcNow) { Delay = host.DelayAsync, Background = bg, BackgroundSticks = sticks };
         host.OnDelay = h => { if (h.UtcNow - Start >= TimeSpan.FromMinutes(10)) h.Stop = true; };
         await new AutoplayEngine([new ClassicArenaActivity()], game, host, dryRun).RunAsync(once: false, new CancellationTokenSource(TimeSpan.FromSeconds(20)).Token);
         return (host, game);
@@ -91,6 +91,16 @@ public class BackgroundBattleTests
         var (host, game) = await Run(new BackgroundBattleInfo(5206012, 5206010, "Dungeon", "Started", 3, 3, false));
         Assert.DoesNotContain(game.Calls, c => c.StartsWith("collect-background", StringComparison.Ordinal) || c.StartsWith("fight ", StringComparison.Ordinal));
         Assert.Contains(host.Events, e => e.Text.Contains("background battle running"));
+    }
+
+    [Fact]
+    public async Task A_finished_auto_climb_report_that_stays_after_one_collect_no_longer_holds_battles()
+    {
+        // 2026-11-22: the game kept the 08:10 climb's report "Finished"; every battle area was held at 16:07.
+        var (host, game) = await Run(new BackgroundBattleInfo(7031002, 7031002, "DoomTower", "Finished", 1, 0, true), sticks: true);
+        Assert.Single(game.Calls, c => c.StartsWith("collect-background", StringComparison.Ordinal));
+        Assert.Contains(game.Calls, c => c.StartsWith("fight ", StringComparison.Ordinal));
+        Assert.Contains(host.Events, e => e.Text.Contains("ignored from now on"));
     }
 
     [Fact]

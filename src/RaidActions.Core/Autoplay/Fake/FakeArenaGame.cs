@@ -62,12 +62,16 @@ public sealed class FakeArenaGame(Func<DateTime> now, int seed = 7) : IPlayGame
     /// <summary>The game's background battle in this fake (null: none). Collecting it ends it, like the game.</summary>
     public BackgroundBattleInfo? Background { get; set; }
 
+    /// <summary>True: collecting leaves the report as it is (the game's last auto-climb report, 2026-11-22).</summary>
+    public bool BackgroundSticks { get; set; }
+
     public Task<IReadOnlyList<BackgroundBattleInfo>> ReadBackgroundBattlesAsync(CancellationToken ct) =>
         Task.FromResult<IReadOnlyList<BackgroundBattleInfo>>(Background is null ? [] : [Background]);
 
     public Task<string> CollectBackgroundBattleAsync(BackgroundBattleInfo battle, CancellationToken ct)
     {
         Calls.Add($"collect-background {battle.StageId}");
+        if (BackgroundSticks) return Task.FromResult($"stage {battle.StageId}: its results are still waiting after DoomTower was opened");
         Background = null;
         return Task.FromResult($"stage {battle.StageId} collected");
     }

@@ -1119,11 +1119,15 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
             if (expect(s2, () => cache ??= ReadSync().Play)) { _lastAnswerMs = answered.ElapsedMilliseconds; return; }
             // The game's background-battle status window popping over the screen the click opened (2026-11-21: every Tavern open while a background
             // run went on, KaelStormVex): closed once, then the click's screen is looked for again. A battle's Start keeps its own handling.
-            if (!bgClosed && target.Kind is not ("team-start" or "battle-start") && Top(s2) is { } bgTop && bgTop.StartsWith("BackgroundBattleStatus", StringComparison.Ordinal))
+            if (!bgClosed && target.Kind is not ("team-start" or "battle-start" or "bg-result") && Top(s2) is { } bgTop && bgTop.StartsWith("BackgroundBattleStatus", StringComparison.Ordinal))
             {
                 bgClosed = true;
-                log($"autoplay: the background-battle window came up over {target.Name}: closed, tapped again");
-                await Back(bgTop, ct);
+                // A finished run's results waiting make the window come back on every tap (2026-11-22 07:35 and 12:06-12:08: four Tavern taps,
+                // food rank-ups paused for an hour; collecting them at 12:10 ended it): its results first, then the window closed.
+                var collected = await CollectBackgroundResults("the status window", ct);
+                log($"autoplay: the background-battle window came up over {target.Name}: {(collected > 0 ? "its results collected, " : "")}closed, tapped again");
+                var s3 = await ReadState(ct);
+                if (Top(s3) is { } still && (still.StartsWith("BackgroundBattleStatus", StringComparison.Ordinal) || IsBackgroundRewardView(still))) await Back(still, ct);
                 // Closing it takes the screen back to where the tap was made (2026-11-21: the Tavern tap ended on the champion screen): the tap once more.
                 await Pause(600, ct);
                 if (!expect(await ReadState(ct), () => ReadSync().Play) && MouseInput.Click(w, x, y, _random) is { } again)

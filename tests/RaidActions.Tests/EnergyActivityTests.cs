@@ -182,7 +182,8 @@ public class EnergyActivityTests
         await engine.RunAsync(once: true, Limit());
         var quest = host.Events.FirstOrDefault(e => e.Kind == "battle" && e.Text.Contains("[row quest-dungeon-any]"));
         Assert.True(quest is not null, string.Join(" / ", host.Events.Select(e => $"{e.Kind}: {e.Text}")));
-        Assert.Contains("stage 1:", quest!.Text, StringComparison.Ordinal);   // the cheapest beaten stage, a replay
+        // The cheapest beaten stage, a replay (a quest that counts clears plays Super Raid too since 2026-11-23).
+        Assert.Matches(@"stage 1( \(Super Raid\))?:", quest!.Text);
     }
 
     private static async Task<IReadOnlyList<AutoplayEvent>> GearQuest(string? setting, params EnergyTarget[] rows)
@@ -271,14 +272,33 @@ public class EnergyActivityTests
     }
 
     [Fact]
-    public async Task Smart_super_raid_farms_gear_double_while_energy_is_plentiful_then_runs_normal()
+    public async Task A_push_row_opening_a_new_level_is_never_a_Super_Raid()
     {
+        // Ehsan 2026-11-12 / 2026-11-23: the one exception besides food near its max: a new level (a loss there costs a double run).
+        // The fake account has Hard beaten to 5: a Hard push to 10 opens Hard 6 (new); a push whose goal is beaten (Normal 25) farms it, with Super Raid.
+        var push = new EnergyTarget { Id = "push-dragon", Area = "Dungeon", Region = "DragonsLair", Difficulty = "Hard", Stage = 10, Progress = true };
+        var (_, game, engine) = Make(On(push), stopAfter: TimeSpan.FromMinutes(5), smart: true);
+        game.Energy = 100;
+        await engine.RunAsync(once: false, Limit());
+        var runs = game.Calls.Where(c => c.StartsWith("run", StringComparison.Ordinal)).ToList();
+        Assert.NotEmpty(runs);
+        Assert.DoesNotContain(runs, c => c.EndsWith(" super", StringComparison.Ordinal));
+        var done = new EnergyTarget { Id = "push-dragon", Area = "Dungeon", Region = "DragonsLair", Difficulty = "Normal", Stage = 25, Progress = true };
+        var (_, game2, engine2) = Make(On(done), stopAfter: TimeSpan.FromMinutes(5), smart: true);
+        game2.Energy = 100;
+        await engine2.RunAsync(once: false, Limit());
+        Assert.Contains("run Normal 25 super", game2.Calls);
+    }
+
+    [Fact]
+    public async Task Smart_super_raid_farms_double_whenever_the_energy_pays_for_it()
+    {
+        // Ehsan 2026-11-23: "when it can be used it must be used" (no "plenty of energy" share any more): 100 energy, 16 a run: three Super Raids (96).
         var (_, game, engine) = Make(On(Row("farm")), stopAfter: TimeSpan.FromMinutes(10), smart: true);
         game.Energy = 100;
         await engine.RunAsync(once: false, Limit());
         var runs = game.Calls.Where(c => c.StartsWith("run", StringComparison.Ordinal)).ToList();
-        Assert.Equal("run Normal 25 super", runs[0]);                                  // 100 of 124: plenty
-        Assert.Contains("run Normal 25", runs);                                        // below half the cap: normal runs
+        Assert.Equal(["run Normal 25 super", "run Normal 25 super", "run Normal 25 super"], runs);
     }
 
     [Fact]

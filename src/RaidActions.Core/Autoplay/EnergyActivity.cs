@@ -450,22 +450,18 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     private EnergyTarget Smart(PlayContext ctx, EnergyTarget t, EnergyWorld w)
     {
         var r = ctx.Settings.Rules;
-        // A new level: never a Super Raid (Ehsan 2026-11-12: "if you are trying a new level never use super raid").
-        if (r.SmartSuperRaid && t.Progress) return t with { SuperRaid = false };
-        if (r.SmartSuperRaid && t.Food && _account?.Champions is { } champions) return SmartFood(ctx, t, w, champions);
-        if (!r.SmartSuperRaid || t.Area != "Dungeon" || t.Food || t.Progress) return t;
-        var need = _rowNeed.TryGetValue(t.Id, out var n) ? n : SuperRaidRules.Need.Farm;
+        if (!r.SmartSuperRaid) return t;
+        // Ehsan 2026-11-23: "Super Raid uses twice the energy, gives twice the reward in half the time: when it can be used it must be used", with two
+        // exceptions only: a new level (a loss there costs a double run: Ehsan 2026-11-12) and food close to its max level (the double run's XP is lost).
+        // Quests that count clears, farm rows at any energy, the Campaign, keys: all Super Raid when it can be paid.
+        // A push row (Progress) opens new levels until its goal is beaten; then it farms the goal, which is no longer new.
+        if (t.Progress && !(t.Stage is { } goal && EnergyPlanner.HighestBeaten(t, w.Progress) is { } beatenTo && beatenTo >= goal)) return t with { SuperRaid = false };
+        if (t.Food) return _account?.Champions is { } champions ? SmartFood(ctx, t, w, champions) : t;
         if ((t.Stage ?? EnergyPlanner.HighestReliable(t, w.Progress)) is not { } number) return t;
         var (resource, cost, known, _) = EnergyPlanner.Cost(t with { SuperRaid = false }, number, w);
-        var (won, lost) = _stageResults.GetValueOrDefault(StageKey(t.Area, t.Region, t.Difficulty, number));
-        // Keys (Iron Twins) and stages won every time: Super Raid whenever it can be paid (a quest that counts clears still never).
-        if (need != SuperRaidRules.Need.Clears && (known || resource != "Energy")
-            && SuperRaidRules.Smart(false, resource, w.Resources.GetValueOrDefault(resource), cost, w.SuperRaidMultiplier, won, lost) is { } decided)
-            return t with { SuperRaid = decided };
-        if (resource != "Energy" || !known) return t;
-        var energy = w.Resources.GetValueOrDefault("Energy");
-        var cap = ctx.LastResources?.EnergyCap ?? 124;
-        return t with { SuperRaid = SuperRaidRules.Use(need, energy, cap, cost, w.SuperRaidMultiplier, r.SuperRaidEnergyShare) };
+        // An energy cost not known (no static data, not learnt yet): the row's own box (a Super Raid the energy cannot pay does not start).
+        if (resource == "Energy" && !known) return t;
+        return t with { SuperRaid = w.Resources.GetValueOrDefault(resource) >= cost * Math.Max(1, w.SuperRaidMultiplier) };
     }
 
     /// <summary>A food row: Super Raid by the food the planner puts in the team (<see cref="SuperRaidRules.UseForFood"/>); normal when the cost is not known.</summary>
@@ -478,7 +474,8 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
         var food = champions.Where(c => picks.Contains(c.Id)).ToList();
         var cap = ctx.LastResources?.EnergyCap ?? 124;
         var r = ctx.Settings.Rules;
-        return t with { SuperRaid = SuperRaidRules.UseForFood(food, w.Resources.GetValueOrDefault("Energy"), cap, cost, w.SuperRaidMultiplier, r.SuperRaidEnergyShare) };
+        // Any energy that pays for it (Ehsan 2026-11-23: no "plenty of energy" share any more); only food near its max level makes it a normal run.
+        return t with { SuperRaid = SuperRaidRules.UseForFood(food, w.Resources.GetValueOrDefault("Energy"), cap, cost, w.SuperRaidMultiplier, share: 0) };
     }
 
     // Before the cap, not at it: a turn elsewhere can last minutes, and energy above the cap stops regenerating (Ehsan 2026-11-01).

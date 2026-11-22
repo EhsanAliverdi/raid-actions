@@ -47,6 +47,15 @@ public sealed class FakeArenaGame(Func<DateTime> now, int seed = 7) : IPlayGame
     public List<string> Calls { get; } = [];
     public bool AtArena { get; private set; }
 
+    /// <summary>The forecast by the enemy's type id (opponent i of the board has one hero, type 1000 + i); null: the fake cannot forecast and the board gives no teams.</summary>
+    public Func<int, ArenaForecast>? ForecastOf { get; set; }
+
+    public Task<ArenaForecast> ForecastArenaAsync(IReadOnlyList<ArenaEnemyHero> enemy, int runs, CancellationToken ct)
+    {
+        Calls.Add($"forecast {enemy[0].TypeId}");
+        return Task.FromResult(ForecastOf?.Invoke(enemy[0].TypeId) ?? new ArenaForecast(null, 0, "this game cannot forecast"));
+    }
+
     public IReadOnlyList<ArenaOpponentInfo> Board => _board;
 
     /// <summary>The account's other resources (an area's keys), as the live game reads them; null: not read.</summary>
@@ -143,7 +152,8 @@ public sealed class FakeArenaGame(Func<DateTime> now, int seed = 7) : IPlayGame
 
     private bool FreeNow => now() - _lastRefresh >= FreeRefreshEvery;
 
-    private ArenaBoard Read() => new(now(), [.. _board], FreeNow, FreeNow ? null : _lastRefresh + FreeRefreshEvery - now());
+    private ArenaBoard Read() => new(now(), [.. _board], FreeNow, FreeNow ? null : _lastRefresh + FreeRefreshEvery - now(),
+        Teams: ForecastOf is null ? null : _board.Select((o, i) => (o, i)).ToDictionary(x => x.o.UserId, x => new List<ArenaEnemyHero> { new(1, 1000 + x.i, 50, 5) }));
 
     private void NewBoard()
     {

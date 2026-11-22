@@ -42,6 +42,7 @@ public static class AutoplayCommand
         var enableLive = args.Contains("--enable-live");
         var enableTag = args.Contains("--enable-tag");
         var noYield = args.Contains("--no-yield");
+        if (args.Contains(ArenaForecastSwitch.Flag)) ArenaForecastSwitch.Enabled = true; // Classic Arena forecast (off unless asked)
         // --cc-difficulty Normal|Hard: the Cursed City difficulty to play; --cc-risky: also risky levels (whatever the settings say).
         var ccAt = Array.IndexOf(args, "--cc-difficulty");
         var ccDifficulty = ccAt >= 0 && ccAt + 1 < args.Length ? args[ccAt + 1] : null;

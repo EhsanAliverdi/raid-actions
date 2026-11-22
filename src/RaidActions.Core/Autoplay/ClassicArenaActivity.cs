@@ -22,6 +22,7 @@ public sealed class ClassicArenaActivity : IActivity
     private DateTime? _freeRefreshAt;
     private DateTime? _dryRefreshShown;
     private readonly HashSet<long> _skip = []; // opponents that failed to start on this board
+    private readonly Dictionary<long, ArenaForecast> _forecasts = []; // simulated win rates of this board (only with the forecast switch on)
     private DateOnly _day;
     private int _battles, _wins, _losses, _draws, _refreshes, _inboxTokens;
     private ArenaAdjust _adjust = new();
@@ -130,7 +131,7 @@ public sealed class ClassicArenaActivity : IActivity
         }
 
         var board = Seen(ctx, await ctx.Game.OpenClassicArenaAsync(ct));
-        var eligible = Eligible(s);
+        var eligible = await ForecastAsync(ctx, board, Eligible(s), ct);
         if (eligible.Count == 0)
         {
             if (!s.UseFreeRefresh || !board.FreeRefreshAvailable) return "";
@@ -189,6 +190,33 @@ public sealed class ClassicArenaActivity : IActivity
         return $"{outcome.Result} vs {who}";
     }
 
+    /// <summary>
+    /// The Classic Arena forecast (Ehsan 2026-11-23), only with <see cref="ArenaForecastSwitch.Enabled"/>: among the opponents already under the power cap
+    /// (<paramref name="eligible"/>, so the cap is never touched), the best forecast first, those under 50% skipped for this board. No forecast: today's pick.
+    /// </summary>
+    private async Task<List<ArenaOpponentInfo>> ForecastAsync(PlayContext ctx, ArenaBoard board, List<ArenaOpponentInfo> eligible, CancellationToken ct)
+    {
+        if (!ArenaForecastSwitch.Enabled || eligible.Count == 0) return eligible;
+        var fresh = eligible.Where(o => !_forecasts.ContainsKey(o.UserId)).Select(o => o.UserId).ToHashSet();
+        foreach (var o in eligible.Where(o => fresh.Contains(o.UserId)))
+        {
+            if (board.Teams is null || !board.Teams.TryGetValue(o.UserId, out var team) || team.Count == 0)
+            {
+                _forecasts[o.UserId] = new ArenaForecast(null, 0, "the board did not give his team");
+                continue;
+            }
+            try { _forecasts[o.UserId] = await ctx.Game.ForecastArenaAsync(team, ArenaForecastSwitch.Runs, ct); }
+            catch (Exception e) when (e is not OperationCanceledException and not PlayStopException)
+            {
+                _forecasts[o.UserId] = new ArenaForecast(null, 0, $"{e.GetType().Name}: {e.Message}");
+            }
+        }
+        var pick = ArenaForecastPick.Choose(eligible, o => _forecasts.GetValueOrDefault(o.UserId));
+        for (var i = 0; i < eligible.Count; i++) if (fresh.Contains(eligible[i].UserId)) ctx.Event(AreaId, "forecast", pick.Lines[i]); // one line per opponent, when first computed
+        foreach (var o in pick.Skipped) _skip.Add(o.UserId); // not fought on this board; the skips clear with the board
+        return pick.Order;
+    }
+
     /// <summary>The arena's free refresh (nobody to fight under the power limit): the new board read, the skips cleared.</summary>
     private async Task<string> FreeRefresh(PlayContext ctx, ArenaBoard board, ClassicArenaSettings s, CancellationToken ct)
     {
@@ -201,7 +229,7 @@ public sealed class ClassicArenaActivity : IActivity
             return "";
         }
         _refreshes++;
-        _skip.Clear();
+        _skip.Clear(); _forecasts.Clear();
         Seen(ctx, fresh);
         ctx.Event(AreaId, "refresh", ctx.DryRun ? "would use the free refresh (dry run: not pressed)" : $"free refresh: {Eligible(s).Count} opponent(s) under {Limit(s):N0} now{Skipped(s)}");
         return ctx.DryRun ? "" : "free refresh";
@@ -245,7 +273,7 @@ public sealed class ClassicArenaActivity : IActivity
 
     private ArenaBoard Seen(PlayContext ctx, ArenaBoard b)
     {
-        if (_board is null || !_board.Opponents.Select(o => o.UserId).OrderBy(x => x).SequenceEqual(b.Opponents.Select(o => o.UserId).OrderBy(x => x))) _skip.Clear();
+        if (_board is null || !_board.Opponents.Select(o => o.UserId).OrderBy(x => x).SequenceEqual(b.Opponents.Select(o => o.UserId).OrderBy(x => x))) { _skip.Clear(); _forecasts.Clear(); }
         _board = b;
         _freeRefreshAt = b.FreeRefreshAvailable ? null : b.FreeRefreshIn is { } left ? b.Utc + left : _freeRefreshAt;
         return b;

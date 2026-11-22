@@ -50,6 +50,13 @@ public interface IPlayGame
     /// <summary>The board's free refresh (never a paid one): false when the game does not offer it free now. Returns the new board.</summary>
     Task<ArenaBoard?> RefreshArenaFreeAsync(bool dryRun, CancellationToken ct);
 
+    /// <summary>
+    /// The simulated win rate of the account's Classic Arena attack team against this defence team (read only, no game input). The default says it cannot:
+    /// the activity then keeps today's pick.
+    /// </summary>
+    Task<ArenaForecast> ForecastArenaAsync(IReadOnlyList<ArenaEnemyHero> enemy, int runs, CancellationToken ct) =>
+        Task.FromResult(new ArenaForecast(null, 0, "this game cannot forecast"));
+
     /// <summary>Collects the arena tokens waiting in the inbox; returns how many tokens came (0: none there). Leaves the inbox closed.</summary>
     Task<int> CollectInboxTokensAsync(bool dryRun, CancellationToken ct);
 }
@@ -64,7 +71,9 @@ public sealed record GameResources(DateTime Utc, double Tokens, double Energy, d
 
 /// <param name="FreeRefreshIn">Time to the next free refresh, when the game shows it.</param>
 /// <param name="MyPower">My Classic Arena defense team's power (from the account), for "up to my power"; null when not known.</param>
-public sealed record ArenaBoard(DateTime Utc, List<ArenaOpponentInfo> Opponents, bool FreeRefreshAvailable, TimeSpan? FreeRefreshIn, int? MyPower = null);
+/// <param name="Teams">The opponents' defence teams by user id, as the board's memory holds them (null / missing: not read); only the Classic Arena forecast uses them.</param>
+public sealed record ArenaBoard(DateTime Utc, List<ArenaOpponentInfo> Opponents, bool FreeRefreshAvailable, TimeSpan? FreeRefreshIn, int? MyPower = null,
+    Dictionary<long, List<ArenaEnemyHero>>? Teams = null);
 
 /// <summary>Retry: nothing was fought, but the game showed something the plan must take in first (Cursed City: champions locked in the city).</summary>
 public enum BattleResult { Victory, Defeat, Draw, Unknown, NotStarted, Retry }

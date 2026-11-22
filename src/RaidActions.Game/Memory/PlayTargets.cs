@@ -1950,43 +1950,43 @@ public static partial class PlayTargets
         try
         {
             var percent = new double[11]; var flat = new double[11];
-            var arts = g.RefAt(h, SlotArtifactSetups);
+            var arts = g.RefAtOrNull(h, SlotArtifactSetups);
             var artList = arts == 0 ? [] : g.RefList(arts, 16);
-            foreach (var a in artList) { AddStats(g, g.RefAt(a, 0x38), percent); AddStats(g, g.RefAt(a, 0x40), flat); }
+            foreach (var a in artList) { AddStats(g, g.RefAtOrNull(a, 0x38), percent); AddStats(g, g.RefAtOrNull(a, 0x40), flat); }
             // The Percent / Flat arrays above are the BattleStats halves: PercentBonus is a fraction, FlatBonus absolute (BattleStats.UpdateWithBonuses).
             var extra = new List<(int, int)>();
-            var sets = g.RefAt(h, SlotArtifactSets);
+            var sets = g.RefAtOrNull(h, SlotArtifactSets);
             var setList = sets == 0 ? [] : g.RefList(sets, 16);
             foreach (var s in setList)
             {
-                var sk = g.RefAt(s, 0x10);
+                var sk = g.RefAtOrNull(s, 0x10);
                 if (sk != 0) extra.Add((g.IntAt(sk, 0x10), 1));
-                AddBonus(g, g.RefAt(s, 0x18), percent, flat);
-                var many = g.RefAt(s, 0x20);
+                AddBonus(g, g.RefAtOrNull(s, 0x18), percent, flat);
+                var many = g.RefAtOrNull(s, 0x20);
                 if (many != 0) foreach (var b in g.RefList(many, 16)) AddBonus(g, b, percent, flat);
             }
-            var relic = g.RefAt(h, SlotRelic);
+            var relic = g.RefAtOrNull(h, SlotRelic);
             if (relic != 0)
             {
-                AddStats(g, g.RefAt(relic, 0x28), percent); AddStats(g, g.RefAt(relic, 0x30), flat);
+                AddStats(g, g.RefAtOrNull(relic, 0x28), percent); AddStats(g, g.RefAtOrNull(relic, 0x30), flat);
                 var lvl = g.IntAt(relic, 0x10);
-                extra.AddRange(SkillSetups(g, g.RefAt(relic, 0x18)).Select(x => (x.Id, x.Level > 0 ? x.Level : lvl)));
-                extra.AddRange(SkillSetups(g, g.RefAt(relic, 0x20)));
+                extra.AddRange(SkillSetups(g, g.RefAtOrNull(relic, 0x18)).Select(x => (x.Id, x.Level > 0 ? x.Level : lvl)));
+                extra.AddRange(SkillSetups(g, g.RefAtOrNull(relic, 0x20)));
             }
-            var blessing = g.RefAt(h, SlotBlessing);
+            var blessing = g.RefAtOrNull(h, SlotBlessing);
             if (blessing != 0)
             {
-                AddStats(g, g.RefAt(blessing, 0x28), percent); AddStats(g, g.RefAt(blessing, 0x30), flat);
-                var bs = g.RefAt(blessing, 0x18);
+                AddStats(g, g.RefAtOrNull(blessing, 0x28), percent); AddStats(g, g.RefAtOrNull(blessing, 0x30), flat);
+                var bs = g.RefAtOrNull(blessing, 0x18);
                 if (bs != 0) extra.Add((g.IntAt(bs, 0x10), Math.Max(1, g.IntAt(bs, 0x14))));
             }
-            var academy = g.RefAt(h, SlotAcademy);
-            if (academy != 0) { AddStats(g, g.RefAt(academy, 0x10), percent); AddStats(g, g.RefAt(academy, 0x18), flat); }
-            var mod = g.RefAt(h, SlotModifiers);
-            if (mod != 0) { AddStats(g, g.RefAt(mod, 0x10), percent); AddStats(g, g.RefAt(mod, 0x18), flat); }
-            var mast = g.RefAt(h, SlotMasteries);
+            var academy = g.RefAtOrNull(h, SlotAcademy);
+            if (academy != 0) { AddStats(g, g.RefAtOrNull(academy, 0x10), percent); AddStats(g, g.RefAtOrNull(academy, 0x18), flat); }
+            var mod = g.RefAtOrNull(h, SlotModifiers);
+            if (mod != 0) { AddStats(g, g.RefAtOrNull(mod, 0x10), percent); AddStats(g, g.RefAtOrNull(mod, 0x18), flat); }
+            var mast = g.RefAtOrNull(h, SlotMasteries);
             var masteries = mast == 0 ? [] : g.IntListAt(mast, 64).ToList();
-            var own = SkillSetups(g, g.RefAt(h, SlotSkillSetups));
+            var own = SkillSetups(g, g.RefAtOrNull(h, SlotSkillSetups));
             double? power = null;
             try { power = g.NullableDoubleAt(h, SlotPower); } catch (Exception e) when (e is KeyNotFoundException or RaidExtractor.ReadCheckException) { notes.Add($"HeroSlotSetup.Power: {e.Message}"); }
             return new HeroBuildRead(artList.Count, setList.Count, masteries.Count, own.Count, blessing != 0, relic != 0, academy != 0, power, percent, flat, masteries, own, extra);

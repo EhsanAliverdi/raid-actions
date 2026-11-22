@@ -239,6 +239,8 @@ internal sealed class CoreObjects(GameSession session, OffsetConfig offsets) : I
 
     public ulong RefAt(ulong obj, int offset) => R.ReadPointer(obj + (ulong)offset, $"object+0x{offset:X}");
 
+    public ulong RefAtOrNull(ulong obj, int offset) => R.ReadPointerOrNull(obj + (ulong)offset, $"object+0x{offset:X}");
+
     public long LongAt(ulong obj, int offset) => R.ReadInt64(obj + (ulong)offset, $"object+0x{offset:X}");
 
     public double? NullableDoubleAt(ulong obj, int offset) => R.ReadNullableDouble(obj + (ulong)offset, $"object+0x{offset:X}");

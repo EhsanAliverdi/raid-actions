@@ -744,7 +744,9 @@ public sealed partial class LivePlayGame(LiveGame game, UnityUi ui, string folde
                         log($"autoplay: arena opponent {r.Name ?? "?"} ({r.UserId}) power {r.Power:N0}: {r.TeamText}");
                 return new ArenaBoard(DateTime.UtcNow, [.. rows.DistinctBy(r => r.UserId).Select(r => new ArenaOpponentInfo(r.UserId, r.Name, r.Power,
                     r.Status switch { 1 => OpponentStatus.Defeated, 2 => OpponentStatus.Won, _ => OpponentStatus.None }, r.Playable && !r.Quarantined))],
-                    b.FreeRefreshAvailable == true, left, await MyArenaPower(ct));
+                    b.FreeRefreshAvailable == true, left, await MyArenaPower(ct),
+                    rows.Where(r => r.Team is { Count: > 0 }).DistinctBy(r => r.UserId)
+                        .ToDictionary(r => r.UserId, r => r.Team!.Select(h => new ArenaEnemyHero(h.Slot, h.TypeId, h.Level, h.Grade, h.DoubleAscend)).ToList()));
             }
             await Pause(500, ct);
         }

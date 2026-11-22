@@ -645,6 +645,10 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
         if (host.StopRequested()) return "stop asked";
         if (host.PausedSince() is not null) return "paused";
         if (!once && host.RotateDue(null) is { } rotate) return "rotation: " + rotate;
+        // A crypt is finished before anything else (Ehsan 2026-11-23: "when you gear up champions and do the battle you must finish that faction and then move to
+        // something else"; 23 Nov: Barbarians, 17 keys, back after 5 battles for the Classic Arena): only a stop, a pause or the rotation ends its chain (the crypt's
+        // gear task holds the account's turn while it plays).
+        if (self == FactionWarsActivity.AreaId) return null;
         // Only an area the next turn would really give to (2026-11-06: arena tokens full broke every Campaign chain, and the next turn went to Energy again,
         // full too and first in the order): an urgent one, or a full one while this area is not full or comes after it.
         var me = enabled.FirstOrDefault(a => a.Id == self);

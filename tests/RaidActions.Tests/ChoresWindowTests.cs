@@ -80,6 +80,57 @@ public class ChoresWindowTests
         Assert.True(energy.Breaks.Count * 2 < energy.Runs, $"breaks {energy.Breaks.Count} of {energy.Runs} runs: {string.Join(" | ", energy.Breaks)}");
     }
 
+    /// <summary>An area that is urgent all the time (an arena's free refresh with nobody to fight).</summary>
+    private sealed class UrgentArena(FakeHost host) : IActivity
+    {
+        public string Id => "classic-arena";
+        public string Name => "Classic Arena";
+        public bool IsEnabled(AutoplaySettings settings) => true;
+        public Decision Decide(PlayContext ctx) => Decision.Now("free refresh");
+        public bool Urgent(PlayContext ctx) => true;
+        public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct) { await host.DelayAsync(TimeSpan.FromMinutes(1), ct); return "refresh"; }
+        public AreaStatus Status(PlayContext ctx, Decision decision) => new(Id, Name, true, AreaState.Playing, "", null, [], []);
+    }
+
+    /// <summary>A crypt with 16 keys: one battle per key, asking after each whether the chain ends.</summary>
+    private sealed class Crypt(FakeHost host) : IActivity
+    {
+        public string Id => FactionWarsActivity.AreaId;
+        public string Name => "Faction Wars";
+        public int Keys { get; private set; } = 16;
+        public List<int> Chains { get; } = [];
+        public bool IsEnabled(AutoplaySettings settings) => true;
+        public Decision Decide(PlayContext ctx) => Keys > 0 ? Decision.Now("crypt") : Decision.Off("no keys");
+        public async Task<string> RunTurnAsync(PlayContext ctx, CancellationToken ct)
+        {
+            var runs = 0;
+            while (Keys > 0)
+            {
+                Keys--; runs++;
+                await host.DelayAsync(TimeSpan.FromMinutes(2), ct);
+                if (ctx.ChainBreak?.Invoke(Id) is not null) break;
+            }
+            Chains.Add(runs);
+            return "crypt";
+        }
+        public AreaStatus Status(PlayContext ctx, Decision decision) => new(Id, Name, true, AreaState.Playing, "", null, [], []);
+    }
+
+    [Fact]
+    public async Task A_crypt_is_finished_in_one_chain_even_with_an_urgent_arena()
+    {
+        var host = new FakeHost(Start)
+        {
+            Settings = new AutoplaySettings { Enabled = true, Pacing = new PacingSettings { SessionMinutes = 0 } },
+            OnDelay = h => { if (h.UtcNow - Start >= TimeSpan.FromMinutes(60)) h.Stop = true; },
+        };
+        var crypt = new Crypt(host);
+        var engine = new AutoplayEngine([crypt, new UrgentArena(host)], new FakeArenaGame(() => host.UtcNow) { Delay = host.DelayAsync }, host, false);
+        await engine.RunAsync(once: false, Limit());
+        Assert.Equal(0, crypt.Keys);
+        Assert.Equal([16], crypt.Chains);
+    }
+
     private static PlayContext Ctx(FakeHost host) => new(host.Settings, new FakeArenaGame(() => host.UtcNow), host, false, host.Events.Add);
 
     private static GameResources Energy(double e) => new(Start, 0, e, 0, EnergyCap: 130);

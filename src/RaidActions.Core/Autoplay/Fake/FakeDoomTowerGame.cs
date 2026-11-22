@@ -20,6 +20,9 @@ public sealed class FakeDoomTowerGame : IDoomTowerGame
     public int Climbs { get; private set; }
     public BattleResult ClimbResult { get; set; } = BattleResult.Victory;
 
+    /// <summary>The climb's text ("60 s" for a battle; a test sets the live game's auto-climb text).</summary>
+    public string ClimbText { get; set; } = "60 s";
+
     /// <summary>The Normal tower is finished (its climb finds no floor) unless set false.</summary>
     public bool NormalDone { get; set; } = true;
     public int NormalClimbs { get; private set; }
@@ -35,10 +38,10 @@ public sealed class FakeDoomTowerGame : IDoomTowerGame
             if (NormalRefused) return Task.FromResult(new BattleOutcome(BattleResult.NotStarted, "the Teams card's team was refused here"));
             if (NormalDone) return Task.FromResult(new BattleOutcome(BattleResult.NotStarted, "no gold floor on the Normal map"));
             NormalClimbs++;
-            return Task.FromResult(new BattleOutcome(ClimbResult, "60 s"));
+            return Task.FromResult(new BattleOutcome(ClimbResult, ClimbText));
         }
         Climbs++;
-        return Task.FromResult(new BattleOutcome(ClimbResult, "60 s"));
+        return Task.FromResult(new BattleOutcome(ClimbResult, ClimbText));
     }
 
     /// <summary>Super Raid asked for on each battle, in order; a replay is only offered while the last battle's result screen is "open" (a win or a loss).</summary>

@@ -338,7 +338,9 @@ public sealed partial class LivePlayGame : IDoomTowerGame
                     continue;
                 }
                 log($"autoplay: the {tower} floor {openFloor} opened at ({at.X:0},{at.Y:0}) (stage {stage?.ToString() ?? "not read"})");
-                return await PlayTowerTeam(floorBoss is null ? $"{tower} floor {openFloor}" : $"{tower} boss floor {openFloor}", started, dryRun, ct, floorBoss);
+                // A plain floor: the game's own auto-climb plays it and the floors after it in the background (Ehsan 2026-11-23); a boss floor: one battle,
+                // its team simulated and prepared above.
+                return await PlayTowerTeam(floorBoss is null ? $"{tower} floor {openFloor}" : $"{tower} boss floor {openFloor}", started, dryRun, ct, floorBoss, autoClimb: floorBoss is null);
             }
         }
         try { await SelectTowerDifficulty("Normal", ct); }
@@ -347,7 +349,11 @@ public sealed partial class LivePlayGame : IDoomTowerGame
     }
 
     /// <summary>From the stage's team screen to the result.</summary>
-    private async Task<BattleOutcome> PlayTowerTeam(string name, DateTime started, bool dryRun, CancellationToken ct, string? boss = null)
+    private const string AutoClimbStarted = DoomTowerActivity.AutoClimbStarted;
+
+    /// <param name="autoClimb">A floor climb: the team screen's auto-climb on, and after Start the game climbs in the background (the screen goes back to the
+    /// tower's map); else the auto-climb off and one battle played to its result.</param>
+    private async Task<BattleOutcome> PlayTowerTeam(string name, DateTime started, bool dryRun, CancellationToken ct, string? boss = null, bool autoClimb = false)
     {
         await Pause(800, ct);
         var after = await Settled(ct);
@@ -382,13 +388,13 @@ public sealed partial class LivePlayGame : IDoomTowerGame
         // 2026-11-22: the tower's Start launched the 11.95 background AUTO-CLIMB twice (04:07 and 08:10, KaelStormVex). The team screen's tree
         // from before 11.95 is all we have: save it once per run, to find the auto-climb control and keep it off.
         if (!_towerTeamDumped) { _towerTeamDumped = true; log($"autoplay: the tower team screen before Start. Screen dump: {DumpScreen("doom tower team screen (auto-climb check)")}"); }
-        // Ehsan: never start an auto-climb. The checkbox above Start is read from the account (AutoClimbMode) and turned off by one tap if on;
-        // unknown or still on: Start is not pressed.
+        // The checkbox above Start (AutoClimbGuard): on for a floor climb (the game climbs in the background; Ehsan 2026-11-23), off for everything else
+        // (Ehsan 2026-11-22: never an auto-climb on a boss, a room or a key battle); unknown or not as wanted after one tap: Start is not pressed.
         if (teamView == PlayTargets.DoomTowerTeamView)
         {
             // The checkbox itself (the account's AutoClimbMode follows it only at Start: 20:17, one tap, the stored value still on).
             bool? CheckboxOn() => ReadSync().Targets.FirstOrDefault(t => t.Kind == "autoclimb-state")?.Note switch { "on" => true, "off" => false, _ => null };
-            var guard = await AutoClimbGuard.EnsureOffAsync(CheckboxOn,
+            var guard = await AutoClimbGuard.EnsureAsync(autoClimb, CheckboxOn,
                 () => Click("autoclimb-checkbox", t => t.View == teamView, (_, _) => true, "the checkbox answers", ct),
                 ms => Pause(ms, ct), log);
             if (!guard.CanStart)
@@ -397,7 +403,26 @@ public sealed partial class LivePlayGame : IDoomTowerGame
                 return new BattleOutcome(BattleResult.NotStarted, guard.Message);
             }
         }
-        try
+        if (autoClimb && teamView == PlayTargets.DoomTowerTeamView)
+        {
+            // 2026-11-22 04:07: with the auto-climb on, Start went straight back to the tower (DoomTowerHUD) and the climb ran in the background.
+            await Click("team-start", t => t.View == teamView,
+                (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is "DoomTowerHUD" or "DoomTowerMap" or PlayTargets.RefillView or UiState.MessageBoxView,
+                "the auto-climb starts", ct, within: TimeSpan.FromSeconds(25), shot: true);
+            var climbScreen = await Settled(ct);
+            if (Top(climbScreen) == PlayTargets.RefillView) { await Back(PlayTargets.RefillView, ct); await Back(teamView, ct); return new BattleOutcome(BattleResult.NotStarted, "no key (the refill offer was closed)"); }
+            var running = (await ReadBackgroundBattlesAsync(ct)).FirstOrDefault(b => b.AutoClimb);
+            if (running is not null)
+            {
+                log($"autoplay: Doom Tower {name}: {AutoClimbStarted} ({running})");
+                return new BattleOutcome(BattleResult.Victory, $"{AutoClimbStarted} from {name} ({running.State}, {running.Completed} done)", _fielded);
+            }
+            // Not seen as a background run: a battle on screen is played to its end as before.
+            if (!climbScreen.Active.Any(v => BattleViews.Contains(v.Name)))
+                return new BattleOutcome(BattleResult.NotStarted, $"Start pressed with the auto-climb on, but no climb or battle is seen ({Top(climbScreen)})");
+            log($"autoplay: Doom Tower {name}: the auto-climb shows the battle on screen: played to its result");
+        }
+        else try
         {
             await Click("team-start", t => t.View == teamView, (s2, _) => s2.Active.Any(v => BattleViews.Contains(v.Name)) || Top(s2) is PlayTargets.RefillView or UiState.MessageBoxView,
                 "the battle starts", ct, within: TimeSpan.FromSeconds(25), shot: true);

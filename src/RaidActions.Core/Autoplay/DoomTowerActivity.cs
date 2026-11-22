@@ -161,6 +161,16 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
             ctx.Event(AreaId, ctx.DryRun ? "dry-run" : "skip", $"{tower} tower: {outcome.Text}");
             return "";
         }
+        if (outcome.Text.StartsWith(AutoClimbStarted, StringComparison.Ordinal))
+        {
+            // The game climbs in the background (Ehsan 2026-11-23): the engine holds every battle area while it runs and collects its report at the end;
+            // no gear step now (it would leave the tower mid-climb). The next climb comes after the run (a boss floor where it stopped: one battle).
+            _last = $"{tower} tower: {outcome.Text}{outcome.TeamTag}";
+            ctx.Event(AreaId, "auto-climb", _last);
+            Rest(ctx.Utc + TimeSpan.FromMinutes(10), $"{tower} tower: the game's auto-climb is running");
+            _readAt = DateTime.MinValue;
+            return $"{tower} tower: {AutoClimbStarted}";
+        }
         _battles++;
         if (outcome.Result == BattleResult.Victory) _wins++;
         else
@@ -177,6 +187,9 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
         _readAt = DateTime.MinValue;
         return $"{outcome.Result}: {tower} tower floor";
     }
+
+    /// <summary>A floor climb handed to the game's auto-climb: the outcome's text starts with this.</summary>
+    public const string AutoClimbStarted = "auto-climb started";
 
     /// <summary>Battles chained in one visit at most (a safety stop; the keys end the chain first).</summary>
     public const int MaxChain = 40;

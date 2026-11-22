@@ -26,31 +26,38 @@ public sealed class AutoClimbReader(IGameObjects g)
     }
 }
 
-/// <summary>The rule before the tower's Start: the auto-climb is off, or Start is not pressed. A tap is never made blind (an unknown state could turn it on).</summary>
+/// <summary>
+/// The rule before the tower's Start: the auto-climb is as wanted, or Start is not pressed. Off everywhere but a floor climb (bosses and rooms take keys and
+/// Super Raid); on for a floor climb (Ehsan 2026-11-23: "on every floor we can do auto climb in game ... these happen in background"). A tap is never made
+/// blind (an unknown state could start a climb nobody wanted).
+/// </summary>
 public static class AutoClimbGuard
 {
-    /// <param name="CanStart">True only when the state was read as off (already, or after one tap).</param>
+    /// <param name="CanStart">True only when the state was read as wanted (already, or after one tap).</param>
     public sealed record Result(bool CanStart, string Message);
 
     /// <param name="read">The stored state (true on, false off, null unknown); may throw when memory cannot be read.</param>
     /// <param name="tap">One tap on the checkbox.</param>
     /// <param name="pause">Waits the given milliseconds.</param>
-    public static async Task<Result> EnsureOffAsync(Func<bool?> read, Func<Task> tap, Func<int, Task> pause, Action<string> log)
+    public static Task<Result> EnsureOffAsync(Func<bool?> read, Func<Task> tap, Func<int, Task> pause, Action<string> log) => EnsureAsync(false, read, tap, pause, log);
+
+    public static async Task<Result> EnsureAsync(bool wanted, Func<bool?> read, Func<Task> tap, Func<int, Task> pause, Action<string> log)
     {
+        var name = wanted ? "on" : "off";
         var now = Safe(read);
-        if (now is null) return Fail("the auto-climb state cannot be read", log);
-        if (now == false) { log("autoplay: auto-climb off"); return new Result(true, "auto-climb off"); }
-        log("autoplay: auto-climb is on: tapping its checkbox once");
+        if (now is null) return Fail("the auto-climb state cannot be read", wanted, log);
+        if (now == wanted) { log($"autoplay: auto-climb {name}"); return new Result(true, $"auto-climb {name}"); }
+        log($"autoplay: auto-climb is {(wanted ? "off" : "on")}: tapping its checkbox once");
         await tap();
         // The server confirms the change a moment later: read again for a few seconds.
         for (var i = 0; i < 8; i++)
         {
             await pause(500);
             now = Safe(read);
-            if (now is null) return Fail("the auto-climb state cannot be read after the tap", log);
-            if (now == false) { log("autoplay: auto-climb was on: turned off"); return new Result(true, "auto-climb was on: turned off"); }
+            if (now is null) return Fail("the auto-climb state cannot be read after the tap", wanted, log);
+            if (now == wanted) { log($"autoplay: auto-climb turned {name}"); return new Result(true, $"auto-climb turned {name}"); }
         }
-        return Fail("auto-climb is still on after one tap", log);
+        return Fail($"auto-climb is still {(wanted ? "off" : "on")} after one tap", wanted, log);
     }
 
     private static bool? Safe(Func<bool?> read)
@@ -59,9 +66,10 @@ public static class AutoClimbGuard
         catch (Exception e) when (e is not OperationCanceledException) { return null; }
     }
 
-    private static Result Fail(string why, Action<string> log)
+    private static Result Fail(string why, bool wanted, Action<string> log)
     {
-        log($"autoplay: {why}: Start not pressed (an auto-climb must never start)");
-        return new Result(false, $"{why}; Start not pressed (never start an auto-climb)");
+        var rule = wanted ? "a floor climb starts only as an auto-climb" : "an auto-climb starts only on a floor climb";
+        log($"autoplay: {why}: Start not pressed ({rule})");
+        return new Result(false, $"{why}; Start not pressed ({rule})");
     }
 }

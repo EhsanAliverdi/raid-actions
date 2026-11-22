@@ -131,6 +131,21 @@ public class ChoresWindowTests
         Assert.Equal([16], crypt.Chains);
     }
 
+    [Fact]
+    public async Task A_floor_climb_handed_to_the_games_auto_climb_is_logged_and_rested_not_counted_as_a_battle()
+    {
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, DoomTower = new DoomTowerSettings { Enabled = true } } };
+        var game = new FakeDoomTowerGame { NormalDone = false, Gold = 10, Silver = 0, ClimbText = DoomTowerActivity.AutoClimbStarted + " from Normal floor 5 (Started, 0 done)" };
+        var ctx = Ctx(host);
+        var dt = new DoomTowerActivity(game);
+        var text = await dt.RunTurnAsync(ctx, CancellationToken.None);
+        Assert.Equal(1, game.NormalClimbs);
+        Assert.Contains(DoomTowerActivity.AutoClimbStarted, text);
+        Assert.Contains(host.Events, e => e.Kind == "auto-climb");
+        Assert.DoesNotContain(host.Events, e => e.Area == DoomTowerActivity.AreaId && e.Kind == "battle");
+        Assert.NotNull(ctx.Held("doom-tower:climb-normal"));
+    }
+
     private static PlayContext Ctx(FakeHost host) => new(host.Settings, new FakeArenaGame(() => host.UtcNow), host, false, host.Events.Add);
 
     private static GameResources Energy(double e) => new(Start, 0, e, 0, EnergyCap: 130);

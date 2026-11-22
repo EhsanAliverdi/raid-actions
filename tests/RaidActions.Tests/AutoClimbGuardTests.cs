@@ -12,8 +12,9 @@ public class AutoClimbGuardTests
         public int Taps;
         public readonly List<string> Log = [];
         public bool? Read() => readThrows ? throw new InvalidOperationException("no memory") : State;
-        public Task Tap() { Taps++; if (tapWorks && State == true) State = false; return Task.CompletedTask; }
+        public Task Tap() { Taps++; if (tapWorks && State is { } s) State = !s; return Task.CompletedTask; }
         public Task<AutoClimbGuard.Result> Run() => AutoClimbGuard.EnsureOffAsync(Read, Tap, _ => Task.CompletedTask, Log.Add);
+        public Task<AutoClimbGuard.Result> RunOn() => AutoClimbGuard.EnsureAsync(true, Read, Tap, _ => Task.CompletedTask, Log.Add);
     }
 
     [Fact]
@@ -23,7 +24,7 @@ public class AutoClimbGuardTests
         var r = await f.Run();
         Assert.True(r.CanStart);
         Assert.Equal(1, f.Taps);
-        Assert.Contains(f.Log, l => l.Contains("was on: turned off"));
+        Assert.Contains(f.Log, l => l.Contains("turned off"));
     }
 
     [Fact]
@@ -55,6 +56,24 @@ public class AutoClimbGuardTests
         Assert.True((await f.Run()).CanStart);
         Assert.Equal(0, f.Taps);
         Assert.Contains(f.Log, l => l.Contains("auto-climb off"));
+    }
+
+    [Fact]
+    public async Task A_floor_climb_turns_the_auto_climb_on_and_an_unknown_state_is_never_tapped()
+    {
+        // Ehsan 2026-11-23: floors are climbed by the game's own auto-climb.
+        var off = new Fake(false);
+        Assert.True((await off.RunOn()).CanStart);
+        Assert.Equal(1, off.Taps);
+        Assert.True(off.State);
+        var on = new Fake(true);
+        Assert.True((await on.RunOn()).CanStart);
+        Assert.Equal(0, on.Taps);
+        var stuck = new Fake(false, tapWorks: false);
+        Assert.False((await stuck.RunOn()).CanStart);
+        var unknown = new Fake(null);
+        Assert.False((await unknown.RunOn()).CanStart);
+        Assert.Equal(0, unknown.Taps);
     }
 
     private sealed class Graph : IGameObjects

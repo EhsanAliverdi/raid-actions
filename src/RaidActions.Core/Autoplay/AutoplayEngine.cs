@@ -47,6 +47,9 @@ public interface IAutoplayHost
 
     /// <summary>For the banner: this account's name, the account the rotation goes to next, and when this turn ends (UTC); null: no rotation.</summary>
     TurnView? BannerTurn() => null;
+
+    /// <summary>How long this account waits after its turn while the others play (the other enabled accounts' turns); null: no rotation.</summary>
+    TimeSpan? AwayAfterTurn() => null;
     /// <summary>Another account of the pool can be played now, whatever this turn's time or hold (the account taken by another device).</summary>
     bool CanRotate() => false;
 
@@ -258,18 +261,24 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
                 // Wars and Cursed City in every 30 minutes, and Doom Tower, after them in the order, never came).
                 var waited = !stepAside && _fairOwed ? enabled.Where(a => _decisions[a.Id].Act).OrderBy(a => _lastPlayedUtc.GetValueOrDefault(a.Id)).FirstOrDefault() : null;
                 if (waited is not null) act = waited;
+                // The Chores window: Chores with a job due play before full areas (an urgent one still goes first, below).
+                if (!stepAside && ChoresMayPlay(now) && enabled.FirstOrDefault(a => a.Id == ChoresActivity.AreaId && _decisions[a.Id].Act) is { } chores) act = chores;
                 // An urgent one (a free arena refresh due with nobody to fight) before anything: what a chain of runs was broken for.
                 if (!stepAside && enabled.FirstOrDefault(a => _decisions[a.Id].Act && a.Urgent(ctx)) is { } urgent) act = urgent;
                 if (waited is not null && act == waited) _fairOwed = false;
-                // Chores never hold back resources that sit (2026-11-20: 149 energy and a 28-energy run waiting 11 minutes while chores and arenas took every turn): an
-                // area that wants to act with its resource full or urgent goes first, and Chores play at most once per run while another area has something to do.
+                // Chores never hold back resources that sit (2026-11-20: 149 energy and a 28-energy run waiting 11 minutes while chores and arenas took every turn),
+                // but they get a window (2026-11-23: "once per run" spent each run's one Chores turn on the gear clean-up, and for three days no Pass, Challenges,
+                // free offers, inbox, check-in or red dot was claimed on any account; Ehsan: "many rewards are missed"): inside it only an urgent area goes first,
+                // outside it every area with something to do does.
                 if (act?.Id == ChoresActivity.AreaId && !enabled.OfType<ChoresActivity>().Any(c => c.MasteryAsked))
                 {
-                    var spender = enabled.FirstOrDefault(a => a.Id != ChoresActivity.AreaId && _decisions[a.Id].Act && (a.Urgent(ctx) || a.Full(ctx)))
-                        ?? (_choresPlayed ? enabled.FirstOrDefault(a => a.Id != ChoresActivity.AreaId && _decisions[a.Id].Act) : null);
+                    var spender = enabled.FirstOrDefault(a => a.Id != ChoresActivity.AreaId && _decisions[a.Id].Act && a.Urgent(ctx))
+                        ?? (ChoresMayPlay(now) ? null
+                            : enabled.FirstOrDefault(a => a.Id != ChoresActivity.AreaId && _decisions[a.Id].Act && a.Full(ctx))
+                              ?? enabled.FirstOrDefault(a => a.Id != ChoresActivity.AreaId && _decisions[a.Id].Act));
                     if (spender is not null) act = spender;
                 }
-                if (act?.Id == ChoresActivity.AreaId) _choresPlayed = true;
+                if (act?.Id == ChoresActivity.AreaId) ChoresPlayed(now);
                 if (act is not null)
                 {
                     _sameArea = act.Id == _lastArea ? _sameArea + 1 : 1;
@@ -597,7 +606,21 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     /// open and Tag Team can play now (tokens), Faction Wars waits. No tokens, or Tag Team off or held: Faction Wars plays.
     /// </summary>
     private static string? _yieldSaid;
-    private bool _choresPlayed;
+
+    /// <summary>
+    /// The Chores window: open at the start of a run and again <see cref="ChoresGap"/> after the last one opened; while it is open Chores work through their due
+    /// jobs (one per turn) for <see cref="ChoresWindow"/>. The turn's pick and the chain break use the same rule (2026-11-23: the chain break stopped Energy for
+    /// Chores 106 times in three days and the pick gave the turn straight back to full Energy, so Energy played one run at a time and Chores never came).
+    /// </summary>
+    public static readonly TimeSpan ChoresWindow = TimeSpan.FromMinutes(6), ChoresGap = TimeSpan.FromMinutes(30);
+    private DateTime _choresWindowStart = DateTime.MinValue, _choresWindowEnd = DateTime.MinValue;
+    private bool ChoresMayPlay(DateTime now) => now < _choresWindowEnd || now - _choresWindowStart >= ChoresGap;
+    private void ChoresPlayed(DateTime now)
+    {
+        if (now < _choresWindowEnd) return;
+        _choresWindowStart = now;
+        _choresWindowEnd = now + ChoresWindow;
+    }
     private static string? YieldTo(PlayContext ctx, IReadOnlyList<IActivity> enabled, string self)
     {
         if (self != FactionWarsActivity.AreaId || ctx.QuestLeft(QuestNeedKind.TagArena) <= 0) return null;
@@ -632,10 +655,12 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
         foreach (var (a, i) in enabled.Select((a, i) => (a, i)).Where(x => x.a.Id != self))
         {
             if (ctx.Held(a.Id) is not null) continue;
-            // Chores that played already in this run do not break a chain again (once per run; masteries asked from the app still do).
-            if (a is ChoresActivity { MasteryAsked: false } && _choresPlayed && !a.Urgent(ctx)) continue;
+            // Chores break a chain only when the pick would give them the turn: their window is open (masteries asked from the app always do).
+            if (a is ChoresActivity { MasteryAsked: false } && !ChoresMayPlay(ctx.Utc) && !a.Urgent(ctx)) continue;
             var d = a.Decide(ctx);
             if (d.Act && (a.Urgent(ctx) || !meUrgent && a.Full(ctx) && (!meFull || i < myIndex))) return $"{a.Name}: {d.Why}";
+            // The Chores window open and a job due: the pick gives Chores the next turn, so the chain ends (an urgent chain goes on).
+            if (d.Act && !meUrgent && a is ChoresActivity && ChoresMayPlay(ctx.Utc)) return $"{a.Name}: {d.Why}";
         }
         return null;
     }

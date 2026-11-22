@@ -188,6 +188,10 @@ public sealed class FakeHost(DateTime start) : IAutoplayHost
     public TurnView? Turn { get; set; }
     public TurnView? BannerTurn() => Turn;
 
+    /// <summary>The time away after the turn (a test sets it); null: no rotation.</summary>
+    public TimeSpan? Away { get; set; }
+    public TimeSpan? AwayAfterTurn() => Away;
+
     /// <summary>Every status written while playing (the banner's fields over time).</summary>
     public List<AutoplayStatus> Playing { get; } = [];
 

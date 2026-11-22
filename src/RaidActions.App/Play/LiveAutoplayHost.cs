@@ -358,6 +358,15 @@ public sealed class LiveAutoplayHost(string dir, Action<string> print, bool watc
         return new TurnView(who, next is { } n ? NameOf(n) : null, next is null ? null : _turn.EndsUtc(pool.SliceOf(current)));
     }
 
+    public TimeSpan? AwayAfterTurn()
+    {
+        if (NoRotation || RaidExtractor.OutputLayout.GameId(dir) is not { } current) return null;
+        var pool = RaidExtractor.AccountPool.Load(dir);
+        if (!pool.Rotate || pool.Next(current, DateTime.UtcNow) is null) return null;
+        var now = DateTime.UtcNow;
+        return TimeSpan.FromMinutes(pool.Accounts.Where(a => a.Enabled && a.Id != current && !a.PausedAt(now)).Sum(a => pool.SliceOf(a.Id)));
+    }
+
     private string NameOf(long id)
     {
         try

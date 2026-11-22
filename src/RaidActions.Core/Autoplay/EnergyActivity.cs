@@ -482,7 +482,19 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     }
 
     // Before the cap, not at it: a turn elsewhere can last minutes, and energy above the cap stops regenerating (Ehsan 2026-11-01).
-    public bool Full(PlayContext ctx) => ctx.LastResources is { } r && r.Energy >= (r.EnergyCap ?? 124) - ctx.Settings.Rules.EnergyMargin;
+    public bool Full(PlayContext ctx) => ctx.LastResources is { } r && (r.Energy >= (r.EnergyCap ?? 124) - ctx.Settings.Rules.EnergyMargin || OverflowsAway(ctx, r));
+
+    /// <summary>
+    /// With rotation, energy that would pass the cap before this account's next turn counts as full (2026-11-23, Ehsan: "energy was over loaded in all accounts"):
+    /// the energy now, plus what comes until the turn ends, plus what comes while the other accounts play. Each account was left at 70-90 energy and filled
+    /// to the cap hours before its next turn; regeneration stops there.
+    /// </summary>
+    public static bool OverflowsAway(PlayContext ctx, GameResources r)
+    {
+        if (ctx.Host.BannerTurn() is not { EndsUtc: { } ends } || ctx.Host.AwayAfterTurn() is not { } away) return false;
+        var until = (ends > ctx.Utc ? ends - ctx.Utc : TimeSpan.Zero) + away;
+        return r.Energy + until / EnergyPeriod > (r.EnergyCap ?? 124);
+    }
 
     /// <summary>
     /// A pile of energy far over the cap (gifts, quest rewards: 2026-11-16, KaelStormVex at 561 and Smasher8465 at 375 while chores and the other areas

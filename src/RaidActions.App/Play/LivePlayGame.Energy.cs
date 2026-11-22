@@ -457,9 +457,29 @@ public sealed partial class LivePlayGame : IEnergyGame
         if (box.Note == (wanted ? "on" : "off")) return wanted;
         if (box.Note is not ("on" or "off"))
         {
-            // Not offered now (seen 2026-10-31 on Campaign and Dragon's Lair: "unavailable", Super Raid seems to come and go with events):
-            // a normal run instead of no run at all.
-            if (wanted) log($"autoplay: Super Raid is {box.Note} here now: a normal run");
+            // Read as not offered (seen 2026-10-31 on Campaign and Dragon's Lair: "unavailable"). 2026-11-23: the Faction Wars crypts (0 of 178 battles) and
+            // Doom Tower (0 of 65) always read so while the dungeons' box works, so the reading is doubted: "unavailable" or "unknown" is clicked once and
+            // read again (a box the game really disables ignores the click); "locked" is left (its click may open the unlock popup). Else a normal run.
+            if (!wanted) return false;
+            if (box.Note is "unavailable" or "unknown")
+            {
+                log($"autoplay: STEP Super Raid reads {box.Note}: one click to see if the game takes it");
+                try
+                {
+                    await Click("super-raid", t => t.Path == box.Path, (_, scan) => scan().Targets.Any(t => t.Kind == "super-raid" && t.Path == box.Path && t.Note == "on"),
+                        "Super Raid on (box read as " + box.Note + ")", ct, within: TimeSpan.FromSeconds(4));
+                    log("autoplay: Super Raid took the click: on");
+                    return true;
+                }
+                catch (PlayStopException e) when (e.Message.StartsWith("After clicking", StringComparison.Ordinal))
+                {
+                    var now = (await Read(ct)).Targets.FirstOrDefault(t => t.Kind == "super-raid" && t.Path == box.Path)?.Note;
+                    if (now == "on") { log("autoplay: Super Raid took the click: on"); return true; }
+                    log($"autoplay: Super Raid still {now ?? "not read"} after a click: a normal run");
+                    return false;
+                }
+            }
+            log($"autoplay: Super Raid is {box.Note} here now: a normal run");
             return false;
         }
         log($"autoplay: STEP Super Raid {(wanted ? "on" : "off")}");

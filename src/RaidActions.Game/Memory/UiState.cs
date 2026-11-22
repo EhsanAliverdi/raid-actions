@@ -30,6 +30,9 @@ public interface IGameObjects
     /// <summary>The reference at a raw offset (a field whose name is not known; check the object's class before trusting it). 0 when none.</summary>
     ulong RefAt(ulong obj, int offset) => 0;
 
+    /// <summary>Like <see cref="RefAt"/>, but a null reference reads as 0 instead of failing (an empty list is often null).</summary>
+    ulong RefAtOrNull(ulong obj, int offset) => RefAt(obj, offset);
+
     /// <summary>A 32-bit integer at a raw offset (a collection's count).</summary>
     int IntAt(ulong obj, int offset) => throw new NotSupportedException("Raw integer reads are not available here.");
 
@@ -38,6 +41,18 @@ public interface IGameObjects
 
     /// <summary>A 64-bit integer field (arena opponents' user ids).</summary>
     long Long(ulong obj, string type, string member) => throw new NotSupportedException("64-bit reads are not available here.");
+
+    /// <summary>The element count of a List (its _size at 0x18); raw read for lists of types without a known key.</summary>
+    int ListCount(ulong list) => IntAt(list, 0x18);
+
+    /// <summary>A 64-bit integer at a raw offset (a Fixed is 32.32 in one).</summary>
+    long LongAt(ulong obj, int offset) => throw new NotSupportedException("Raw 64-bit reads are not available here.");
+
+    /// <summary>A Nullable    long Long(ulong obj, string type, string member) => throw new NotSupportedException("64-bit reads are not available here.");lt;double    long Long(ulong obj, string type, string member) => throw new NotSupportedException("64-bit reads are not available here.");gt; at a raw offset (hasValue byte, then the value at +8); null when unset.</summary>
+    double? NullableDoubleAt(ulong obj, int offset) => throw new NotSupportedException("Raw double reads are not available here.");
+
+    /// <summary>The ints of a List    long Long(ulong obj, string type, string member) => throw new NotSupportedException("64-bit reads are not available here.");lt;int    long Long(ulong obj, string type, string member) => throw new NotSupportedException("64-bit reads are not available here.");gt; reached through a raw reference.</summary>
+    IReadOnlyList<int> IntListAt(ulong list, int max) => throw new NotSupportedException("Raw int lists are not available here.");
 }
 
 /// <param name="Key">The game's ViewKey value; <see cref="Name"/> its name.</param>

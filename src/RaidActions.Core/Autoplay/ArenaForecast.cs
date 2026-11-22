@@ -34,6 +34,12 @@ public static class ArenaForecastSwitch
 
     public static bool Enabled { get; set; } = FromEnvironment();
 
+    /// <summary>
+    /// The trial (Ehsan 2026-11-23: "do the trial, no need for me"): every opponent under the cap is forecast and logged ("observe: forecast ..."), but the pick is
+    /// today's; the forecasts are compared with the real results before <see cref="Enabled"/> lets it decide. On by default; RAID_ARENA_FORECAST=off stops it.
+    /// </summary>
+    public static bool Observe { get; set; } = Environment.GetEnvironmentVariable(EnvVar) is not ("0" or "false" or "off");
+
     public static bool FromEnvironment() => Environment.GetEnvironmentVariable(EnvVar) is "1" or "true" or "on";
 }
 

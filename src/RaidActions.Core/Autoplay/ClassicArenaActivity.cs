@@ -196,7 +196,7 @@ public sealed class ClassicArenaActivity : IActivity
     /// </summary>
     private async Task<List<ArenaOpponentInfo>> ForecastAsync(PlayContext ctx, ArenaBoard board, List<ArenaOpponentInfo> eligible, CancellationToken ct)
     {
-        if (!ArenaForecastSwitch.Enabled || eligible.Count == 0) return eligible;
+        if (!ArenaForecastSwitch.Enabled && !ArenaForecastSwitch.Observe || eligible.Count == 0) return eligible;
         var fresh = eligible.Where(o => !_forecasts.ContainsKey(o.UserId)).Select(o => o.UserId).ToHashSet();
         foreach (var o in eligible.Where(o => fresh.Contains(o.UserId)))
         {
@@ -212,7 +212,10 @@ public sealed class ClassicArenaActivity : IActivity
             }
         }
         var pick = ArenaForecastPick.Choose(eligible, o => _forecasts.GetValueOrDefault(o.UserId));
-        for (var i = 0; i < eligible.Count; i++) if (fresh.Contains(eligible[i].UserId)) ctx.Event(AreaId, "forecast", pick.Lines[i]); // one line per opponent, when first computed
+        var observing = !ArenaForecastSwitch.Enabled;
+        for (var i = 0; i < eligible.Count; i++) if (fresh.Contains(eligible[i].UserId)) ctx.Event(AreaId, "forecast", (observing ? "observe: " : "") + pick.Lines[i]); // one line per opponent, when first computed
+        // The trial: logged only, today's pick unchanged (the battle event that follows names the opponent and the result).
+        if (observing) return eligible;
         foreach (var o in pick.Skipped) _skip.Add(o.UserId); // not fought on this board; the skips clear with the board
         return pick.Order;
     }

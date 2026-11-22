@@ -60,13 +60,36 @@ public class ArenaForecastTests
     }
 
     [Fact]
-    public async Task Off_by_default_nothing_is_forecast()
+    public async Task Off_and_not_observing_nothing_is_forecast()
     {
         ArenaForecastSwitch.Enabled = false;
-        var (arena, game, host, ctx) = Setup(_ => new ArenaForecast(0.0, 30));
-        await arena.RunTurnAsync(ctx, CancellationToken.None);
-        Assert.DoesNotContain(game.Calls, c => c.StartsWith("forecast", StringComparison.Ordinal));
-        Assert.Contains(game.Calls, c => c.StartsWith("fight ", StringComparison.Ordinal));
+        var observe = ArenaForecastSwitch.Observe;
+        ArenaForecastSwitch.Observe = false;
+        try
+        {
+            var (arena, game, host, ctx) = Setup(_ => new ArenaForecast(0.0, 30));
+            await arena.RunTurnAsync(ctx, CancellationToken.None);
+            Assert.DoesNotContain(game.Calls, c => c.StartsWith("forecast", StringComparison.Ordinal));
+            Assert.Contains(game.Calls, c => c.StartsWith("fight ", StringComparison.Ordinal));
+        }
+        finally { ArenaForecastSwitch.Observe = observe; }
+    }
+
+    [Fact]
+    public async Task The_trial_logs_every_forecast_but_fights_by_todays_pick()
+    {
+        // Ehsan 2026-11-23: the trial before the forecast decides. Every forecast at 0% (all would be skipped), yet today's pick still fights.
+        ArenaForecastSwitch.Enabled = false;
+        var observe = ArenaForecastSwitch.Observe;
+        ArenaForecastSwitch.Observe = true;
+        try
+        {
+            var (arena, game, host, ctx) = Setup(_ => new ArenaForecast(0.0, 30, null, "power-scaled"));
+            await arena.RunTurnAsync(ctx, CancellationToken.None);
+            Assert.Contains(game.Calls, c => c.StartsWith("fight ", StringComparison.Ordinal));
+            Assert.Contains(host.Events, e => e.Kind == "forecast" && e.Text.StartsWith("observe: ", StringComparison.Ordinal));
+        }
+        finally { ArenaForecastSwitch.Observe = observe; }
     }
 
     [Fact]

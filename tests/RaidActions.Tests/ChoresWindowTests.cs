@@ -146,6 +146,25 @@ public class ChoresWindowTests
         Assert.NotNull(ctx.Held("doom-tower:climb-normal"));
     }
 
+    [Fact]
+    public void An_auto_climb_that_ended_on_a_loss_rests_that_climb_for_a_day_and_counts_its_floors()
+    {
+        var host = new FakeHost(Start) { Settings = new AutoplaySettings { Enabled = true, DoomTower = new DoomTowerSettings { Enabled = true } } };
+        var ctx = Ctx(host);
+        var dt = new DoomTowerActivity(new FakeDoomTowerGame());
+        // Ehsan 2026-11-23: 2 floors won, the third lost (the result window: 2/2 won).
+        dt.AutoClimbEnded(ctx, new BackgroundBattleInfo(7031003, 7031001, "DoomTower", "Finished", 3, 2, true));
+        Assert.Contains(host.Events, e => e.Kind == "auto-climb" && e.Text.Contains("2 of 3 floor(s) won, lost at floor 3"));
+        var held = ctx.Held("doom-tower:climb-normal");
+        Assert.NotNull(held);
+        Assert.True(held!.Value.Until - Start >= TimeSpan.FromHours(23));
+        // A climb that ended without a loss (the tower's end): no rest.
+        var host2 = new FakeHost(Start) { Settings = host.Settings };
+        var ctx2 = Ctx(host2);
+        new DoomTowerActivity(new FakeDoomTowerGame()).AutoClimbEnded(ctx2, new BackgroundBattleInfo(7031010, 7031001, "DoomTower", "Finished", 10, 10, true));
+        Assert.Null(ctx2.Held("doom-tower:climb-normal"));
+    }
+
     private static PlayContext Ctx(FakeHost host) => new(host.Settings, new FakeArenaGame(() => host.UtcNow), host, false, host.Events.Add);
 
     private static GameResources Energy(double e) => new(Start, 0, e, 0, EnergyCap: 130);

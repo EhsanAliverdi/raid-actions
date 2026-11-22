@@ -423,6 +423,10 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
             if (b.Finished && _staleBackground.Contains(note)) continue;
             if (b.Finished)
             {
+                // A finished Doom Tower auto-climb (Ehsan 2026-11-23: "it tries every new level and it stops when it loses"; the result window says 2/2): its count of
+                // floors won and lost goes to the tower, once, so a lost floor rests the climb instead of starting the same climb again every 10 minutes.
+                if (b.AutoClimb && !dryRun && _climbReported.Add(note))
+                    foreach (var dt in activities.OfType<DoomTowerActivity>()) dt.AutoClimbEnded(ctx, b);
                 if (dryRun || host.UtcNow < _backgroundCollectAfter)
                 {
                     if (note != _lastBackgroundNote) Remember(new AutoplayEvent(host.UtcNow, "engine", "wait", $"background battle finished, results waiting ({note})" + (dryRun ? ": a real run collects them" : "")));
@@ -606,6 +610,9 @@ public sealed class AutoplayEngine(IReadOnlyList<IActivity> activities, IPlayGam
     /// open and Tag Team can play now (tokens), Faction Wars waits. No tokens, or Tag Team off or held: Faction Wars plays.
     /// </summary>
     private static string? _yieldSaid;
+
+    /// <summary>The finished auto-climbs already handed to the tower (one report per climb).</summary>
+    private readonly HashSet<string> _climbReported = [];
 
     /// <summary>
     /// The Chores window: open at the start of a run and again <see cref="ChoresGap"/> after the last one opened; while it is open Chores work through their due

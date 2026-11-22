@@ -191,6 +191,29 @@ public sealed class DoomTowerActivity(IDoomTowerGame game) : IActivity
     /// <summary>A floor climb handed to the game's auto-climb: the outcome's text starts with this.</summary>
     public const string AutoClimbStarted = "auto-climb started";
 
+    /// <summary>
+    /// The game's auto-climb ended (the engine reads it at a turn start; Ehsan 2026-11-23: "it tries every new level and it stops when it loses", the result window
+    /// shows e.g. 2/2): its floors count as battles, and a lost floor rests that tower's climb for a day, as a lost floor does when the bot does not choose the
+    /// team (the team tries only see normal battles, so the next team is not known to be different).
+    /// </summary>
+    public void AutoClimbEnded(PlayContext ctx, BackgroundBattleInfo b)
+    {
+        var hard = DoomTowerRules.HardOf(b.StageId > 0 ? b.StageId : b.FirstStageId);
+        var tower = hard ? "Hard" : "Normal";
+        var lost = Math.Max(0, b.Completed - b.Won);
+        _battles += b.Completed;
+        _wins += b.Won;
+        _losses += lost;
+        var floor = b.StageId > 0 ? b.StageId % 1000 : 0;
+        _last = $"{tower} tower auto-climb ended: {b.Won} of {b.Completed} floor(s) won" + (lost > 0 && floor > 0 ? $", lost at floor {floor}" : "");
+        ctx.Event(AreaId, "auto-climb", _last);
+        _readAt = DateTime.MinValue;
+        if (lost == 0) return;
+        var until = ctx.Utc + TimeSpan.FromDays(1);
+        if (hard) _climbAfter = until; else _normalAfter = until;
+        ctx.Hold(hard ? ClimbKey : NormalKey, until, $"the {tower} auto-climb lost at floor {floor}: tried again in a day");
+    }
+
     /// <summary>Battles chained in one visit at most (a safety stop; the keys end the chain first).</summary>
     public const int MaxChain = 40;
 

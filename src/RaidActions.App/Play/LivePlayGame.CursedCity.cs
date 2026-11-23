@@ -106,6 +106,9 @@ public sealed partial class LivePlayGame : ICursedCityGame
         foreach (var args in commands) await RunCommand(args, ct);
         if (!dryRun) FromVault(picked.Where(m => m.InVault).Select(m => m.ChampionId), data);
         var upgraded = await UpgradeWornAsync([.. ids], fight, "cursed-city", dryRun, ct);
+        // The champion upgrade where Cursed City's "champions" switch is on (Auto Upgrade page, plan/auto-upgrade.md).
+        try { if (await PushTeamAsync([.. ids], dryRun, ct, "cursed-city") is { Length: > 0 } levelled) upgraded += (upgraded.Length > 0 ? "; " : "") + "levelled: " + levelled; }
+        catch (PlayStopException e) { log($"autoplay: Cursed City champion upgrade stopped: {e.Message}"); }
         var pieces = picked.Sum(m => m.Moves.Count);
         return $"{pieces} piece{(pieces == 1 ? "" : "s")}" + (upgraded.Length > 0 ? $"; {upgraded}" : "") + (dryRun ? " (dry run)" : "");
     }

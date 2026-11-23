@@ -158,7 +158,7 @@ public class EnergyActivityTests
     public async Task A_dungeon_push_that_loses_waits_its_hours_and_the_energy_goes_below()
     {
         // Ehsan 2026-11-17: a dungeon push costs energy on every loss: at most once a day, stop at the loss.
-        var push = new EnergyTarget { Id = "push-dragon", Area = "Dungeon", Region = "DragonsLair", Difficulty = "Normal", Stage = 20, Progress = true, LossWaitHours = 24 };
+        var push = new EnergyTarget { Id = "push-dragon", Area = "Dungeon", Region = "DragonsLair", Difficulty = "Hard", Stage = 10, Progress = true, LossWaitHours = 24 };
         var (host, game, engine) = Make(On(push, Row("farm")), stopAfter: TimeSpan.FromHours(2));
         game.Energy = 100;
         game.LoseAll = true;
@@ -228,10 +228,10 @@ public class EnergyActivityTests
     public async Task A_lost_push_stage_waits_until_the_team_is_stronger()
     {
         // Ehsan 2026-11-17: the stage lost 3 days ago is not tried again unless the team is 10% stronger.
-        var push = new EnergyTarget { Id = "push-dragon", Area = "Dungeon", Region = "DragonsLair", Difficulty = "Normal", Stage = 20, Progress = true, LossWaitHours = 24, RetryPowerPercent = 10 };
+        var push = new EnergyTarget { Id = "push-dragon", Area = "Dungeon", Region = "DragonsLair", Difficulty = "Hard", Stage = 10, Progress = true, LossWaitHours = 24, RetryPowerPercent = 10 };
         var (host, game, engine) = Make(On(push, Row("farm")), stopAfter: TimeSpan.FromHours(1));
         game.Energy = 100;
-        game.PushLossBook[PushLosses.Key("push-dragon", "DragonsLair", "Normal", 20)] = new PushLoss(Start.AddDays(-3), 100_000);
+        game.PushLossBook[PushLosses.Key("push-dragon", "DragonsLair", "Hard", 6)] = new PushLoss(Start.AddDays(-3), 100_000);
         await engine.RunAsync(once: false, Limit());
         Assert.True(!host.Events.Any(e => e.Kind == "battle" && e.Text.Contains("[row push-dragon]")), string.Join(" / ", host.Events.Select(e => $"{e.Kind}: {e.Text}")));
         Assert.Contains(host.Events, e => e.Kind == "hold" && e.Text.Contains("needs +10%"));
@@ -275,7 +275,8 @@ public class EnergyActivityTests
     public async Task A_push_row_opening_a_new_level_is_never_a_Super_Raid()
     {
         // Ehsan 2026-11-12 / 2026-11-23: the one exception besides food near its max: a new level (a loss there costs a double run).
-        // The fake account has Hard beaten to 5: a Hard push to 10 opens Hard 6 (new); a push whose goal is beaten (Normal 25) farms it, with Super Raid.
+        // The fake account has Hard beaten to 5: a Hard push to 10 opens Hard 6 (new); a push whose goal is beaten (Normal 25) is done and plays nothing
+        // (Ehsan 2026-11-23: the rows below get the energy; farming is a row of its own).
         var push = new EnergyTarget { Id = "push-dragon", Area = "Dungeon", Region = "DragonsLair", Difficulty = "Hard", Stage = 10, Progress = true };
         var (_, game, engine) = Make(On(push), stopAfter: TimeSpan.FromMinutes(5), smart: true);
         game.Energy = 100;
@@ -287,7 +288,20 @@ public class EnergyActivityTests
         var (_, game2, engine2) = Make(On(done), stopAfter: TimeSpan.FromMinutes(5), smart: true);
         game2.Energy = 100;
         await engine2.RunAsync(once: false, Limit());
-        Assert.Contains("run Normal 25 super", game2.Calls);
+        Assert.DoesNotContain(game2.Calls, c => c.StartsWith("run", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task A_push_row_whose_goal_is_beaten_lets_the_rows_below_play()
+    {
+        // Ehsan 2026-11-23: "many of the later steps are not played as there is an unlimited step before them": a finished push (Normal 25, beaten) no
+        // longer farms its goal unlimited; the row below gets the energy.
+        var done = new EnergyTarget { Id = "push-dragon", Area = "Dungeon", Region = "DragonsLair", Difficulty = "Normal", Stage = 25, Progress = true };
+        var (host, game, engine) = Make(On(done, Row("farm")), stopAfter: TimeSpan.FromMinutes(10));
+        game.Energy = 100;
+        await engine.RunAsync(once: false, Limit());
+        Assert.DoesNotContain(host.Events, e => e.Kind == "battle" && e.Text.Contains("[row push-dragon]"));
+        Assert.Contains(host.Events, e => e.Kind == "battle" && e.Text.Contains("[row farm]"));
     }
 
     [Fact]

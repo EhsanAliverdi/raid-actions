@@ -99,10 +99,11 @@ public sealed partial class LivePlayGame : IFactionWarsGame
     /// affinity on the Tavern's Brew screen (its rank's tab, its brew at amount 1, the champion, Upgrade), one brew at a time and checked in the account, until
     /// it reaches the level (never past its rank's maximum: no rank-ups) or the brews run out. Null when nothing was done.
     /// </summary>
-    public async Task<string?> PushTeamAsync(IReadOnlyList<int> team, bool dryRun, CancellationToken ct)
+    /// <param name="area">The area whose team it is: the account's champion upgrade (Auto Upgrade page, plan/auto-upgrade.md) applies only where that area's
+    /// "champions" switch is on.</param>
+    public async Task<string?> PushTeamAsync(IReadOnlyList<int> team, bool dryRun, CancellationToken ct, string area = "faction-wars")
     {
-        var push = AutoplaySettings.Load(ExtractorOutput).FactionWars.Push;
-        if (!push.Enabled) return null;
+        if (AutoplaySettings.Load(ExtractorOutput).Upgrades().ChampionFor(area) is not { } push) return null;
         var done = new List<string>();
         foreach (var id in team)
         {
@@ -159,7 +160,7 @@ public sealed partial class LivePlayGame : IFactionWarsGame
             // Ascension: Rare champions only (Ehsan 2026-11-17: "ascend only rare"), as far as the owned potions pay (MAX); never Epic or Legendary.
             if (push.AscendRareOnly && !dryRun && (await Account(ct)).Data.Champions.FirstOrDefault(x => x.Id == id) is { Rarity: "Rare", InVault: false, InBathhouse: false } rare && rare.Ascension < rare.Rank
                 // Only once the levelling is done (2026-11-17: Courtier at 27 of 30 after a pass's 8 brews was not ascended though Ascend was pressed).
-                && rare.Level >= Math.Min(push.Level, FwPushSettings.RankMax(rare.Rank)))
+                && push.TargetFor(rare.Rarity, rare.Rank, rare.Level) is null)
             {
                 try
                 {
@@ -355,7 +356,7 @@ public sealed partial class LivePlayGame : IFactionWarsGame
         }
         // The push on the team that will fight (Ehsan 2026-11-17: "you still do Faction Wars with level-1 champions": the gearing step had run earlier in the
         // day, and the team chosen here is not always the geared one): a member below the push level is brewed first, then the crypt opened again.
-        if (!dryRun && !_pushedHere && AutoplaySettings.Load(ExtractorOutput).FactionWars.Push is { Enabled: true } push)
+        if (!dryRun && !_pushedHere && AutoplaySettings.Load(ExtractorOutput).Upgrades().ChampionFor("faction-wars") is { } push)
         {
             var (pd, _, _, _) = await Account(ct);
             if (wanted.Any(id => pd.Champions.FirstOrDefault(c => c.Id == id) is { } c && push.TargetFor(c.Rarity, c.Rank, c.Level) is not null))

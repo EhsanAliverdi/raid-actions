@@ -55,7 +55,15 @@ public sealed partial class LivePlayGame
             foreach (var args in commands ?? []) await RunCommand(args, ct);
         }
         if (choice.PutBack && !dryRun) TeamPrep.Save(ExtractorOutput, TeamPrep.Merge(TeamPrep.Load(ExtractorOutput), snapshot, [.. team], now));
-        var upgraded = await UpgradeWornAsync([.. geared], tag, dryRun, ct);
+        var upgraded = await UpgradeWornAsync([.. geared], tag, area, dryRun, ct);
+        // The champion upgrade (Auto Upgrade page, plan/auto-upgrade.md): where this area's "champions" switch is on, the team is levelled with XP brews (up to the
+        // level, or the rank limit). Faction Wars levels its crypt team itself (FactionWars: PushTeamAsync before and at the battle).
+        if (area != "faction-wars")
+            try
+            {
+                if (await PushTeamAsync([.. team], dryRun, ct, area) is { Length: > 0 } levelled) upgraded += (upgraded.Length > 0 ? "; " : "") + "levelled: " + levelled;
+            }
+            catch (RaidActions.Autoplay.PlayStopException e) { log($"autoplay: {tag}: champion upgrade stopped: {e.Message}"); }
         await HomeAsync(Action("after preparing the team"), ct);
         var pieces = picked.Sum(m => m.Moves.Count);
         return $"{pieces} piece(s) for {picked.Count} champion(s), {vaulted.Count} out of a vault" + (choice.PutBack ? "; put back after" : "") + (upgraded.Length > 0 ? $"; {upgraded}" : "") + (dryRun ? " (dry run)" : "");

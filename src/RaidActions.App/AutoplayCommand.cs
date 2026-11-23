@@ -319,7 +319,7 @@ public static class AutoplayCommand
             var game = new LivePlayGame(live, ui, folder, policy, l => print($"{DateTime.Now:HH:mm:ss} {l}"), GameCommands.LivePaths(outDir).RaidExtractorRoot, outDir);
             try
             {
-                var done = await game.UpgradeWornAsync(ids, "gear-upgrade command", args.Contains("--dry-run"), CancellationToken.None);
+                var done = await game.UpgradeWornAsync(ids, "gear-upgrade command", null, args.Contains("--dry-run"), CancellationToken.None);
                 print(done.Length == 0 ? "gear upgrade: nothing to do (off, or no piece matches)" : done);
                 return Cli.Ok;
             }

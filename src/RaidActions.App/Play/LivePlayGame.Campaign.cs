@@ -496,7 +496,7 @@ public sealed partial class LivePlayGame
                 geared = $"{pieces} piece{(pieces == 1 ? "" : "s")} for {string.Join(", ", picked.Select(m => m.Name))}" + (dryRun ? " (dry run)" : "");
             }
         }
-        var upgraded = await UpgradeWornAsync([.. team], fight, dryRun, ct);
+        var upgraded = await UpgradeWornAsync([.. team], fight, "energy", dryRun, ct);
         return (geared ?? "nothing better in the inventory; the team keeps its gear") + (upgraded.Length > 0 ? $"; {upgraded}" : "");
     }
 

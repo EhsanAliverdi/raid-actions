@@ -15,8 +15,9 @@ public static class MouseInput
     public static DateTime LastSentUtc { get; private set; } = DateTime.MinValue;
 
     /// <summary>Brings the game to the front if it is not; the reason it could not, or null.</summary>
-    public static string? EnsureForeground(GameWindowInfo w)
+    public static string? EnsureForeground(GameWindowInfo w, bool requireFront = false)
     {
+        if (!requireFront && BackgroundMode.Enabled) return EnsureBackgroundReady(w);
         if (GetForegroundWindow() == w.Handle && SessionProblem() is null) return null;
         // A session that is away (a Remote Desktop left or arriving): Auto Play waits for it, up to 3 minutes, instead of failing the action (SessionGuard).
         var waits = SessionGuard.Waits;
@@ -38,6 +39,30 @@ public static class MouseInput
             Thread.Sleep(500);
         }
         return "Could not bring the game window to the front.";
+    }
+
+    private static readonly BackgroundInput Background = new(Win32Background.Instance);
+
+    /// <summary>Background mode: the game is never brought to the front; only the session is checked (waited for when away) and a minimized window restored without activating.</summary>
+    private static string? EnsureBackgroundReady(GameWindowInfo w)
+    {
+        var waits = SessionGuard.Waits;
+        if (SessionProblem() is not null && SessionGuard.WaitActive(TimeSpan.FromMinutes(3)) is { } session) return session;
+        if (SessionGuard.Waits != waits && Game.Window.GameWindow.Find().Window is { } now && (now.Handle != w.Handle || now.Client != w.Client))
+            return "The game window changed while the session was away (a Remote Desktop came or went): nothing sent; the next step reads it again.";
+        return null;
+    }
+
+    /// <summary>Runs a background gesture; null result and "sent" when done or refused, false when the normal input must do it (logged once per kind).</summary>
+    private static bool TryBackground(Gesture g, GameWindowInfo w, Func<string?> send, out string? result)
+    {
+        result = null;
+        if (!BackgroundMode.UseBackground(g)) return false;
+        if (EnsureBackgroundReady(w) is { } notReady) { result = notReady; return true; }
+        result = send();
+        if (BackgroundMode.IsFallback(result)) { BackgroundMode.SayFallback(g, "the background way could not be used (window minimized or cursor not movable)"); return false; }
+        LastSentUtc = DateTime.UtcNow;
+        return true;
     }
 
     /// <summary>
@@ -98,7 +123,8 @@ public static class MouseInput
     public static string? SendEscape(GameWindowInfo w)
     {
         if (RaidActions.Autoplay.PauseGate.Check() is { } paused) return paused;
-        if (EnsureForeground(w) is { } why) return why;
+        if (TryBackground(Gesture.Escape, w, () => Background.Escape(w), out var bg)) return bg;
+        if (EnsureForeground(w, requireFront: true) is { } why) return why;
         keybd_event(0x1B, 0, 0, IntPtr.Zero);
         Thread.Sleep(60);
         keybd_event(0x1B, 0, KeyUp, IntPtr.Zero);
@@ -144,6 +170,7 @@ public static class MouseInput
     public static string? Click(GameWindowInfo w, float x, float y, Random random)
     {
         if (RaidActions.Autoplay.PauseGate.Check() is { } paused) return paused;
+        if (TryBackground(Gesture.Click, w, () => Background.Click(w, x, y, random), out var bg)) return bg;
         if (Prepare(w, x, y) is { } problem) return problem;
         mouse_event(LeftDown, 0, 0, 0, IntPtr.Zero);
         Thread.Sleep(random.Next(45, 95));
@@ -162,6 +189,7 @@ public static class MouseInput
     public static string? Wheel(GameWindowInfo w, float x, float y, int notches, bool single = false, int gapMs = 35)
     {
         if (RaidActions.Autoplay.PauseGate.Check() is { } paused) return paused;
+        if (TryBackground(Gesture.Wheel, w, () => Background.Wheel(w, x, y, notches, single, gapMs), out var bg)) return bg;
         if (Prepare(w, x, y) is { } problem) return problem;
         if (single)
         {
@@ -186,6 +214,7 @@ public static class MouseInput
     {
         if (RaidActions.Autoplay.PauseGate.Check() is { } paused) return paused;
         if (x2 < 0 || y2 < 0 || x2 >= w.Client.Width || y2 >= w.Client.Height) return $"({x2:0},{y2:0}) is outside the client area.";
+        if (TryBackground(Gesture.Drag, w, () => Background.Drag(w, x1, y1, x2, y2, steps), out var bg)) return bg;
         // A small window floating over the start (a screen recorder's; seen 2026-10-31): the same drag from a free point near it.
         string? problem = null;
         foreach (var (dx, dy) in new (float X, float Y)[] { (0, 0), (0, 70), (0, -70), (140, 0), (-140, 0), (140, 70), (-140, -70) })

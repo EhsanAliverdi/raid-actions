@@ -1,3 +1,4 @@
+using RaidActions.App.Input;
 using RaidActions.App.Play;
 using RaidActions.Autoplay;
 using RaidActions.Autoplay.Fake;
@@ -41,7 +42,10 @@ public static class AutoplayCommand
         var enableChores = args.Contains("--enable-chores");
         var enableLive = args.Contains("--enable-live");
         var enableTag = args.Contains("--enable-tag");
-        var noYield = args.Contains("--no-yield");
+        // --background-clicks (or RAID_BACKGROUND_CLICKS=1): clicks as posted messages, the game stays behind; the person is not yielded to.
+        BackgroundMode.Configure(args);
+        BackgroundMode.Log = Print;
+        var noYield = args.Contains("--no-yield") || BackgroundMode.Enabled;
         if (args.Contains(ArenaForecastSwitch.Flag)) ArenaForecastSwitch.Enabled = true; // Classic Arena forecast (off unless asked)
         // --cc-difficulty Normal|Hard: the Cursed City difficulty to play; --cc-risky: also risky levels (whatever the settings say).
         var ccAt = Array.IndexOf(args, "--cc-difficulty");

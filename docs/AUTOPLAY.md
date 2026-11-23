@@ -137,3 +137,11 @@ RaidActions autoplay --fake                         # the made-up arena (no game
 
 ## Second opinion of the simulating gates (2026-11-21)
 Doom Tower's boss gate, Faction Wars' ForecastStageAsync and Cursed City's SimulateAsync also run the ported engine (GameSimBuilder.WinRate: 50 runs, 10 s box, same stage, team and gear plan) after the old StageSim. READ ONLY: the decision uses the old number. Each pair is logged (`sim2: <area> <stage>: old X% new Y% (n runs)`, or `new engine: not ported: X`) and appended to `output/sim-compare.csv` (time, account, area, stage, team, old, new, runs, note, real). `real` (win/loss) is filled when the area's next battle event arrives (LiveAutoplayHost.Event -> SimCompare.ResolveFromEvent: newest open row of that area, within 6 h; a Cursed City event naming its team must name the row's champions).
+
+## Background clicks (off by default)
+`autoplay --background-clicks` or env `RAID_BACKGROUND_CLICKS=1`: clicks, drags, wheel turns and Esc go to the game window as posted
+messages (cursor flick: move the real cursor to the point, posted move/down/up, cursor back); the game is never brought to the front, a
+minimized window is restored without activating, and the bot does not yield to the person except for a 1 s wait for the mouse to be
+still before each flick (up to 60 s, then that click is refused). `RAID_BACKGROUND_FALLBACK=wheel,drag` keeps those gestures on the
+normal foreground input. Code: `Input/BackgroundMode.cs`, `Input/BackgroundInput.cs`, routing in `Input/MouseInput.cs`. Typing text
+(promo codes) still needs the front. Unverified live: posted wheel, posted drag, clicks while another window covers the game.

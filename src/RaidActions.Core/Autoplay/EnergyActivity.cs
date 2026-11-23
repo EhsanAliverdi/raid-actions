@@ -450,7 +450,8 @@ public sealed class EnergyActivity(IEnergyGame game) : IActivity
     private EnergyTarget Smart(PlayContext ctx, EnergyTarget t, EnergyWorld w)
     {
         var r = ctx.Settings.Rules;
-        if (!r.SmartSuperRaid) return t;
+        // The row's own choice (Smart / Always / Never on the page); an older row follows the account's rule.
+        if (!(t.SmartSuperRaid ?? r.SmartSuperRaid)) return t;
         // Ehsan 2026-11-23: "Super Raid uses twice the energy, gives twice the reward in half the time: when it can be used it must be used", with two
         // exceptions only: a new level (a loss there costs a double run: Ehsan 2026-11-12) and food close to its max level (the double run's XP is lost).
         // Quests that count clears, farm rows at any energy, the Campaign, keys: all Super Raid when it can be paid.
